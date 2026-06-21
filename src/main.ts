@@ -15,13 +15,15 @@ async function bootstrap() {
     }),
   );
 
+  app.setGlobalPrefix('ai');
+
   const config = new DocumentBuilder()
     .setTitle('HJ AI Server')
     .setDescription('HJ AI Server API')
     .setVersion('1.0')
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('ai/docs', app, document);
 
   const configService = app.get(ConfigService);
   const port = configService.get<string>('PORT') ?? '3000';

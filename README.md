@@ -33,29 +33,51 @@ The app listens on container port `11000` and is exposed on `http://localhost:11
 
 For Docker-specific local settings, copy `.env.docker.example` values into `.env` or set them in your deployment environment. Run database migrations separately with `npm run db:init` against the configured `DATABASE_URL`.
 
+### Nginx
+
+Use `/ai/` as the reverse proxy prefix and keep the same prefix when forwarding to the Docker service:
+
+```nginx
+location = /ai {
+    return 301 /ai/;
+}
+
+location /ai/ {
+    proxy_pass http://127.0.0.1:11000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_cache_bypass $http_upgrade;
+}
+```
+
 ## APIs
 
 Swagger UI is available at:
 
 ```http
-GET /api
+GET /ai/docs
 ```
 
 ### Health
 
 ```http
-GET /
+GET /ai
 ```
 
 ### Converse with Bedrock
 
 ```http
-GET /bedrock/config
-GET /bedrock/models
+GET /ai/bedrock/config
+GET /ai/bedrock/models
 ```
 
 ```http
-POST /bedrock/converse
+POST /ai/bedrock/converse
 Content-Type: application/json
 
 {
@@ -72,9 +94,9 @@ Content-Type: application/json
 ### Test table CRUD
 
 ```http
-POST /test-tables
-GET /test-tables
-GET /test-tables/:id
-PATCH /test-tables/:id
-DELETE /test-tables/:id
+POST /ai/test-tables
+GET /ai/test-tables
+GET /ai/test-tables/:id
+PATCH /ai/test-tables/:id
+DELETE /ai/test-tables/:id
 ```
