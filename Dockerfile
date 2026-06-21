@@ -22,6 +22,7 @@ RUN npm run build
 
 FROM node:24-alpine AS production
 ENV NODE_ENV=production
+ENV PORT=11000
 WORKDIR /app
 
 RUN npm install -g npm@11.6.2
@@ -37,6 +38,6 @@ COPY prisma.config.ts ./prisma.config.ts
 RUN npm prune --omit=dev && npm cache clean --force
 
 USER nestjs
-EXPOSE 3000
+EXPOSE 11000
 
 CMD ["npm", "run", "start:prod"]
