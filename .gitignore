@@ -1,0 +1,10 @@
+node_modules
+dist
+.idea
+
+# Keep environment variables out of version control
+.env
+
+/generated/prisma
+server.log
+server.err.log
