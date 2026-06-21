@@ -1,0 +1,14 @@
+.git
+.idea
+dist
+node_modules
+coverage
+
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+server.log
+server.err.log
+npm-debug.log*

@@ -15,6 +15,24 @@ Copy `.env.example` to `.env` and set AWS credentials in your environment or AWS
 
 This project uses PostgreSQL through Prisma 7. Configure `DATABASE_URL` in `.env`, then run `npm run prisma:migrate` to create the test table.
 
+## Docker
+
+Build the production image:
+
+```bash
+docker build -t hj-ai-server:latest .
+```
+
+Run the API with PostgreSQL through Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+The app is exposed on `http://localhost:11000` by default. Compose reads AWS credentials from local `.env`, keeps the application listening on container port `3000`, runs `prisma migrate deploy`, and then starts the NestJS server.
+
+For Docker-specific local settings, copy `.env.docker.example` values into `.env` or set them in your deployment environment. To use an external database instead of the Compose PostgreSQL service, set `DOCKER_DATABASE_URL`.
+
 ## APIs
 
 Swagger UI is available at:
