@@ -13,3 +13,15 @@ model TestTable {
 
   @@map("test_table")
 }
+
+model AppInfo {
+  id       String   @id @default(uuid()) @db.Uuid
+  appname  String
+  appkey   String
+  appcode  String
+  remark   String?
+  createat DateTime @default(now())
+  updateat DateTime @updatedAt
+
+  @@map("appinfo")
+}
