@@ -25,3 +25,18 @@ model AppInfo {
 
   @@map("appinfo")
 }
+
+model BedrockSearchLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  appcode      String
+  searchword   String
+  searchat     DateTime @default(now())
+  responsetime Int
+  inputtokens  Int?
+  outputtokens Int?
+  totaltokens  Int?
+
+  @@index([appcode])
+  @@index([searchat])
+  @@map("bedrock_search_log")
+}

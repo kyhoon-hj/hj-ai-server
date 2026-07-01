@@ -10,6 +10,7 @@ import {
   ConverseCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime';
 
+import { PrismaService } from '../prisma/prisma.service';
 import { ConverseDto } from './dto/converse.dto';
 import { TextResponseDto } from './dto/text-response.dto';
 
@@ -18,7 +19,10 @@ export class BedrockService {
   private readonly bedrockClient: BedrockClient;
   private readonly client: BedrockRuntimeClient;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     this.unsetBlankAwsOptionalEnvVars();
 
     const region = this.configService.get<string>('AWS_REGION') ?? 'us-east-1';
@@ -70,7 +74,7 @@ export class BedrockService {
     };
   }
 
-  async converse(dto: ConverseDto) {
+  async converse(dto: ConverseDto, appcode: string) {
     const modelId =
       dto.modelId ?? this.configService.get<string>('BEDROCK_MODEL_ID');
 
@@ -80,6 +84,7 @@ export class BedrockService {
       );
     }
 
+    const searchAt = new Date();
     const startedAt = Date.now();
 
     try {
@@ -104,6 +109,16 @@ export class BedrockService {
       const text = this.extractText(result);
       const usage = result.usage;
 
+      await this.createSearchLog({
+        appcode,
+        searchword: dto.message,
+        searchat: searchAt,
+        responsetime: latencyMs,
+        inputtokens: usage?.inputTokens,
+        outputtokens: usage?.outputTokens,
+        totaltokens: usage?.totalTokens,
+      });
+
       return {
         modelId,
         response: text,
@@ -115,8 +130,8 @@ export class BedrockService {
     }
   }
 
-  async createTextResponse(dto: TextResponseDto) {
-    const result = await this.converse({ message: dto.message });
+  async createTextResponse(dto: TextResponseDto, appcode: string) {
+    const result = await this.converse({ message: dto.message }, appcode);
 
     return {
       response: result.response,
@@ -131,6 +146,20 @@ export class BedrockService {
       .join('\n');
 
     return text || JSON.stringify(result.output ?? {});
+  }
+
+  private createSearchLog(data: {
+    appcode: string;
+    searchword: string;
+    searchat: Date;
+    responsetime: number;
+    inputtokens?: number;
+    outputtokens?: number;
+    totaltokens?: number;
+  }) {
+    return this.prisma.bedrockSearchLog.create({
+      data,
+    });
   }
 
   private unsetBlankAwsOptionalEnvVars() {

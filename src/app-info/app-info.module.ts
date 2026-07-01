@@ -7,5 +7,6 @@ import { AppInfoService } from './app-info.service';
   imports: [PrismaModule],
   controllers: [AppInfoController],
   providers: [AppInfoService],
+  exports: [AppInfoService],
 })
 export class AppInfoModule {}

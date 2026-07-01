@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -78,24 +78,68 @@ export class AppInfoService {
     });
   }
 
+  async validateAppKey(appkey: string) {
+    if (!this.isValidAppKeySignature(appkey)) {
+      return null;
+    }
+
+    return this.prisma.appInfo.findFirst({
+      where: { appkey },
+      select: {
+        id: true,
+        appcode: true,
+      },
+    });
+  }
+
   private createAppKey(payload: Record<string, string | number>) {
     const header = {
       alg: 'HS256',
       typ: 'JWT',
     };
-    const secret =
-      this.configService.get<string>('APPKEY_JWT_SECRET') ??
-      this.configService.get<string>('JWT_SECRET') ??
-      'hj-ai-server-appkey-secret';
-
     const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
     const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
     const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-    const signature = createHmac('sha256', secret)
+    const signature = createHmac('sha256', this.getAppKeySecret())
       .update(unsignedToken)
       .digest('base64url');
 
     return `${unsignedToken}.${signature}`;
+  }
+
+  private isValidAppKeySignature(appkey: string) {
+    const parts = appkey.split('.');
+
+    if (parts.length !== 3) {
+      return false;
+    }
+
+    const [encodedHeader, encodedPayload, signature] = parts;
+    const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+    const expectedSignature = createHmac('sha256', this.getAppKeySecret())
+      .update(unsignedToken)
+      .digest('base64url');
+
+    return this.safeEqual(signature, expectedSignature);
+  }
+
+  private getAppKeySecret() {
+    return (
+      this.configService.get<string>('APPKEY_JWT_SECRET') ??
+      this.configService.get<string>('JWT_SECRET') ??
+      'hj-ai-server-appkey-secret'
+    );
+  }
+
+  private safeEqual(value: string, expected: string) {
+    const valueBuffer = Buffer.from(value);
+    const expectedBuffer = Buffer.from(expected);
+
+    if (valueBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(valueBuffer, expectedBuffer);
   }
 
   private base64UrlEncode(value: string) {

@@ -1,10 +1,23 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  ApiHeader,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BedrockService } from './bedrock.service';
 import { ConverseDto } from './dto/converse.dto';
 import { TextResponseDto } from './dto/text-response.dto';
+import { AppkeyGuard } from './guards/appkey.guard';
+import type { AppkeyRequest } from './guards/appkey.guard';
 
 @ApiTags('bedrock')
+@UseGuards(AppkeyGuard)
+@ApiHeader({
+  name: 'appkey',
+  description: 'app-info API에서 발급된 appkey입니다.',
+  required: true,
+})
 @Controller('bedrock')
 export class BedrockController {
   constructor(private readonly bedrockService: BedrockService) {}
@@ -40,8 +53,8 @@ export class BedrockController {
   @ApiOperation({
     summary: 'Amazon Bedrock Converse API로 텍스트 응답을 생성합니다.',
   })
-  converse(@Body() dto: ConverseDto) {
-    return this.bedrockService.converse(dto);
+  converse(@Body() dto: ConverseDto, @Req() request: AppkeyRequest) {
+    return this.bedrockService.converse(dto, request.appInfo!.appcode);
   }
 
   @Post('text-response')
@@ -56,7 +69,13 @@ export class BedrockController {
       },
     },
   })
-  createTextResponse(@Body() dto: TextResponseDto) {
-    return this.bedrockService.createTextResponse(dto);
+  createTextResponse(
+    @Body() dto: TextResponseDto,
+    @Req() request: AppkeyRequest,
+  ) {
+    return this.bedrockService.createTextResponse(
+      dto,
+      request.appInfo!.appcode,
+    );
   }
 }

@@ -73,12 +73,16 @@ GET /ai
 
 ```http
 GET /ai/bedrock/config
+appkey: <app-info appkey>
+
 GET /ai/bedrock/models
+appkey: <app-info appkey>
 ```
 
 ```http
 POST /ai/bedrock/converse
 Content-Type: application/json
+appkey: <app-info appkey>
 
 {
   "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
