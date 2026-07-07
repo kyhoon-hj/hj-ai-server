@@ -26,6 +26,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1073.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1073.0",
+    "@aws-sdk/client-s3": "^3.1078.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.27",
@@ -50,6 +51,7 @@
     "@nestjs/testing": "^11.1.27",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.20.0",
     "@types/supertest": "^7.0.0",

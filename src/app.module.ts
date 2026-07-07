@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppInfoModule } from './app-info/app-info.module';
 import { BedrockModule } from './bedrock/bedrock.module';
+import { StorageModule } from './storage/storage.module';
 import { TestTableModule } from './test-table/test-table.module';
 
 @Module({
@@ -11,6 +12,7 @@ import { TestTableModule } from './test-table/test-table.module';
     ConfigModule.forRoot({ isGlobal: true }),
     AppInfoModule,
     BedrockModule,
+    StorageModule,
     TestTableModule,
   ],
   controllers: [AppController],

@@ -12,10 +12,7 @@ import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AppInfoService } from './app-info.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
-import {
-  AppInfoEntity,
-  AppInfoPublicEntity,
-} from './entities/app-info.entity';
+import { AppInfoEntity, AppInfoPublicEntity } from './entities/app-info.entity';
 
 @ApiTags('app-info')
 @Controller('app-info')

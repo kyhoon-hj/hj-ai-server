@@ -13,6 +13,8 @@ npm run start:dev
 
 Copy `.env.example` to `.env` and set AWS credentials in your environment or AWS profile. `BEDROCK_MODEL_ID` can be provided globally or per request.
 
+For S3 uploads, set `AWS_S3_BUCKET`. `AWS_S3_CDN_URL` is optional and is used to build the returned public file URL.
+
 This project uses PostgreSQL through Prisma 7. Configure `DATABASE_URL` in `.env`, then run `npm run prisma:migrate` to create the test table.
 
 ## Docker
@@ -93,6 +95,37 @@ appkey: <app-info appkey>
     "userId": "demo-user"
   }
 }
+```
+
+### Upload file to S3
+
+```http
+POST /ai/storage/upload
+Content-Type: multipart/form-data
+appkey: <app-info appkey>
+
+file: <binary file>
+```
+
+Files are stored under an app-specific S3 key prefix:
+
+```text
+<appcode>/<yyyy>/<mm>/<dd>/<uuid>-<filename>
+```
+
+```http
+GET /ai/storage/files
+appkey: <app-info appkey>
+```
+
+```http
+GET /ai/storage/files/detail?key=<appcode/yyyy/mm/dd/uuid-filename>
+appkey: <app-info appkey>
+```
+
+```http
+GET /ai/storage/download?key=<appcode/yyyy/mm/dd/uuid-filename>
+appkey: <app-info appkey>
 ```
 
 ### Test table CRUD

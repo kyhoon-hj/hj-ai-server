@@ -6,10 +6,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { BedrockService } from './bedrock.service';
+import { AppkeyGuard } from '../common/guards/appkey.guard';
+import type { AppkeyRequest } from '../common/guards/appkey.guard';
 import { ConverseDto } from './dto/converse.dto';
 import { TextResponseDto } from './dto/text-response.dto';
-import { AppkeyGuard } from './guards/appkey.guard';
-import type { AppkeyRequest } from './guards/appkey.guard';
 
 @ApiTags('bedrock')
 @UseGuards(AppkeyGuard)
