@@ -8,3 +8,8 @@ dist
 /generated/prisma
 server.log
 server.err.log
+
+/outputs/
+/work/
+
+*.log

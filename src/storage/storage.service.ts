@@ -5,6 +5,7 @@ import {
   HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
+  DeleteObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import {
@@ -55,6 +56,25 @@ export class StorageService {
       originalName: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
+    };
+  }
+
+  async deleteFile(key: string, appcode: string) {
+    const bucket = this.getBucket();
+    const normalizedKey = this.validateAppKeyPrefix(key, appcode);
+
+    await this.s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: normalizedKey,
+      }),
+    );
+
+    return {
+      appcode,
+      bucket,
+      key: normalizedKey,
+      deleted: true,
     };
   }
 
@@ -152,7 +172,7 @@ export class StorageService {
     const safeAppcode = this.toSafePathPart(appcode);
     const safeFileName = this.toSafeFileName(originalName);
 
-    return `${safeAppcode}/${year}/${month}/${day}/${randomUUID()}-${safeFileName}`;
+    return `${safeAppcode}/knowledge/${year}/${month}/${day}/${randomUUID()}-${safeFileName}`;
   }
 
   private createListPrefix(appcode: string, prefix?: string) {
@@ -201,7 +221,11 @@ export class StorageService {
   }
 
   private getRegion() {
-    return this.configService.get<string>('AWS_REGION') ?? 'us-east-1';
+    return (
+      this.configService.get<string>('AWS_S3_REGION') ??
+      this.configService.get<string>('AWS_REGION') ??
+      'us-east-1'
+    );
   }
 
   private getBucket() {

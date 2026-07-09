@@ -15,14 +15,25 @@ model TestTable {
 }
 
 model AppInfo {
-  id       String   @id @default(uuid()) @db.Uuid
-  appname  String
-  appkey   String
-  appcode  String
-  remark   String?
-  createat DateTime @default(now())
-  updateat DateTime @updatedAt
+  id                       String   @id @default(uuid()) @db.Uuid
+  appname                  String
+  appkey                   String?
+  appkeyHash               String?  @unique @map("appkey_hash")
+  appcode                  String
+  status                   String   @default("active")
+  s3Prefix                 String?  @map("s3_prefix")
+  defaultModelId           String?  @map("default_model_id")
+  defaultEmbeddingModelId  String?  @map("default_embedding_model_id")
+  systemPrompt             String?  @map("system_prompt")
+  maxStorageMb             Int?     @map("max_storage_mb")
+  monthlyTokenLimit        Int?     @map("monthly_token_limit")
+  metadata                 Json?
+  remark                   String?
+  createat                 DateTime @default(now())
+  updateat                 DateTime @updatedAt
 
+  @@index([appcode])
+  @@index([status])
   @@map("appinfo")
 }
 
@@ -39,4 +50,73 @@ model BedrockSearchLog {
   @@index([appcode])
   @@index([searchat])
   @@map("bedrock_search_log")
+}
+
+model KnowledgeFile {
+  id           String    @id @default(uuid()) @db.Uuid
+  appcode      String
+  bucket       String
+  key          String
+  url          String?
+  originalName String    @map("original_name")
+  mimetype     String
+  size         Int
+  checksum     String?
+  status       String    @default("uploaded")
+  errorMessage String?   @map("error_message")
+  metadata     Json?
+  indexedAt    DateTime? @map("indexed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  chunks KnowledgeChunk[]
+
+  @@unique([appcode, key])
+  @@index([appcode])
+  @@index([status])
+  @@index([createdAt])
+  @@map("knowledge_file")
+}
+
+model KnowledgeChunk {
+  id             String                 @id @default(uuid()) @db.Uuid
+  fileId         String                 @map("file_id") @db.Uuid
+  appcode        String
+  chunkNo        Int                    @map("chunk_no")
+  content        String
+  contentHash    String?                @map("content_hash")
+  tokenCount     Int?                   @map("token_count")
+  page           Int?
+  metadata       Json?
+  embedding      Float[]                @default([])
+  embeddingVector Unsupported("vector(1024)")? @map("embedding_vector")
+  embeddingModel String?                @map("embedding_model")
+  createdAt      DateTime               @default(now()) @map("created_at")
+
+  file KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, chunkNo])
+  @@index([appcode])
+  @@index([embeddingModel])
+  @@index([fileId])
+  @@map("knowledge_chunk")
+}
+
+model KnowledgeQueryLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  appcode         String
+  question        String
+  response        String?
+  matchedChunkIds Json?    @map("matched_chunk_ids")
+  modelId         String?  @map("model_id")
+  embeddingModel  String?  @map("embedding_model")
+  responsetime    Int?
+  inputtokens     Int?
+  outputtokens    Int?
+  totaltokens     Int?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([appcode])
+  @@index([createdAt])
+  @@map("knowledge_query_log")
 }

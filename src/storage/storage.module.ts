@@ -8,5 +8,6 @@ import { StorageService } from './storage.service';
   imports: [AppInfoModule],
   controllers: [StorageController],
   providers: [StorageService, AppkeyGuard],
+  exports: [StorageService],
 })
 export class StorageModule {}

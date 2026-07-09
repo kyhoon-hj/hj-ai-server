@@ -6,6 +6,14 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  app.enableCors({
+    origin: configService.get<string>('CORS_ORIGIN') ?? true,
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'appkey', 'x-app-key', 'x-appkey'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -25,9 +33,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('ai/docs', app, document);
 
-  const configService = app.get(ConfigService);
   const port = configService.get<string>('PORT') ?? '3000';
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 }
 bootstrap();

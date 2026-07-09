@@ -16,6 +16,42 @@ export class AppInfoEntity {
   @ApiProperty({ example: 'external-crm' })
   appcode: string;
 
+  @ApiProperty({ example: 'active', enum: ['active', 'inactive'] })
+  status: string;
+
+  @ApiPropertyOptional({ example: 'external-crm/knowledge', nullable: true })
+  s3Prefix: string | null;
+
+  @ApiPropertyOptional({
+    example: 'us.anthropic.claude-sonnet-4-6',
+    nullable: true,
+  })
+  defaultModelId: string | null;
+
+  @ApiPropertyOptional({
+    example: 'amazon.titan-embed-text-v2:0',
+    nullable: true,
+  })
+  defaultEmbeddingModelId: string | null;
+
+  @ApiPropertyOptional({
+    example: '제공된 자료에 근거해서만 한국어로 답변하세요.',
+    nullable: true,
+  })
+  systemPrompt: string | null;
+
+  @ApiPropertyOptional({ example: 1024, nullable: true })
+  maxStorageMb: number | null;
+
+  @ApiPropertyOptional({ example: 1000000, nullable: true })
+  monthlyTokenLimit: number | null;
+
+  @ApiPropertyOptional({
+    example: { industry: 'retail', owner: 'demo-team' },
+    nullable: true,
+  })
+  metadata: Record<string, unknown> | null;
+
   @ApiPropertyOptional({ example: 'CRM integration app', nullable: true })
   remark: string | null;
 
@@ -29,3 +65,5 @@ export class AppInfoEntity {
 export class AppInfoPublicEntity extends OmitType(AppInfoEntity, [
   'appkey',
 ] as const) {}
+
+export class AppInfoCreatedEntity extends AppInfoEntity {}

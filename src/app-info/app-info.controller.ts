@@ -12,7 +12,10 @@ import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AppInfoService } from './app-info.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
-import { AppInfoEntity, AppInfoPublicEntity } from './entities/app-info.entity';
+import {
+  AppInfoCreatedEntity,
+  AppInfoPublicEntity,
+} from './entities/app-info.entity';
 
 @ApiTags('app-info')
 @Controller('app-info')
@@ -20,9 +23,15 @@ export class AppInfoController {
   constructor(private readonly appInfoService: AppInfoService) {}
 
   @Post()
-  @ApiCreatedResponse({ type: AppInfoEntity })
+  @ApiCreatedResponse({ type: AppInfoCreatedEntity })
   create(@Body() dto: CreateAppInfoDto) {
     return this.appInfoService.create(dto);
+  }
+
+  @Post(':id/appkey')
+  @ApiCreatedResponse({ type: AppInfoCreatedEntity })
+  rotateAppKey(@Param('id', ParseUUIDPipe) id: string) {
+    return this.appInfoService.rotateAppKey(id);
   }
 
   @Get()
@@ -38,7 +47,7 @@ export class AppInfoController {
   }
 
   @Patch(':id')
-  @ApiOkResponse({ type: AppInfoEntity })
+  @ApiOkResponse({ type: AppInfoPublicEntity })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAppInfoDto,
@@ -47,7 +56,7 @@ export class AppInfoController {
   }
 
   @Delete(':id')
-  @ApiOkResponse({ type: AppInfoEntity })
+  @ApiOkResponse({ type: AppInfoPublicEntity })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.appInfoService.remove(id);
   }
