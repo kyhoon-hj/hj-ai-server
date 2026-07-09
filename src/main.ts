@@ -23,15 +23,19 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix('ai');
+  const apiGlobalPrefix = configService.get<string>('API_GLOBAL_PREFIX')?.trim();
+  if (apiGlobalPrefix) {
+    app.setGlobalPrefix(apiGlobalPrefix);
+  }
 
   const config = new DocumentBuilder()
     .setTitle('HJ AI Server')
     .setDescription('HJ AI Server API')
     .setVersion('1.0')
+    .addServer(configService.get<string>('API_BASE_URL') ?? 'https://ai.hjshub.com')
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('ai/docs', app, document);
+  SwaggerModule.setup(configService.get<string>('SWAGGER_PATH') ?? 'api-docs', app, document);
 
   const port = configService.get<string>('PORT') ?? '3000';
 
