@@ -5,6 +5,8 @@ import {
   DefaultValuePipe,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseBoolPipe,
   Patch,
@@ -176,6 +178,7 @@ export class KnowledgeController {
   }
 
   @Post('search')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '질문과 관련 있는 지식 chunk를 검색합니다.' })
   searchKnowledge(
     @Body() dto: KnowledgeSearchDto,
@@ -185,6 +188,7 @@ export class KnowledgeController {
   }
 
   @Post('rag-response')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '검색된 지식 chunk를 근거로 Bedrock 답변을 생성합니다.',
   })
@@ -200,6 +204,7 @@ export class KnowledgeController {
   }
 
   @Post('answers')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
       '제품용 RAG Answer API입니다. 검색, 답변 생성, 출처, 사용량 정보를 함께 반환합니다.',

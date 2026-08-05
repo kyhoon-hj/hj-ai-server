@@ -51,10 +51,22 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 textarea, pre, code { font-family: "Cascadia Code", Consolas, monospace; }
 textarea { resize: vertical; line-height: 1.5; }
 .actions { display: flex; gap: 9px; }
-.primary, .secondary, .ghost { border-radius: 9px; padding: 11px 16px; font-weight: 800; }
+.primary, .secondary, .danger, .ghost { border-radius: 9px; padding: 11px 16px; font-weight: 800; }
 .primary { background: var(--accent); color: #062018; border: 0; }
 .secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+.danger { background: rgba(255,109,120,.08); color: var(--danger); border: 1px solid rgba(255,109,120,.5); }
 .ghost { padding: 7px 10px; background: transparent; border: 0; color: var(--accent); }
+button:disabled { cursor: wait; opacity: .55; }
+.demo-environment { margin-top: 18px; }
+.demo-environment-head { display: flex; align-items: start; justify-content: space-between; gap: 24px; }
+.environment-status { flex: 0 0 auto; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--accent-2); font-size: 12px; }
+.environment-status.ready { color: var(--accent); border-color: #2d806b; background: #102d28; }
+.profile-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+.profile-item { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #08141c; border: 1px solid var(--line); border-radius: 10px; }
+.profile-item span { color: var(--muted); font-size: 12px; }
+.environment-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cleanup-confirm { margin-left: auto; }
+.environment-result { min-height: 110px; max-height: 330px; }
 .notice, .warning { margin-top: 18px; padding: 16px 18px; border-left: 3px solid var(--accent-2); background: rgba(245,184,75,.07); color: var(--muted); }
 .notice p { display: inline; margin-left: 12px; }
 .workspace { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(0, 1.2fr); gap: 18px; }
@@ -88,5 +100,8 @@ pre { margin: 14px 0 0; padding: 17px; background: #061018; border-radius: 10px;
   .wide { grid-column: auto; }
   .target-heading { align-items: flex-start; flex-direction: column; }
   .target-grid { grid-template-columns: 1fr; }
+  .demo-environment-head { flex-direction: column; }
+  .profile-list { grid-template-columns: 1fr; }
+  .cleanup-confirm { margin-left: 0; }
   .upload-card, .run-card, .download-card { grid-template-columns: 1fr; }
 }

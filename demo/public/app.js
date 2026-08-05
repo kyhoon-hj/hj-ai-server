@@ -91,6 +91,56 @@ async function loadConfig() {
   badge.classList.toggle('ready', config.hasAppkey);
 }
 
+function renderDemoReport(report) {
+  $('#demoEnvironmentResult').textContent = JSON.stringify(report, null, 2);
+}
+
+async function loadDemoState() {
+  const state = await api('/api/demo/state');
+  const status = $('#demoEnvironmentStatus');
+  status.textContent = state.ready ? 'READY' : 'NOT READY';
+  status.classList.toggle('ready', state.ready);
+  const profiles = $('#demoProfiles');
+  profiles.replaceChildren();
+  if (state.profiles.length === 0) {
+    const empty = document.createElement('p');
+    empty.textContent = '구성된 데모 tenant가 없습니다.';
+    profiles.append(empty);
+  } else {
+    for (const profile of state.profiles) {
+      const item = document.createElement('div');
+      item.className = 'profile-item';
+      const code = document.createElement('strong');
+      code.textContent = profile.appcode;
+      const files = document.createElement('span');
+      files.textContent = `fixture ${profile.fileCount}개`;
+      item.append(code, files);
+      profiles.append(item);
+    }
+  }
+  $('#runTenantValidation').disabled = !state.ready;
+  return state;
+}
+
+async function runDemoAction(button, busyLabel, action) {
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = busyLabel;
+  try {
+    const report = await action();
+    renderDemoReport(report);
+    await Promise.all([loadConfig(), loadDemoState()]);
+    return report;
+  } catch (error) {
+    renderDemoReport({ error: error.message });
+    toast(error.message);
+    return null;
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
 document.querySelectorAll('.tab').forEach((button) => button.addEventListener('click', () => {
   document.querySelectorAll('.tab, .panel').forEach((element) => element.classList.remove('active'));
   button.classList.add('active');
@@ -111,6 +161,37 @@ $('#clearKey').addEventListener('click', async () => {
   await api('/api/config', { method: 'PUT', body: JSON.stringify({ clearAppkey: true }) });
   await loadConfig();
   toast('appkey를 제거했습니다.');
+});
+
+$('#setupDemoData').addEventListener('click', async () => {
+  const report = await runDemoAction($('#setupDemoData'), '구성 중...', () => api('/api/demo/setup', {
+    method: 'POST',
+    body: JSON.stringify({ confirmSetup: true }),
+  }));
+  if (report) toast('STORE_A / STORE_B 검증 환경을 구성했습니다.');
+});
+
+$('#runTenantValidation').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runTenantValidation'), '검증 중...', () => api('/api/demo/tenant-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`테넌트 검증: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
+$('#cleanupDemoData').addEventListener('click', async () => {
+  if (!$('#confirmCleanup').checked) {
+    toast('데모 데이터 정리 확인을 선택해 주세요.');
+    return;
+  }
+  const report = await runDemoAction($('#cleanupDemoData'), '정리 중...', () => api('/api/demo/cleanup', {
+    method: 'POST',
+    body: JSON.stringify({ confirmCleanup: true, confirmation: 'DELETE_DEMO_DATA' }),
+  }));
+  if (report) {
+    $('#confirmCleanup').checked = false;
+    toast('검증 데이터를 정리했습니다.');
+  }
 });
 
 $('#operation').addEventListener('change', updateOperationMeta);
@@ -172,7 +253,7 @@ async function bootstrap() {
   $('#performanceOperation').innerHTML = optionMarkup(catalog.filter((operation) => operation.performanceSafe));
   $('#performanceOperation').value = 'knowledge.answers';
   updateOperationMeta();
-  await loadConfig();
+  await Promise.all([loadConfig(), loadDemoState()]);
 }
 
 bootstrap().catch((error) => toast(error.message));

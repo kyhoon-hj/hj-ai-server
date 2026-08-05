@@ -16,6 +16,7 @@
 5. 계약 검증은 파괴적 변경 없이 반복 가능해야 한다.
 6. 성능 시험은 작은 부하부터 단계적으로 실행한다.
 7. 결과는 `demo/reports`에 JSON으로 남긴다.
+8. fixture 생성·키 회전·상태 변경·정리는 로컬 대상에서만 기본 허용한다.
 
 ## 구성
 
@@ -34,7 +35,7 @@ demo/
 
 ## 탭별 역할
 
-- 연결 설정: 대상 서버, appkey, timeout 설정
+- 연결 설정: 대상 서버, appkey, timeout 설정과 STORE_A/STORE_B 구성·격리 검증·정리
 - 전체 기능: 모든 endpoint의 요청/응답 수동 확인
 - 자동 계약 검증: 상태, 인증, correlation, 일반 답변, 검색, 제품 답변 계약 확인
 - 성능 검증: 성공률, 처리량, latency percentile, 상태 코드와 토큰 집계
@@ -47,14 +48,15 @@ demo/
 - 핵심 계약 시나리오
 - 제한 부하 시험
 - Markdown/CSV fixture
-- STORE_A/STORE_B tenant 격리용 버전 fixture manifest
+- STORE_A/STORE_B tenant 격리용 버전 fixture manifest와 자동 setup/cleanup
+- 교차 파일 상세·목록·검색, 변조 키, 키 회전, 비활성 키 자동 검증
 - 결과 JSON 저장
 
 ### 2단계: AI Server 개선과 함께 확장
 
 - `/v1` 외부 소비자 API 시나리오 추가
 - 관리자 인증과 role별 권한 검증
-- STORE_A/STORE_B tenant isolation 자동 시험
+- STORE_A/STORE_B 답변 tenant isolation 확장 시험
 - PDF/DOCX/XLSX fixture와 parser 회귀 시험
 - 인덱싱 비동기 job 상태 시험
 - retry/timeout/throttling fault injection

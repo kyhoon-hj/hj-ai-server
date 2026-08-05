@@ -18,6 +18,20 @@ const reportRoot = join(root, 'reports');
 const port = Number(process.env.DEMO_PORT ?? 3200);
 const host = process.env.DEMO_HOST ?? '127.0.0.1';
 const maxBodyBytes = 40 * 1024 * 1024;
+const demoAppDefinitions = [
+  {
+    appcode: 'hj-ai-demo-store-a',
+    appname: 'HJ AI 검증 STORE_A',
+    fixtures: ['store-a-policy.md', 'store-a-products.csv'],
+    productCodes: ['STORE_A'],
+  },
+  {
+    appcode: 'hj-ai-demo-store-b',
+    appname: 'HJ AI 검증 STORE_B',
+    fixtures: ['store-b-policy.md'],
+    productCodes: ['STORE_B'],
+  },
+];
 const serverTargets = [
   {
     id: 'local',
@@ -40,17 +54,23 @@ const runtime = {
 
 function readLocalServerCommit() {
   try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], {
+    const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: join(root, '..'),
       encoding: 'utf8',
       windowsHide: true,
     }).trim();
+    const worktree = execFileSync('git', ['status', '--porcelain'], {
+      cwd: join(root, '..'),
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    return worktree ? `${commit}-dirty` : commit;
   } catch {
     return 'unknown';
   }
 }
 
-const localServerCommit = readLocalServerCommit();
+const demoProfiles = new Map();
 
 async function reportContext(scenarioVersion = null) {
   const fixtureManifest = JSON.parse(await readFile(fixtureManifestPath, 'utf8'));
@@ -58,7 +78,7 @@ async function reportContext(scenarioVersion = null) {
   return {
     environment,
     baseUrl: runtime.baseUrl,
-    serverCommit: process.env.AI_SERVER_COMMIT ?? (environment === 'local' ? localServerCommit : 'unknown'),
+    serverCommit: process.env.AI_SERVER_COMMIT ?? (environment === 'local' ? readLocalServerCommit() : 'unknown'),
     scenarioVersion,
     fixtureVersion: fixtureManifest.version,
   };
@@ -169,6 +189,199 @@ async function invoke(operation, options = {}) {
       body: { code: error.name === 'TimeoutError' ? 'DEMO_UPSTREAM_TIMEOUT' : 'DEMO_UPSTREAM_ERROR', message: error.message },
     };
   }
+}
+
+async function callUpstream(path, options = {}) {
+  const url = buildUrl(path, options.query);
+  const headers = { accept: 'application/json', 'x-correlation-id': randomUUID() };
+  if (options.appkey) headers.appkey = options.appkey;
+  const init = { method: options.method ?? 'GET', headers, signal: AbortSignal.timeout(runtime.timeoutMs) };
+  if (options.body !== undefined) {
+    headers['content-type'] = 'application/json';
+    init.body = JSON.stringify(options.body);
+  }
+  const response = await fetch(url, init);
+  const contentType = response.headers.get('content-type') ?? '';
+  const text = await response.text();
+  let body = text;
+  if (contentType.includes('json') && text) {
+    try { body = JSON.parse(text); } catch { body = text; }
+  }
+  return { status: response.status, ok: response.ok, body, correlationId: response.headers.get('x-correlation-id') };
+}
+
+function requireUpstream(result, action) {
+  if (result.ok) return result.body;
+  const upstreamMessage = result.body && typeof result.body === 'object' ? result.body.message : undefined;
+  throw Object.assign(new Error(`${action} 실패: HTTP ${result.status}${upstreamMessage ? ` · ${upstreamMessage}` : ''}`), { statusCode: 502 });
+}
+
+function assertLocalDemoMutation() {
+  const target = identifyServerTarget(runtime.baseUrl, serverTargets);
+  if (target !== 'local' && process.env.DEMO_ALLOW_NON_LOCAL_MUTATIONS !== 'true') {
+    throw Object.assign(new Error('검증 데이터 변경은 기본적으로 로컬 AI Server에서만 허용됩니다.'), { statusCode: 403 });
+  }
+}
+
+async function ensureDemoProfile(definition, fixtureVersion) {
+  const appList = requireUpstream(await callUpstream('/app-info'), 'AppInfo 목록 조회');
+  const existing = appList.find((app) => app.appcode === definition.appcode);
+  if (existing?.status !== 'active') {
+    requireUpstream(await callUpstream(`/app-info/${existing.id}`, { method: 'PATCH', body: { status: 'active' } }), '데모 앱 활성 복원');
+  }
+  const appResult = existing
+    ? await callUpstream(`/app-info/${existing.id}/appkey`, { method: 'POST' })
+    : await callUpstream('/app-info', {
+        method: 'POST',
+        body: {
+          appname: definition.appname,
+          appcode: definition.appcode,
+          allowedAccessLevels: ['PUBLIC'],
+          status: 'active',
+          maxStorageMb: 100,
+          monthlyTokenLimit: 1000000,
+          metadata: { purpose: 'ai-server-validation-demo', fixtureVersion },
+        },
+      });
+  const app = requireUpstream(appResult, existing ? '데모 appkey 회전' : '데모 앱 생성');
+  const profile = { id: app.id, appcode: app.appcode, appkey: app.appkey, fileIds: [] };
+  demoProfiles.set(profile.appcode, profile);
+  return profile;
+}
+
+async function setupDemoEnvironment() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const manifest = JSON.parse(await readFile(fixtureManifestPath, 'utf8'));
+  const profiles = [];
+  for (const definition of demoAppDefinitions) {
+    const profile = await ensureDemoProfile(definition, manifest.version);
+    for (const fixtureName of definition.fixtures) {
+      const content = await readFile(join(root, 'fixtures', fixtureName), 'utf8');
+      const created = requireUpstream(
+        await callUpstream('/knowledge/texts', {
+          method: 'POST',
+          appkey: profile.appkey,
+          body: {
+            originalName: fixtureName,
+            content,
+            accessLevel: 'PUBLIC',
+            businessStatus: 'PUBLISHED',
+            productCodes: definition.productCodes,
+            metadata: { source: 'versioned-demo-fixture', fixtureVersion: manifest.version, tenant: definition.appcode },
+          },
+        }),
+        `${definition.appcode} fixture 등록`,
+      );
+      profile.fileIds.push(created.fileId);
+    }
+    profiles.push(profile);
+  }
+  runtime.appkey = demoProfiles.get('hj-ai-demo-store-a').appkey;
+  runtime.updatedAt = new Date().toISOString();
+  const report = {
+    type: 'setup',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    profiles: profiles.map((profile) => ({ id: profile.id, appcode: profile.appcode, fileIds: profile.fileIds, status: 'ready' })),
+  };
+  report.reportFile = await saveReport('setup', report);
+  return report;
+}
+
+async function runTenantIsolationScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  const storeB = demoProfiles.get('hj-ai-demo-store-b');
+  if (!storeA || !storeB) throw Object.assign(new Error('먼저 STORE_A/STORE_B 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  const tests = [];
+  const check = async (id, name, execute) => {
+    try {
+      const passed = await execute();
+      tests.push({ id, name, passed: Boolean(passed), reasons: passed ? [] : ['기대 조건을 충족하지 않았습니다.'] });
+    } catch (error) {
+      tests.push({ id, name, passed: false, reasons: [error.message] });
+    }
+  };
+  await check('TEN-001', 'STORE_A 키로 STORE_B 파일 상세에 접근할 수 없다', async () => {
+    const result = await callUpstream(`/knowledge/files/${storeB.fileIds[0]}`, { appkey: storeA.appkey });
+    return result.status === 404;
+  });
+  await check('TEN-002', 'STORE_A 파일 목록에 STORE_B 파일이 노출되지 않는다', async () => {
+    const result = await callUpstream('/knowledge/files', { appkey: storeA.appkey });
+    return result.ok && !result.body.some((file) => storeB.fileIds.includes(file.id));
+  });
+  await check('TEN-003', 'STORE_A 검색에 STORE_B 근거가 노출되지 않는다', async () => {
+    const result = await callUpstream('/knowledge/search', {
+      method: 'POST',
+      appkey: storeA.appkey,
+      body: { query: '디지털 상품과 고객 주문 제작 상품 환불', limit: 20, scoreThreshold: -1, filters: { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'] } },
+    });
+    return result.ok && !result.body.matches.some((match) => storeB.fileIds.includes(match.fileId));
+  });
+  await check('TEN-004', '변조된 appkey를 거절한다', async () => {
+    const replacement = storeA.appkey.endsWith('x') ? 'y' : 'x';
+    const result = await callUpstream('/knowledge/files', { appkey: `${storeA.appkey.slice(0, -1)}${replacement}` });
+    return result.status === 401;
+  });
+  await check('TEN-005', '키 회전 후 이전 STORE_B 키는 폐기된다', async () => {
+    const oldKey = storeB.appkey;
+    const rotated = requireUpstream(await callUpstream(`/app-info/${storeB.id}/appkey`, { method: 'POST' }), 'STORE_B appkey 회전');
+    storeB.appkey = rotated.appkey;
+    const oldResult = await callUpstream('/knowledge/files', { appkey: oldKey });
+    const newResult = await callUpstream('/knowledge/files', { appkey: storeB.appkey });
+    return oldResult.status === 401 && newResult.status === 200;
+  });
+  await check('TEN-006', '비활성 STORE_B 키는 403으로 거절된다', async () => {
+    requireUpstream(await callUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'inactive' } }), 'STORE_B 비활성화');
+    try {
+      const result = await callUpstream('/knowledge/files', { appkey: storeB.appkey });
+      return result.status === 403;
+    } finally {
+      requireUpstream(await callUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'active' } }), 'STORE_B 활성 복원');
+    }
+  });
+  const report = {
+    type: 'tenant-isolation',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    summary: { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length },
+    results: tests,
+  };
+  report.reportFile = await saveReport('tenant-isolation', report);
+  return report;
+}
+
+async function cleanupDemoEnvironment() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const appList = requireUpstream(await callUpstream('/app-info'), 'AppInfo 목록 조회');
+  const cleaned = [];
+  for (const definition of demoAppDefinitions) {
+    const app = appList.find((candidate) => candidate.appcode === definition.appcode);
+    if (!app) continue;
+    const rotated = requireUpstream(await callUpstream(`/app-info/${app.id}/appkey`, { method: 'POST' }), 'cleanup appkey 발급');
+    const files = requireUpstream(await callUpstream('/knowledge/files', { appkey: rotated.appkey }), 'cleanup 파일 목록 조회');
+    for (const file of files) {
+      requireUpstream(await callUpstream(`/knowledge/files/${file.id}`, { method: 'DELETE', appkey: rotated.appkey, query: { deleteObject: true } }), 'fixture 보관·원본 삭제');
+    }
+    requireUpstream(await callUpstream(`/app-info/${app.id}`, { method: 'DELETE' }), '데모 앱 삭제');
+    cleaned.push({ appcode: definition.appcode, archivedFiles: files.length, appDeleted: true });
+  }
+  demoProfiles.clear();
+  runtime.appkey = '';
+  runtime.updatedAt = new Date().toISOString();
+  const report = { type: 'cleanup', ...(await reportContext('1.0.0')), startedAt, cleaned };
+  report.reportFile = await saveReport('cleanup', report);
+  return report;
+}
+
+function publicDemoState() {
+  return {
+    ready: demoAppDefinitions.every((definition) => demoProfiles.has(definition.appcode)),
+    profiles: [...demoProfiles.values()].map((profile) => ({ id: profile.id, appcode: profile.appcode, fileCount: profile.fileIds.length })),
+  };
 }
 
 async function saveReport(prefix, report) {
@@ -295,6 +508,22 @@ export const server = createServer(async (request, response) => {
       return sendJson(response, 200, publicConfig());
     }
     if (request.method === 'GET' && url.pathname === '/api/catalog') return sendJson(response, 200, operations);
+    if (request.method === 'GET' && url.pathname === '/api/demo/state') return sendJson(response, 200, publicDemoState());
+    if (request.method === 'POST' && url.pathname === '/api/demo/setup') {
+      const input = await readJson(request);
+      if (input.confirmSetup !== true) throw Object.assign(new Error('검증 환경 생성은 confirmSetup=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await setupDemoEnvironment());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/tenant-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('테넌트 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runTenantIsolationScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
+      const input = await readJson(request);
+      if (input.confirmCleanup !== true || input.confirmation !== 'DELETE_DEMO_DATA') throw Object.assign(new Error('정리는 confirmCleanup=true와 confirmation=DELETE_DEMO_DATA가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await cleanupDemoEnvironment());
+    }
     if (request.method === 'POST' && url.pathname === '/api/invoke') {
       const input = await readJson(request);
       const operation = findOperation(input.operationId);

@@ -42,6 +42,23 @@
           <label>요청 timeout(ms)<input id="timeoutMs" type="number" min="1000" max="120000" step="1000" /></label>
           <div class="actions"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">키 제거</button></div>
         </form>
+        <div class="card demo-environment">
+          <div class="demo-environment-head">
+            <div>
+              <h3>STORE_A / STORE_B 검증 환경</h3>
+              <p>버전 관리된 fixture를 등록하고 테넌트 격리·키 수명주기를 자동 검증합니다. appkey 원문은 화면에 노출하지 않습니다.</p>
+            </div>
+            <strong id="demoEnvironmentStatus" class="environment-status">상태 확인 중</strong>
+          </div>
+          <div id="demoProfiles" class="profile-list"></div>
+          <div class="environment-actions">
+            <button id="setupDemoData" class="primary" type="button">검증 환경 구성</button>
+            <button id="runTenantValidation" class="secondary" type="button">테넌트 격리 검증</button>
+            <label class="check cleanup-confirm"><input id="confirmCleanup" type="checkbox" /> 데모 데이터 정리 확인</label>
+            <button id="cleanupDemoData" class="danger" type="button">검증 데이터 정리</button>
+          </div>
+          <pre id="demoEnvironmentResult" class="environment-result">아직 실행한 작업이 없습니다.</pre>
+        </div>
         <div class="notice"><strong>운영 안전장치</strong><p>기본 바인딩은 127.0.0.1이며, 파괴적 API는 별도 확인값 없이는 실행되지 않습니다. 성능 시험도 최대 200회·동시 20개로 제한됩니다.</p></div>
       </section>
 

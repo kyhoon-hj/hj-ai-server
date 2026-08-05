@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiHeader,
   ApiOkResponse,
@@ -52,6 +61,7 @@ export class BedrockController {
   }
 
   @Post('converse')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Amazon Bedrock Converse API로 텍스트 응답을 생성합니다.',
   })
@@ -60,6 +70,7 @@ export class BedrockController {
   }
 
   @Post('text-response')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '설정된 Bedrock 모델에 message만 전달해 텍스트 응답을 생성합니다.',
   })
@@ -82,6 +93,7 @@ export class BedrockController {
   }
 
   @Post('general-answers')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '검증된 저위험 일반 질문에 고정 정책 prompt로 답변합니다.',
   })

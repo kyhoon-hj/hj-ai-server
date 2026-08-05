@@ -14,6 +14,8 @@ GET  /health/live
 GET  /health/ready
 ```
 
+세 POST endpoint는 리소스 생성 API가 아니라 동기 조회·추론 API이므로 성공 시 모두 `200 OK`를 반환합니다. 현재 호환 endpoint인 `/bedrock/general-answers`, `/knowledge/search`, `/knowledge/rag-response`, `/knowledge/answers`도 같은 상태 코드를 사용합니다.
+
 ### 공통 요청 헤더
 
 | 헤더 | 필수 | 설명 |

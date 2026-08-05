@@ -29,7 +29,10 @@ appkey는 데모 서버 메모리에만 보관되고 API 응답이나 브라우�
 - 일반/지식 파일 multipart 업로드
 - 파괴적 endpoint 실행 확인
 - 핵심 계약 자동 시나리오와 JSON 리포트
+- STORE_A/STORE_B 자동 구성, tenant 격리·appkey 수명주기 검증, 안전한 정리
 - 제한된 부하 시험과 p50/p95/p99, 처리량, 상태 코드, 토큰 집계
 - 재현 가능한 지식 fixture
 
-상세 문서는 [docs/DEMO_PLAN.md](docs/DEMO_PLAN.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), [docs/VALIDATION_MATRIX.md](docs/VALIDATION_MATRIX.md)를 참고합니다.
+`검증 환경 구성`은 로컬 AI Server에서만 동작하며 두 app과 fixture 3개를 준비한 뒤 STORE_A appkey를 계약 시험에 연결합니다. `검증 데이터 정리`는 UI 확인과 `DELETE_DEMO_DATA` 서버 확인값을 모두 요구합니다. 운영·사용자 지정 서버에서 데이터를 바꾸려면 `DEMO_ALLOW_NON_LOCAL_MUTATIONS=true`를 명시해야 하므로 기본 상태에서는 실행되지 않습니다.
+
+상세 문서는 [docs/DEMO_PLAN.md](docs/DEMO_PLAN.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), [docs/VALIDATION_MATRIX.md](docs/VALIDATION_MATRIX.md), [docs/VALIDATION_REPORT_2026-08-05.md](docs/VALIDATION_REPORT_2026-08-05.md)를 참고합니다.

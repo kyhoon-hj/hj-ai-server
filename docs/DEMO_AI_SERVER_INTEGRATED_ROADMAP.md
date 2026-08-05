@@ -66,9 +66,9 @@
 
 #### 데모
 
-- [ ] `ENV-DEM-01` STORE_A/STORE_B fixture와 app 생성 절차 자동화
-- [ ] `ENV-DEM-02` fixture 업로드·인덱싱·게시를 한 번에 실행하는 setup scenario
-- [ ] `ENV-DEM-03` 테스트 데이터 정리 scenario와 명시적 파괴 작업 확인
+- [x] `ENV-DEM-01` STORE_A/STORE_B fixture와 app 생성 절차 자동화
+- [x] `ENV-DEM-02` fixture 업로드·인덱싱·게시를 한 번에 실행하는 setup scenario
+- [x] `ENV-DEM-03` 테스트 데이터 정리 scenario와 명시적 파괴 작업 확인
 - [x] `ENV-DEM-04` 실행 환경, 서버 commit, scenario version을 리포트에 기록
 
 #### AI Server
@@ -91,9 +91,9 @@
 
 #### 데모
 
-- [ ] `SEC-DEM-01` 인증 없음·변조 키·비활성 키 자동 시나리오
-- [ ] `SEC-DEM-02` 키 재발급 후 이전 키 폐기 검증
-- [ ] `SEC-DEM-03` STORE_A 키로 STORE_B 파일·검색·답변 접근 시도
+- [x] `SEC-DEM-01` 인증 없음·변조 키·비활성 키 자동 시나리오
+- [x] `SEC-DEM-02` 키 재발급 후 이전 키 폐기 검증
+- [~] `SEC-DEM-03` STORE_A 키로 STORE_B 파일·검색 차단 완료, 답변 source 시나리오 예정
 - [ ] `SEC-DEM-04` 플랫폼 관리자·지식 운영자·외부 소비자 role matrix
 - [ ] `SEC-DEM-05` CORS와 운영 Swagger 노출 점검
 
@@ -325,10 +325,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `ENV-SRV-01`: 현재 pending migration preflight와 적용
-2. `ENV-DEM-01`: STORE_A/STORE_B 재현 fixture 확장
-3. `SEC-DEM-01`: 무인증·변조·비활성 키 실패 시나리오 추가
-4. `SEC-SRV-01`: AppInfo 관리자 인증 설계 및 구현
-5. `SEC-DEM-03`: tenant isolation 자동 시나리오 추가
+1. `SEC-SRV-01`: AppInfo 관리자 인증 설계 및 구현
+2. `SEC-SRV-02`: 외부 appkey와 관리자 credential 분리
+3. `SEC-DEM-03`: 답변 source tenant isolation 시나리오 추가
+4. `SEC-DEM-04`: 관리자·운영자·외부 소비자 role matrix 작성
+5. `SEC-DEM-05`: CORS와 운영 Swagger 노출 점검
 
-이 다섯 작업이 완료되면 단계 1의 나머지 보안 개선을 같은 방식으로 진행합니다.
+재현 환경과 기본 격리 검증이 완료됐으므로 다음 작업은 관리자 API 무인증 노출 제거에 집중합니다.
