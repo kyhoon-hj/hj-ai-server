@@ -22,4 +22,27 @@ describe('AppInfo appcode uniqueness contract', () => {
       service.create({ appname: 'Support', appcode: 'SUPPORT' }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('fails closed when the dedicated appkey signing secret is missing', async () => {
+    const prisma = {
+      appInfo: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+    };
+    const config = {
+      get: jest.fn().mockReturnValue(undefined),
+    };
+    const service = new AppInfoService(
+      prisma as never,
+      config as unknown as ConfigService,
+    );
+
+    await expect(
+      service.create({ appname: 'Support', appcode: 'SUPPORT' }),
+    ).rejects.toThrow('APPKEY_JWT_SECRET is required');
+    expect(prisma.appInfo.create).not.toHaveBeenCalled();
+    expect(config.get).toHaveBeenCalledTimes(1);
+    expect(config.get).toHaveBeenCalledWith('APPKEY_JWT_SECRET');
+  });
 });

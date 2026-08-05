@@ -21,7 +21,7 @@
 | 공통 | correlation ID | O | O | O | 로그·trace 연결 검증 |
 | 공통 | 관리자/appkey credential 분리 | O | O |  | 관리자 key 만료·감사 로그 |
 | 공통 | platform-admin/knowledge-operator RBAC | O | 6/6 |  | legacy 지식 쓰기 경로 폐기 |
-| 공통 | tenant isolation | O | 파일·목록·검색 |  | 답변 source 격리 추가 |
+| 공통 | tenant isolation | O | 파일·목록·검색·답변 source 8/8 |  | source 품질·근거 정확도 평가 |
 | 공통 | rate/token/storage quota | 수동 |  | O | 원자적 quota·429 계약 |
 
 ## 합격 기준 초안

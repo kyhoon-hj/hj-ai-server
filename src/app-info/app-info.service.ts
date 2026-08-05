@@ -254,11 +254,13 @@ export class AppInfoService {
   }
 
   private getAppKeySecret() {
-    return (
-      this.configService.get<string>('APPKEY_JWT_SECRET') ??
-      this.configService.get<string>('JWT_SECRET') ??
-      'hj-ai-server-appkey-secret'
-    );
+    const secret = this.configService.get<string>('APPKEY_JWT_SECRET');
+
+    if (!secret) {
+      throw new Error('APPKEY_JWT_SECRET is required');
+    }
+
+    return secret;
   }
 
   private hashAppKey(appkey: string) {

@@ -373,9 +373,43 @@ async function runTenantIsolationScenario() {
       requireUpstream(await callAdminUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'active' } }), 'STORE_B 활성 복원');
     }
   });
+  await check('TEN-007', 'STORE_A Answer sources에 STORE_B 근거가 노출되지 않는다', async () => {
+    const result = await callUpstream('/knowledge/answers', {
+      method: 'POST',
+      appkey: storeA.appkey,
+      body: {
+        query: '디지털 상품과 고객 주문 제작 상품의 환불 정책을 알려주세요.',
+        limit: 20,
+        scoreThreshold: -1,
+        strict: true,
+        includeSources: true,
+        includeSourceContent: true,
+        maxTokens: 256,
+      },
+    });
+    const sources = Array.isArray(result.body?.sources) ? result.body.sources : [];
+    return result.ok && sources.length > 0 && sources.every((source) => storeA.fileIds.includes(source.fileId)) && !sources.some((source) => storeB.fileIds.includes(source.fileId));
+  });
+  await check('TEN-008', 'STORE_B Answer sources에 STORE_A 근거가 노출되지 않는다', async () => {
+    const result = await callUpstream('/knowledge/answers', {
+      method: 'POST',
+      appkey: storeB.appkey,
+      body: {
+        query: 'STORE_A의 오전 10시 운영과 구매 후 7일 환불 정책을 알려주세요.',
+        limit: 20,
+        scoreThreshold: -1,
+        strict: true,
+        includeSources: true,
+        includeSourceContent: true,
+        maxTokens: 256,
+      },
+    });
+    const sources = Array.isArray(result.body?.sources) ? result.body.sources : [];
+    return result.ok && sources.length > 0 && sources.every((source) => storeB.fileIds.includes(source.fileId)) && !sources.some((source) => storeA.fileIds.includes(source.fileId));
+  });
   const report = {
     type: 'tenant-isolation',
-    ...(await reportContext('1.0.0')),
+    ...(await reportContext('1.1.0')),
     startedAt,
     summary: { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length },
     results: tests,
