@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import { UpdateKnowledgeFilePolicyDto } from './knowledge-policy.dto';
 
-export class CreateKnowledgeTextDto {
+export class CreateKnowledgeTextDto extends UpdateKnowledgeFilePolicyDto {
   @ApiProperty({
     example: 'demo-store-inventory.md',
     description: 'RAG 지식 문서로 등록할 가상 파일명입니다.',

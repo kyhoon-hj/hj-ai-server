@@ -8,8 +8,9 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { KnowledgeFiltersContainerDto } from './knowledge-policy.dto';
 
-export class KnowledgeSearchDto {
+export class KnowledgeSearchDto extends KnowledgeFiltersContainerDto {
   @ApiProperty({
     example: 'S3 업로드 파일을 RAG 검색에 활용하는 방법을 알려줘.',
   })

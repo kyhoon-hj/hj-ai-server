@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HJ AI Server 검증 콘솔</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">HJ SOLUTION · API WORKBENCH</p>
+        <h1>AI Server 검증 콘솔</h1>
+        <p>기능 계약, RAG 품질, 테넌트 경계와 Bedrock 처리 성능을 한 곳에서 확인합니다.</p>
+      </div>
+      <div id="connectionBadge" class="badge">연결 설정 확인 중</div>
+    </header>
+
+    <nav class="tabs" aria-label="검증 영역">
+      <button class="tab active" data-tab="setup">연결 설정</button>
+      <button class="tab" data-tab="explorer">전체 기능</button>
+      <button class="tab" data-tab="contract">자동 계약 검증</button>
+      <button class="tab" data-tab="performance">성능 검증</button>
+    </nav>
+
+    <main>
+      <section id="setup" class="panel active">
+        <div class="section-title">
+          <div><span>01</span><h2>AI Server 연결</h2></div>
+          <p>appkey는 데모 서버 메모리에만 보관하며 브라우저로 다시 반환하지 않습니다.</p>
+        </div>
+        <form id="configForm" class="card form-grid">
+          <label>AI Server URL<input id="baseUrl" type="url" required placeholder="http://127.0.0.1:3000" /></label>
+          <label>appkey<input id="appkey" type="password" autocomplete="off" placeholder="새 키를 설정할 때만 입력" /></label>
+          <label>요청 timeout(ms)<input id="timeoutMs" type="number" min="1000" max="120000" step="1000" /></label>
+          <div class="actions"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">키 제거</button></div>
+        </form>
+        <div class="notice"><strong>운영 안전장치</strong><p>기본 바인딩은 127.0.0.1이며, 파괴적 API는 별도 확인값 없이는 실행되지 않습니다. 성능 시험도 최대 200회·동시 20개로 제한됩니다.</p></div>
+      </section>
+
+      <section id="explorer" class="panel">
+        <div class="section-title">
+          <div><span>02</span><h2>전체 기능 점검</h2></div>
+          <p>앱 관리, Bedrock, S3, 지식 생명주기와 외부 소비자 후보 API를 직접 호출합니다.</p>
+        </div>
+        <div class="workspace">
+          <form id="invokeForm" class="card controls">
+            <label>기능<select id="operation"></select></label>
+            <div id="operationMeta" class="operation-meta"></div>
+            <label>경로 파라미터(JSON)<textarea id="params" rows="3">{}</textarea></label>
+            <label>Query(JSON)<textarea id="query" rows="3">{}</textarea></label>
+            <label>요청 본문(JSON)<textarea id="requestBody" rows="12">{}</textarea></label>
+            <label class="check"><input id="confirmDestructive" type="checkbox" /> 파괴적 요청 실행 확인</label>
+            <button class="primary" type="submit">API 호출</button>
+          </form>
+          <div class="card response-card">
+            <div class="response-head"><h3>응답</h3><button id="copyResponse" class="ghost">JSON 복사</button></div>
+            <div id="responseSummary" class="metrics compact"></div>
+            <pre id="response">기능을 선택하고 API를 호출하세요.</pre>
+          </div>
+        </div>
+        <form id="uploadForm" class="card upload-card">
+          <div><h3>파일 업로드 검증</h3><p>일반 S3 업로드와 지식 파일 업로드를 각각 확인합니다.</p></div>
+          <select id="uploadOperation"><option value="knowledge.upload">지식 파일 업로드</option><option value="storage.upload">일반 S3 업로드</option></select>
+          <input id="uploadFile" type="file" required />
+          <button class="secondary" type="submit">업로드</button>
+        </form>
+        <form id="downloadForm" class="card download-card">
+          <div><h3>S3 다운로드 검증</h3><p>현재 appkey의 tenant prefix에 속하는 object key만 요청합니다.</p></div>
+          <input id="downloadKey" type="text" required placeholder="demo-store-a/knowledge/2026/08/05/..." />
+          <button class="secondary" type="submit">다운로드</button>
+        </form>
+        <div class="card fixture-card"><strong>기본 fixture</strong><code>demo/fixtures/store-a-policy.md</code><code>demo/fixtures/store-a-products.csv</code></div>
+      </section>
+
+      <section id="contract" class="panel">
+        <div class="section-title">
+          <div><span>03</span><h2>자동 계약 검증</h2></div>
+          <p>상태, 인증, correlation ID, 일반 답변, 검색과 제품 답변의 핵심 계약을 순차 실행합니다.</p>
+        </div>
+        <div class="card run-card">
+          <div><h3>Core contract suite</h3><p>데이터 변경 없이 실행됩니다. appkey 미설정 시 보호 API 항목은 Skip 처리됩니다.</p></div>
+          <button id="runContract" class="primary">전체 실행</button>
+        </div>
+        <div id="contractSummary" class="metrics"></div>
+        <div id="contractResults" class="result-list"></div>
+      </section>
+
+      <section id="performance" class="panel">
+        <div class="section-title">
+          <div><span>04</span><h2>제한된 성능 검증</h2></div>
+          <p>p50·p95·p99, 처리량, 상태 코드, 토큰 사용량과 429 발생을 측정합니다.</p>
+        </div>
+        <form id="performanceForm" class="card form-grid">
+          <label>대상 API<select id="performanceOperation"></select></label>
+          <label>총 요청 수<input id="totalRequests" type="number" min="1" max="200" value="20" /></label>
+          <label>동시 요청 수<input id="concurrency" type="number" min="1" max="20" value="1" /></label>
+          <label class="wide">요청 본문(JSON)<textarea id="performanceBody" rows="8">{
+  "query": "교환과 환불 정책을 알려주세요.",
+  "strict": true,
+  "includeSources": true,
+  "maxTokens": 512
+}</textarea></label>
+          <div class="wide warning">Bedrock는 입력 토큰과 maxTokens를 기준으로 TPM을 예약합니다. 목적에 맞게 maxTokens를 줄인 뒤 단계적으로 동시성을 높이세요.</div>
+          <button class="primary" type="submit">성능 시험 실행</button>
+        </form>
+        <div id="performanceSummary" class="metrics"></div>
+        <pre id="performanceResult">아직 실행하지 않았습니다.</pre>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

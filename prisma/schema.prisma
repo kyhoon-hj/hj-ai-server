@@ -6,6 +6,18 @@ datasource db {
   provider = "postgresql"
 }
 
+enum KnowledgeAccessLevel {
+  PUBLIC
+  INTERNAL
+  RESTRICTED
+}
+
+enum KnowledgeBusinessStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
 model TestTable {
   id        Int      @id @default(autoincrement())
   name      String
@@ -15,24 +27,24 @@ model TestTable {
 }
 
 model AppInfo {
-  id                       String   @id @default(uuid()) @db.Uuid
-  appname                  String
-  appkey                   String?
-  appkeyHash               String?  @unique @map("appkey_hash")
-  appcode                  String
-  status                   String   @default("active")
-  s3Prefix                 String?  @map("s3_prefix")
-  defaultModelId           String?  @map("default_model_id")
-  defaultEmbeddingModelId  String?  @map("default_embedding_model_id")
-  systemPrompt             String?  @map("system_prompt")
-  maxStorageMb             Int?     @map("max_storage_mb")
-  monthlyTokenLimit        Int?     @map("monthly_token_limit")
-  metadata                 Json?
-  remark                   String?
-  createat                 DateTime @default(now())
-  updateat                 DateTime @updatedAt
+  id                      String                 @id @default(uuid()) @db.Uuid
+  appname                 String
+  appkey                  String?
+  appkeyHash              String?                @unique @map("appkey_hash")
+  appcode                 String                 @unique
+  allowedAccessLevels     KnowledgeAccessLevel[] @default([]) @map("allowed_access_levels")
+  status                  String                 @default("active")
+  s3Prefix                String?                @map("s3_prefix")
+  defaultModelId          String?                @map("default_model_id")
+  defaultEmbeddingModelId String?                @map("default_embedding_model_id")
+  systemPrompt            String?                @map("system_prompt")
+  maxStorageMb            Int?                   @map("max_storage_mb")
+  monthlyTokenLimit       Int?                   @map("monthly_token_limit")
+  metadata                Json?
+  remark                  String?
+  createat                DateTime               @default(now())
+  updateat                DateTime               @updatedAt
 
-  @@index([appcode])
   @@index([status])
   @@map("appinfo")
 }
@@ -53,45 +65,53 @@ model BedrockSearchLog {
 }
 
 model KnowledgeFile {
-  id           String    @id @default(uuid()) @db.Uuid
-  appcode      String
-  bucket       String
-  key          String
-  url          String?
-  originalName String    @map("original_name")
-  mimetype     String
-  size         Int
-  checksum     String?
-  status       String    @default("uploaded")
-  errorMessage String?   @map("error_message")
-  metadata     Json?
-  indexedAt    DateTime? @map("indexed_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id             String                  @id @default(uuid()) @db.Uuid
+  appcode        String
+  bucket         String
+  key            String
+  url            String?
+  originalName   String                  @map("original_name")
+  mimetype       String
+  size           Int
+  checksum       String?
+  status         String                  @default("uploaded")
+  accessLevel    KnowledgeAccessLevel    @default(INTERNAL) @map("access_level")
+  businessStatus KnowledgeBusinessStatus @default(DRAFT) @map("business_status")
+  productCodes   String[]                @default([]) @map("product_codes")
+  effectiveFrom  DateTime?               @map("effective_from")
+  effectiveTo    DateTime?               @map("effective_to")
+  errorMessage   String?                 @map("error_message")
+  metadata       Json?
+  indexedAt      DateTime?               @map("indexed_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
 
   chunks KnowledgeChunk[]
 
   @@unique([appcode, key])
   @@index([appcode])
   @@index([status])
+  @@index([appcode, status, accessLevel, businessStatus])
+  @@index([effectiveFrom])
+  @@index([effectiveTo])
   @@index([createdAt])
   @@map("knowledge_file")
 }
 
 model KnowledgeChunk {
-  id             String                 @id @default(uuid()) @db.Uuid
-  fileId         String                 @map("file_id") @db.Uuid
-  appcode        String
-  chunkNo        Int                    @map("chunk_no")
-  content        String
-  contentHash    String?                @map("content_hash")
-  tokenCount     Int?                   @map("token_count")
-  page           Int?
-  metadata       Json?
-  embedding      Float[]                @default([])
+  id              String                       @id @default(uuid()) @db.Uuid
+  fileId          String                       @map("file_id") @db.Uuid
+  appcode         String
+  chunkNo         Int                          @map("chunk_no")
+  content         String
+  contentHash     String?                      @map("content_hash")
+  tokenCount      Int?                         @map("token_count")
+  page            Int?
+  metadata        Json?
+  embedding       Float[]                      @default([])
   embeddingVector Unsupported("vector(1024)")? @map("embedding_vector")
-  embeddingModel String?                @map("embedding_model")
-  createdAt      DateTime               @default(now()) @map("created_at")
+  embeddingModel  String?                      @map("embedding_model")
+  createdAt       DateTime                     @default(now()) @map("created_at")
 
   file KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
@@ -114,9 +134,11 @@ model KnowledgeQueryLog {
   inputtokens     Int?
   outputtokens    Int?
   totaltokens     Int?
+  requestId       String?  @map("request_id")
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([appcode])
   @@index([createdAt])
+  @@index([requestId])
   @@map("knowledge_query_log")
 }

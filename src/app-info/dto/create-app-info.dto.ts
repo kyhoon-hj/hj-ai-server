@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  IsArray,
+  IsEnum,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -9,6 +12,10 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import {
+  KNOWLEDGE_ACCESS_LEVELS,
+  type KnowledgeAccessLevelValue,
+} from '../../knowledge/dto/knowledge-policy.dto';
 
 export class CreateAppInfoDto {
   @ApiProperty({ example: 'External CRM' })
@@ -20,6 +27,19 @@ export class CreateAppInfoDto {
   @IsString()
   @IsNotEmpty()
   appcode: string;
+
+  @ApiPropertyOptional({
+    enum: KNOWLEDGE_ACCESS_LEVELS,
+    isArray: true,
+    example: ['PUBLIC'],
+    description:
+      '비어 있으면 기존 소비자와 같이 access level 제한을 적용하지 않습니다.',
+  })
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsEnum(KNOWLEDGE_ACCESS_LEVELS, { each: true })
+  @IsOptional()
+  allowedAccessLevels?: KnowledgeAccessLevelValue[];
 
   @ApiPropertyOptional({ example: 'CRM integration app' })
   @IsString()

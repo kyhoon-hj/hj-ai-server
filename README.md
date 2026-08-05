@@ -71,6 +71,89 @@ GET /ai/docs
 GET /ai
 ```
 
+### Product RAG answer contract
+
+```http
+POST /knowledge/answers
+Content-Type: application/json
+appkey: <app-info appkey>
+x-correlation-id: <optional UUID>
+
+{
+  "query": "고객 질문",
+  "strict": true,
+  "includeSources": true,
+  "filters": {
+    "accessLevels": ["PUBLIC"],
+    "businessStatuses": ["PUBLISHED"],
+    "productCodes": ["PRODUCT_A"],
+    "activeAt": "2026-07-18T00:00:00.000Z"
+  },
+  "supplementalSources": [
+    {
+      "sourceType": "SUPPORT_BOARD_APPROVED_ANSWER",
+      "sourceId": "answer-message-uuid",
+      "title": "제품 설치 방법",
+      "content": "전원을 연결한 뒤 설치 마법사를 실행하세요.",
+      "publishedAt": "2026-07-20T00:00:00.000Z",
+      "relevanceScore": 0.82,
+      "productCode": "PRODUCT_A"
+    }
+  ]
+}
+```
+
+`filters`를 생략한 기존 소비자의 검색 동작은 유지됩니다. AppInfo의
+`allowedAccessLevels`가 설정된 앱은 요청 필터와 무관하게 서버 허용 범위 안에서만
+검색합니다. 고객지원 앱은 `["PUBLIC"]`로 프로비저닝합니다. 지식 파일의
+`accessLevel`, `businessStatus`, `productCodes`, `effectiveFrom`,
+`effectiveTo`는 `PATCH /knowledge/files/:id/policy`로 관리합니다.
+
+`supplementalSources`는 인증된 서버 소비자가 이미 공개·검토한 보조 근거를
+전달하는 additive 계약입니다. 최대 5개이며 현재는
+`SUPPORT_BOARD_APPROVED_ANSWER`만 허용합니다. 검색 문서가 없어도 보조 근거가
+있으면 strict no-answer로 종료하지 않고 답변을 생성하며, 응답의
+`retrieval.supplementalCount`와 `sources[].sourceType`으로 구분합니다.
+
+모든 응답은 `x-correlation-id`를 반환합니다. 오류 응답은 기존 Nest
+`statusCode`, `message`, `error` 필드에 `code`, `requestId`를 추가합니다.
+
+### Low-risk general answer contract
+
+```http
+POST /bedrock/general-answers
+Content-Type: application/json
+appkey: <app-info appkey>
+x-correlation-id: <optional UUID>
+
+{
+  "query": "클라우드 컴퓨팅이 무엇인가요?"
+}
+```
+
+이 endpoint는 인사·감사·안정적인 기본 상식처럼 사전에 허용된 저위험 일반
+질문 전용입니다. 요청별 system/model override를 허용하지 않으며
+`general-answer-v1.0.0` prompt, temperature `0.1`, max token `500`을 사용합니다.
+범위를 벗어나거나 불확실하면 `generalAnswerEligible=false`,
+`reviewRecommended=true`를 반환합니다. 고객지원 RAG no-answer fallback으로
+사용하지 않습니다.
+
+#### RAG contract migration
+
+배포 전에 중복 appcode를 확인합니다.
+
+```sql
+SELECT "appcode", COUNT(*), ARRAY_AGG("id")
+FROM "appinfo"
+GROUP BY "appcode"
+HAVING COUNT(*) > 1;
+```
+
+결과가 있으면 소유 앱과 지식을 확인해 중복을 정리한 뒤 `npm run db:init`을
+실행합니다. migration은 중복이 남아 있으면 unique index 생성 전에 중단되며
+임의로 앱 데이터를 삭제하지 않습니다. 스키마 migration과 하위 호환 서버를 먼저
+배포한 후 새 filter를 사용하는 소비자를 배포합니다.
+
 ### Converse with Bedrock
 
 ```http

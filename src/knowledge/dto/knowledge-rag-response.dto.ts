@@ -1,18 +1,66 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEnum,
+  IsISO8601,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { KnowledgeFiltersContainerDto } from './knowledge-policy.dto';
 
-export class KnowledgeRagResponseDto {
+export class SupplementalKnowledgeSourceDto {
+  @ApiProperty({ enum: ['SUPPORT_BOARD_APPROVED_ANSWER'] })
+  @IsIn(['SUPPORT_BOARD_APPROVED_ANSWER'])
+  sourceType!: 'SUPPORT_BOARD_APPROVED_ANSWER';
+
+  @ApiProperty({ description: '호출 시스템에서 발급한 불변 출처 ID' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  sourceId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  title!: string;
+
+  @ApiProperty({ description: '사람이 검토해 공개한 최종 답변만 허용합니다.' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(4000)
+  content!: string;
+
+  @ApiProperty()
+  @IsISO8601()
+  publishedAt!: string;
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  relevanceScore!: number;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(40)
+  @IsOptional()
+  productCode?: string;
+}
+
+export class KnowledgeRagResponseDto extends KnowledgeFiltersContainerDto {
   @ApiProperty({
     example: '등록된 자료 기준으로 S3 RAG 검색 기능을 어떻게 사용하나요?',
   })
@@ -115,4 +163,17 @@ export class KnowledgeRagResponseDto {
   @Max(1)
   @IsOptional()
   temperature?: number;
+
+  @ApiPropertyOptional({
+    type: [SupplementalKnowledgeSourceDto],
+    maxItems: 5,
+    description:
+      '인증된 호출 시스템이 제공하는 보조 근거입니다. 현재는 공개된 고객지원 게시판 최종 답변만 허용합니다.',
+  })
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => SupplementalKnowledgeSourceDto)
+  @IsOptional()
+  supplementalSources?: SupplementalKnowledgeSourceDto[];
 }

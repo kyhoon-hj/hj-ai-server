@@ -1,0 +1,15 @@
+{
+  "name": "hj-ai-server-demo-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HJ AI Server 기능, 계약, RAG 품질 및 성능 검증 콘솔",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

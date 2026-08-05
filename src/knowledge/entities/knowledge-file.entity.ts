@@ -31,6 +31,21 @@ export class KnowledgeFileEntity {
   @ApiProperty()
   status!: string;
 
+  @ApiProperty({ enum: ['PUBLIC', 'INTERNAL', 'RESTRICTED'] })
+  accessLevel!: string;
+
+  @ApiProperty({ enum: ['DRAFT', 'PUBLISHED', 'RETIRED'] })
+  businessStatus!: string;
+
+  @ApiProperty({ type: [String] })
+  productCodes!: string[];
+
+  @ApiPropertyOptional({ nullable: true })
+  effectiveFrom?: Date | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  effectiveTo?: Date | null;
+
   @ApiPropertyOptional()
   errorMessage?: string | null;
 

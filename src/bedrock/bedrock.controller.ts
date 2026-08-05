@@ -9,7 +9,9 @@ import { BedrockService } from './bedrock.service';
 import { AppkeyGuard } from '../common/guards/appkey.guard';
 import type { AppkeyRequest } from '../common/guards/appkey.guard';
 import { ConverseDto } from './dto/converse.dto';
+import { GeneralAnswerDto } from './dto/general-answer.dto';
 import { TextResponseDto } from './dto/text-response.dto';
+import { GeneralAnswerEntity } from './entities/general-answer.entity';
 
 @ApiTags('bedrock')
 @UseGuards(AppkeyGuard)
@@ -76,6 +78,22 @@ export class BedrockController {
     return this.bedrockService.createTextResponse(
       dto,
       request.appInfo!.appcode,
+    );
+  }
+
+  @Post('general-answers')
+  @ApiOperation({
+    summary: '검증된 저위험 일반 질문에 고정 정책 prompt로 답변합니다.',
+  })
+  @ApiOkResponse({ type: GeneralAnswerEntity })
+  createGeneralAnswer(
+    @Body() dto: GeneralAnswerDto,
+    @Req() request: AppkeyRequest,
+  ) {
+    return this.bedrockService.createGeneralAnswer(
+      dto,
+      request.appInfo!,
+      request.correlationId,
     );
   }
 }

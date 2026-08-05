@@ -16,6 +16,13 @@ export class AppInfoEntity {
   @ApiProperty({ example: 'external-crm' })
   appcode: string;
 
+  @ApiProperty({
+    enum: ['PUBLIC', 'INTERNAL', 'RESTRICTED'],
+    isArray: true,
+    example: ['PUBLIC'],
+  })
+  allowedAccessLevels: string[];
+
   @ApiProperty({ example: 'active', enum: ['active', 'inactive'] })
   status: string;
 

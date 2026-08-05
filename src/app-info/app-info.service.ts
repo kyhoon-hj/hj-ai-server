@@ -5,9 +5,13 @@ import {
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
@@ -18,6 +22,7 @@ export class AppInfoService {
     id: true,
     appname: true,
     appcode: true,
+    allowedAccessLevels: true,
     status: true,
     s3Prefix: true,
     defaultModelId: true,
@@ -49,25 +54,30 @@ export class AppInfoService {
     });
     const appkeyHash = this.hashAppKey(appkey);
 
-    const row = await this.prisma.appInfo.create({
-      data: {
-        id,
-        appkey: null,
-        appkeyHash,
-        appname: dto.appname,
-        appcode: dto.appcode,
-        status: dto.status ?? 'active',
-        s3Prefix: dto.s3Prefix ?? this.createDefaultS3Prefix(dto.appcode),
-        defaultModelId: dto.defaultModelId,
-        defaultEmbeddingModelId: dto.defaultEmbeddingModelId,
-        systemPrompt: dto.systemPrompt,
-        maxStorageMb: dto.maxStorageMb,
-        monthlyTokenLimit: dto.monthlyTokenLimit,
-        metadata: dto.metadata as Prisma.InputJsonObject | undefined,
-        remark: dto.remark,
-      },
-      select: this.publicSelect,
-    });
+    const row = await this.prisma.appInfo
+      .create({
+        data: {
+          id,
+          appkey: null,
+          appkeyHash,
+          appname: dto.appname,
+          appcode: dto.appcode,
+          allowedAccessLevels: dto.allowedAccessLevels,
+          status: dto.status ?? 'active',
+          s3Prefix: dto.s3Prefix ?? this.createDefaultS3Prefix(dto.appcode),
+          defaultModelId: dto.defaultModelId,
+          defaultEmbeddingModelId: dto.defaultEmbeddingModelId,
+          systemPrompt: dto.systemPrompt,
+          maxStorageMb: dto.maxStorageMb,
+          monthlyTokenLimit: dto.monthlyTokenLimit,
+          metadata: dto.metadata as Prisma.InputJsonObject | undefined,
+          remark: dto.remark,
+        },
+        select: this.publicSelect,
+      })
+      .catch((error: unknown) =>
+        this.rethrowAppCodeConflict(error, dto.appcode),
+      );
 
     return {
       ...row,
@@ -102,23 +112,28 @@ export class AppInfoService {
       await this.ensureUniqueAppCode(dto.appcode, id);
     }
 
-    return this.prisma.appInfo.update({
-      where: { id },
-      data: {
-        appname: dto.appname,
-        appcode: dto.appcode,
-        status: dto.status,
-        s3Prefix: dto.s3Prefix,
-        defaultModelId: dto.defaultModelId,
-        defaultEmbeddingModelId: dto.defaultEmbeddingModelId,
-        systemPrompt: dto.systemPrompt,
-        maxStorageMb: dto.maxStorageMb,
-        monthlyTokenLimit: dto.monthlyTokenLimit,
-        metadata: dto.metadata as Prisma.InputJsonObject | undefined,
-        remark: dto.remark,
-      },
-      select: this.publicSelect,
-    });
+    try {
+      return await this.prisma.appInfo.update({
+        where: { id },
+        data: {
+          appname: dto.appname,
+          appcode: dto.appcode,
+          allowedAccessLevels: dto.allowedAccessLevels,
+          status: dto.status,
+          s3Prefix: dto.s3Prefix,
+          defaultModelId: dto.defaultModelId,
+          defaultEmbeddingModelId: dto.defaultEmbeddingModelId,
+          systemPrompt: dto.systemPrompt,
+          maxStorageMb: dto.maxStorageMb,
+          monthlyTokenLimit: dto.monthlyTokenLimit,
+          metadata: dto.metadata as Prisma.InputJsonObject | undefined,
+          remark: dto.remark,
+        },
+        select: this.publicSelect,
+      });
+    } catch (error) {
+      this.rethrowAppCodeConflict(error, dto.appcode ?? 'unknown');
+    }
   }
 
   async remove(id: string) {
@@ -167,6 +182,7 @@ export class AppInfoService {
       select: {
         id: true,
         appcode: true,
+        allowedAccessLevels: true,
         status: true,
         s3Prefix: true,
         defaultModelId: true,
@@ -191,6 +207,19 @@ export class AppInfoService {
     if (existing) {
       throw new ConflictException(`appcode ${appcode} already exists`);
     }
+  }
+
+  private rethrowAppCodeConflict(error: unknown, appcode: string): never {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException(`appcode ${appcode} already exists`);
+    }
+
+    throw error;
   }
 
   private createAppKey(payload: Record<string, string | number>) {

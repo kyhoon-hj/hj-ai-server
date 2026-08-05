@@ -1,0 +1,59 @@
+{
+  "name": "HJ AI Server 핵심 계약 점검",
+  "description": "파괴적 변경 없이 상태, 인증, correlation ID, Bedrock 및 RAG 기본 계약을 확인합니다.",
+  "tests": [
+    {
+      "id": "CON-001",
+      "name": "상태 endpoint가 응답한다",
+      "operationId": "health",
+      "sendAppkey": false,
+      "expect": { "statuses": [200], "correlationId": true }
+    },
+    {
+      "id": "CON-002",
+      "name": "보호 endpoint는 appkey 없이 거절한다",
+      "operationId": "bedrock.config",
+      "sendAppkey": false,
+      "expect": { "statuses": [401], "correlationId": true }
+    },
+    {
+      "id": "CON-003",
+      "name": "잘못된 correlation ID를 거절한다",
+      "operationId": "health",
+      "sendAppkey": false,
+      "correlationId": "not-a-uuid",
+      "expect": { "statuses": [400], "bodyIncludes": "VALIDATION_ERROR", "correlationId": true }
+    },
+    {
+      "id": "CON-004",
+      "name": "유효 appkey로 Bedrock 설정을 조회한다",
+      "operationId": "bedrock.config",
+      "requiresAppkey": true,
+      "expect": { "statuses": [200], "correlationId": true }
+    },
+    {
+      "id": "CON-005",
+      "name": "저위험 일반 질문 계약을 확인한다",
+      "operationId": "bedrock.general",
+      "requiresAppkey": true,
+      "body": { "query": "안녕하세요. 오늘도 좋은 하루 보내세요." },
+      "expect": { "statuses": [200], "bodyIncludes": "promptVersion", "correlationId": true }
+    },
+    {
+      "id": "CON-006",
+      "name": "RAG 검색 계약을 확인한다",
+      "operationId": "knowledge.search",
+      "requiresAppkey": true,
+      "body": { "query": "교환과 환불 정책을 알려주세요.", "limit": 5 },
+      "expect": { "statuses": [200], "bodyIncludes": "matches", "correlationId": true }
+    },
+    {
+      "id": "CON-007",
+      "name": "제품 답변의 출처·사용량 계약을 확인한다",
+      "operationId": "knowledge.answers",
+      "requiresAppkey": true,
+      "body": { "query": "교환과 환불 정책을 알려주세요.", "strict": true, "includeSources": true, "maxTokens": 512 },
+      "expect": { "statuses": [200], "bodyIncludes": "sources", "correlationId": true }
+    }
+  ]
+}

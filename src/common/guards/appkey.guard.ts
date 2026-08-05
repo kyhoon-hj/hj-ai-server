@@ -5,13 +5,14 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { CorrelatedRequest } from '../http/correlation-id.middleware';
 import { AppInfoService } from '../../app-info/app-info.service';
 
-export type AppkeyRequest = Request & {
+export type AppkeyRequest = CorrelatedRequest & {
   appInfo?: {
     id: string;
     appcode: string;
+    allowedAccessLevels: Array<'PUBLIC' | 'INTERNAL' | 'RESTRICTED'>;
     status: string;
     s3Prefix: string | null;
     defaultModelId: string | null;
@@ -47,7 +48,7 @@ export class AppkeyGuard implements CanActivate {
     return true;
   }
 
-  private extractAppKey(request: Request) {
+  private extractAppKey(request: CorrelatedRequest) {
     const headerValue =
       request.headers.appkey ??
       request.headers['x-app-key'] ??
