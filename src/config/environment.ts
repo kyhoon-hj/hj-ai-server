@@ -79,9 +79,51 @@ export function validateEnvironment(
     }
   }
 
+  const swaggerEnabled = valueOf(config, 'SWAGGER_ENABLED').toLowerCase();
+  if (swaggerEnabled && !['true', 'false'].includes(swaggerEnabled)) {
+    errors.push('SWAGGER_ENABLED must be true or false');
+  }
+
+  const swaggerPath = valueOf(config, 'SWAGGER_PATH') || 'api-docs';
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9/_-]*$/.test(swaggerPath) ||
+    swaggerPath.includes('..') ||
+    swaggerPath.endsWith('/')
+  ) {
+    errors.push(
+      'SWAGGER_PATH must be a relative path without leading or trailing slashes',
+    );
+  }
+
+  const corsAllowedOrigins = valueOf(config, 'CORS_ALLOWED_ORIGINS');
+  for (const origin of corsAllowedOrigins
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)) {
+    try {
+      const parsed = new URL(origin);
+      if (
+        origin === '*' ||
+        !['http:', 'https:'].includes(parsed.protocol) ||
+        parsed.origin !== origin
+      ) {
+        throw new Error();
+      }
+    } catch {
+      errors.push(
+        `CORS_ALLOWED_ORIGINS contains an invalid exact http(s) origin: ${origin}`,
+      );
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Environment validation failed: ${errors.join('; ')}`);
   }
 
-  return { ...config, PORT: String(port), API_GLOBAL_PREFIX: prefix };
+  return {
+    ...config,
+    PORT: String(port),
+    API_GLOBAL_PREFIX: prefix,
+    SWAGGER_PATH: swaggerPath,
+  };
 }

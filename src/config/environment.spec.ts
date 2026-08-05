@@ -54,4 +54,30 @@ describe('validateEnvironment', () => {
       }),
     ).toThrow(/KNOWLEDGE_OPERATOR_API_KEY must differ/);
   });
+
+  it('운영 HTTP 노출 설정의 형식을 검증한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        SWAGGER_ENABLED: 'yes',
+        SWAGGER_PATH: '/api-docs',
+        CORS_ALLOWED_ORIGINS: '*,https://app.example.com/path',
+      }),
+    ).toThrow(
+      /SWAGGER_ENABLED must be.*SWAGGER_PATH must be.*CORS_ALLOWED_ORIGINS contains.*CORS_ALLOWED_ORIGINS contains/,
+    );
+  });
+
+  it('정확한 CORS origin allowlist와 Swagger 설정을 허용한다', () => {
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        SWAGGER_ENABLED: 'false',
+        SWAGGER_PATH: 'internal/api-docs',
+        CORS_ALLOWED_ORIGINS: 'https://app.example.com,http://127.0.0.1:3200',
+      }),
+    ).toMatchObject({
+      SWAGGER_PATH: 'internal/api-docs',
+    });
+  });
 });

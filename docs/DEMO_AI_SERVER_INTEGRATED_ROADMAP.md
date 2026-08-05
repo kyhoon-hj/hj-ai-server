@@ -95,7 +95,7 @@
 - [x] `SEC-DEM-02` 키 재발급 후 이전 키 폐기 검증
 - [x] `SEC-DEM-03` STORE_A/STORE_B 양방향 파일·검색·답변 source tenant isolation
 - [x] `SEC-DEM-04` 플랫폼 관리자·지식 운영자·외부 소비자 role matrix와 RBAC 6건
-- [ ] `SEC-DEM-05` CORS와 운영 Swagger 노출 점검
+- [x] `SEC-DEM-05` Swagger 비노출·CORS 허용/비허용 Origin 자동 검증 4건
 
 #### AI Server
 
@@ -104,7 +104,7 @@
 - [x] `SEC-SRV-03` 고정 appkey secret fallback 제거 및 전용 secret 누락 시 fail-closed
 - [ ] `SEC-SRV-04` appkey 만료·회전·감사 이벤트 정책
 - [ ] `SEC-SRV-05` `test-tables`, demo seed, config/models 운영 노출 제거
-- [ ] `SEC-SRV-06` CORS allowlist 및 운영 Swagger 정책
+- [x] `SEC-SRV-06` exact-origin CORS allowlist 및 운영 Swagger 명시적 활성화 정책
 
 #### Exit Gate
 
@@ -325,10 +325,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `SEC-DEM-05`: CORS와 운영 Swagger 노출 점검
-2. `SEC-SRV-05`: legacy 지식 쓰기·demo seed·config/models 운영 노출 제거
-3. `SEC-SRV-04`: 관리자/appkey 만료·회전·감사 이벤트 정책
-4. `KNW-DEM-01`: 다중 형식 parser fixture 구성
-5. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
+1. `SEC-SRV-05`: legacy 지식 쓰기·demo seed·config/models 운영 노출 제거
+2. `SEC-SRV-04`: 관리자/appkey 만료·회전·감사 이벤트 정책
+3. `KNW-DEM-01`: 다중 형식 parser fixture 구성
+4. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
+5. `OBS-SRV-01`: 구조화 로그·metric·trace 상관관계
 
-양방향 답변 source 격리와 역할별 관리자 경계가 검증됐으므로 다음 작업은 운영 CORS/Swagger 정책과 legacy 운영 endpoint 축소에 집중합니다.
+HTTP 노출 정책까지 자동 검증됐으므로 다음 작업은 legacy 지식 쓰기·demo seed·config/models 운영 endpoint 축소에 집중합니다.

@@ -11,13 +11,14 @@
 
 | 구분 | 결과 | 증거 |
 |---|---:|---|
-| AI Server 단위 테스트 | 38/38 PASS | Jest 12 suites |
+| AI Server 단위 테스트 | 43/43 PASS | Jest 13 suites |
 | AI Server HTTP e2e | 9/9 PASS | AppInfo·지식 운영자 RBAC 포함 |
 | Demo 단위 테스트 | 5/5 PASS | Node test runner |
 | setup | PASS | tenant 2개, fixture 3개 등록·인덱싱·게시 |
 | tenant isolation | 8/8 PASS | 파일 상세·목록·검색·양방향 Answer source 격리, 변조·회전·비활성 키 |
 | role-based access control | 6/6 PASS | 플랫폼 관리자·지식 운영자·외부 appkey 경계 |
 | core contract | 12/12 PASS | 상태·관리자/appkey 인증·권한 분리·correlation·Bedrock·RAG |
+| HTTP exposure | 4/4 PASS | Swagger 404, CORS 허용·비허용 Origin과 preflight |
 | cleanup | PASS | app 2개 삭제, 지식 3개 보관·chunk/S3 원본 정리 |
 | cleanup 후 setup 재실행 | PASS | tenant 2개, fixture 3개 재구성 |
 | mutation 안전장치 | PASS | 확인값 누락 400, 운영 대상 변경 시 403 |
@@ -34,6 +35,8 @@ STORE_A와 STORE_B가 서로의 전용 정책을 질문하는 실제 Bedrock Ans
 
 appkey 서명 로직에서 `JWT_SECRET` 및 고정 문자열 fallback을 제거했습니다. 이제 `APPKEY_JWT_SECRET`이 없으면 appkey를 발급하지 않고 즉시 실패하며, 운영 환경 검증과 서비스 단위 계약 양쪽에서 전용 secret 사용을 강제합니다.
 
+CORS는 `CORS_ALLOWED_ORIGINS`의 정확한 http(s) Origin에만 응답하도록 변경하고 wildcard·path 포함 URL을 startup에서 거절합니다. 운영 Swagger는 `SWAGGER_ENABLED=true`를 명시하지 않으면 생성하지 않습니다. 새 운영 이미지에서 Swagger 404, 비허용 Origin 차단, `http://127.0.0.1:3200` 허용을 실제 HTTP 응답으로 4/4 확인했습니다.
+
 ## 남은 위험
 
 - 신규 관리자 경계는 역할별로 분리됐지만 기존 `/knowledge/files|texts|index|policy` appkey 호환 경로가 남아 있어 공지·관찰 기간 후 폐기해야 합니다.
@@ -42,5 +45,6 @@ appkey 서명 로직에서 `JWT_SECRET` 및 고정 문자열 fallback을 제거�
 - production dependency audit에 high 5건, moderate 6건이 있어 영향 분석과 업그레이드가 필요합니다.
 - 전체 lint는 기존 Knowledge parser/chunking type-safety 규칙 5건 때문에 실패합니다. 이번 변경 파일의 빌드와 테스트는 통과했습니다.
 - 로컬 페이지 브라우저 자동 점검은 브라우저 URL 정책으로 실행하지 못했습니다. HTTP 동작, 정적 DOM, JavaScript 문법은 검증했습니다.
+- 공개 CDN/reverse proxy에는 이번 commit을 배포하지 않았으므로 외부 도메인의 CORS·Swagger 상태는 별도 배포 검증이 필요합니다.
 
 검증 후 로컬 환경은 STORE_A/STORE_B가 다시 구성된 `READY` 상태로 유지했습니다. 리포트 JSON은 `demo/reports`에 생성되며 git에는 포함하지 않습니다.

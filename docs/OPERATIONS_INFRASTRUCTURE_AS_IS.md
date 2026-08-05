@@ -120,10 +120,12 @@ flowchart LR
 | 필수 환경변수 | startup validation 통과 | 누락 시 시작 실패 | 일치 |
 | AppInfo 인증 | `x-admin-key` 필수 | 외부 appkey와 분리 | 일치 |
 | 지식 운영 인증 | 별도 `x-admin-key` | knowledge-operator 역할 | 일치 |
+| CORS | 공개 서비스 미확인 | exact-origin allowlist, 미설정 시 비활성 | 배포 확인 필요 |
+| Swagger | 공개 OpenAPI 노출 확인 | 운영 기본 비활성, 명시적 활성화만 허용 | 배포 확인 필요 |
 | DB migration | 9개 적용, pending 0 | 최신 schema | 일치 |
 | Image | 2026-08-05 재생성 | 현재 작업 소스 | 일치 |
 
-AppInfo 관리자 인증은 현재 소스와 로컬 Compose에는 적용됐지만 공개 서비스 배포 여부는 미확인입니다. 남은 차이는 공개 서비스에 live/readiness와 최신 인증 계약이 아직 확인되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다.
+AppInfo 관리자 인증과 HTTP 노출 정책은 현재 소스와 로컬 Compose에는 적용됐지만 공개 서비스 배포 여부는 미확인입니다. 로컬에서는 `SWAGGER_ENABLED=false`, exact CORS allowlist와 비허용 Origin 차단을 확인했습니다. 남은 차이는 공개 서비스에 live/readiness·최신 인증·CORS/Swagger 계약이 아직 확인되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다.
 
 ## 5. 공개 API 배포 상태
 
@@ -297,6 +299,8 @@ docker compose up -d --build
 9. migration deploy
 10. readiness와 demo contract smoke 확인
 11. 공개 OpenAPI와 source OpenAPI 비교
+
+HTTP 노출 변수와 검증 절차는 [HTTP 노출 보안 정책](HTTP_EXPOSURE_SECURITY.md)을 따릅니다.
 
 ### Rollback 주의
 

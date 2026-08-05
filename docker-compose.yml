@@ -8,8 +8,12 @@ services:
     env_file:
       - .env
     environment:
+      NODE_ENV: production
       PORT: 11000
       API_GLOBAL_PREFIX: "${API_GLOBAL_PREFIX:-}"
+      SWAGGER_ENABLED: "${SWAGGER_ENABLED:-false}"
+      SWAGGER_PATH: "${SWAGGER_PATH:-api-docs}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
     command: sh -c "npx prisma migrate deploy && npm run start:prod"
     ports:
       - "11000:11000"

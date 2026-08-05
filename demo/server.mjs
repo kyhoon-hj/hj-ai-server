@@ -50,6 +50,8 @@ const runtime = {
   appkey: process.env.AI_SERVER_APPKEY ?? '',
   adminKey: process.env.AI_SERVER_ADMIN_API_KEY ?? '',
   operatorKey: process.env.AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY ?? '',
+  swaggerPath: (process.env.AI_SERVER_SWAGGER_PATH ?? 'api-docs').replace(/^\/+|\/+$/g, ''),
+  corsAllowedOrigin: process.env.AI_SERVER_CORS_ALLOWED_ORIGIN ?? 'http://127.0.0.1:3200',
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
   updatedAt: new Date().toISOString(),
 };
@@ -94,6 +96,8 @@ function publicConfig() {
     hasAppkey: Boolean(runtime.appkey),
     hasAdminKey: Boolean(runtime.adminKey),
     hasOperatorKey: Boolean(runtime.operatorKey),
+    swaggerPath: runtime.swaggerPath,
+    corsAllowedOrigin: runtime.corsAllowedOrigin,
     timeoutMs: runtime.timeoutMs,
     updatedAt: runtime.updatedAt,
   };
@@ -207,7 +211,7 @@ async function invoke(operation, options = {}) {
 
 async function callUpstream(path, options = {}) {
   const url = buildUrl(path, options.query);
-  const headers = { accept: 'application/json', 'x-correlation-id': randomUUID() };
+  const headers = { accept: 'application/json', 'x-correlation-id': randomUUID(), ...(options.headers ?? {}) };
   if (options.appkey) headers.appkey = options.appkey;
   if (options.adminKey) headers['x-admin-key'] = options.adminKey;
   const init = { method: options.method ?? 'GET', headers, signal: AbortSignal.timeout(runtime.timeoutMs) };
@@ -222,7 +226,14 @@ async function callUpstream(path, options = {}) {
   if (contentType.includes('json') && text) {
     try { body = JSON.parse(text); } catch { body = text; }
   }
-  return { status: response.status, ok: response.ok, body, correlationId: response.headers.get('x-correlation-id') };
+  return {
+    status: response.status,
+    ok: response.ok,
+    body,
+    correlationId: response.headers.get('x-correlation-id'),
+    accessControlAllowOrigin: response.headers.get('access-control-allow-origin'),
+    accessControlAllowCredentials: response.headers.get('access-control-allow-credentials'),
+  };
 }
 
 function callAdminUpstream(path, options = {}) {
@@ -469,6 +480,56 @@ async function runRbacScenario() {
   return report;
 }
 
+async function runHttpExposureScenario() {
+  const startedAt = new Date().toISOString();
+  const tests = [];
+  const check = async (id, name, execute) => {
+    try {
+      const passed = await execute();
+      tests.push({ id, name, passed: Boolean(passed), reasons: passed ? [] : ['기대 조건을 충족하지 않았습니다.'] });
+    } catch (error) {
+      tests.push({ id, name, passed: false, reasons: [error.message] });
+    }
+  };
+  await check('HTTP-SEC-001', 'Swagger 문서 경로가 기본 운영 정책에서 닫혀 있다', async () => {
+    const result = await callUpstream(`/${runtime.swaggerPath}`);
+    return result.status === 404;
+  });
+  await check('HTTP-SEC-002', '허용되지 않은 Origin에 CORS 허용 헤더를 반환하지 않는다', async () => {
+    const result = await callUpstream('/health/live', {
+      headers: { origin: 'https://untrusted.invalid' },
+    });
+    return result.status === 200 && result.accessControlAllowOrigin === null;
+  });
+  await check('HTTP-SEC-003', '허용되지 않은 preflight에 CORS 허용 Origin을 반환하지 않는다', async () => {
+    const result = await callUpstream('/health/live', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://untrusted.invalid',
+        'access-control-request-method': 'GET',
+      },
+    });
+    return result.accessControlAllowOrigin === null;
+  });
+  await check('HTTP-SEC-004', 'allowlist Origin에만 credential CORS 헤더를 반환한다', async () => {
+    const result = await callUpstream('/health/live', {
+      headers: { origin: runtime.corsAllowedOrigin },
+    });
+    return result.status === 200 && result.accessControlAllowOrigin === runtime.corsAllowedOrigin && result.accessControlAllowCredentials === 'true';
+  });
+  const report = {
+    type: 'http-exposure',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    swaggerPath: runtime.swaggerPath,
+    corsAllowedOrigin: runtime.corsAllowedOrigin,
+    summary: { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length },
+    results: tests,
+  };
+  report.reportFile = await saveReport('http-exposure', report);
+  return report;
+}
+
 async function cleanupDemoEnvironment() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
@@ -627,6 +688,8 @@ export const server = createServer(async (request, response) => {
       if (typeof input.appkey === 'string' && input.appkey.trim()) runtime.appkey = input.appkey.trim();
       if (typeof input.adminKey === 'string' && input.adminKey.trim()) runtime.adminKey = input.adminKey.trim();
       if (typeof input.operatorKey === 'string' && input.operatorKey.trim()) runtime.operatorKey = input.operatorKey.trim();
+      if (typeof input.swaggerPath === 'string' && input.swaggerPath.trim()) runtime.swaggerPath = input.swaggerPath.trim().replace(/^\/+|\/+$/g, '');
+      if (typeof input.corsAllowedOrigin === 'string' && input.corsAllowedOrigin.trim()) runtime.corsAllowedOrigin = input.corsAllowedOrigin.trim().replace(/\/+$/, '');
       if (input.clearAppkey === true) runtime.appkey = '';
       if (input.clearAdminKey === true) runtime.adminKey = '';
       if (input.clearOperatorKey === true) runtime.operatorKey = '';
@@ -650,6 +713,9 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.confirmValidation !== true) throw Object.assign(new Error('RBAC 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runRbacScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/http-exposure-validation') {
+      return sendJson(response, 200, await runHttpExposureScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);

@@ -83,6 +83,8 @@ function renderServerTargets(config) {
 async function loadConfig() {
   const config = await api('/api/config');
   $('#baseUrl').value = config.baseUrl;
+  $('#swaggerPath').value = config.swaggerPath;
+  $('#corsAllowedOrigin').value = config.corsAllowedOrigin;
   $('#timeoutMs').value = config.timeoutMs;
   renderServerTargets(config);
   const badge = $('#connectionBadge');
@@ -150,7 +152,7 @@ document.querySelectorAll('.tab').forEach((button) => button.addEventListener('c
 $('#configForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
-    await api('/api/config', { method: 'PUT', body: JSON.stringify({ baseUrl: $('#baseUrl').value, appkey: $('#appkey').value, adminKey: $('#adminKey').value, operatorKey: $('#operatorKey').value, timeoutMs: Number($('#timeoutMs').value) }) });
+    await api('/api/config', { method: 'PUT', body: JSON.stringify({ baseUrl: $('#baseUrl').value, appkey: $('#appkey').value, adminKey: $('#adminKey').value, operatorKey: $('#operatorKey').value, swaggerPath: $('#swaggerPath').value, corsAllowedOrigin: $('#corsAllowedOrigin').value, timeoutMs: Number($('#timeoutMs').value) }) });
     $('#appkey').value = '';
     $('#adminKey').value = '';
     $('#operatorKey').value = '';
@@ -257,6 +259,18 @@ $('#runContract').addEventListener('click', async () => {
     $('#contractResults').innerHTML = report.results.map((item) => `<div class="result ${item.skipped ? 'skipped' : item.passed ? '' : 'failed'}"><strong>${item.id}</strong><span>${item.name}<small>${item.reasons?.join(', ') ?? ''}</small></span><span class="status">${item.skipped ? 'SKIP' : item.passed ? 'PASS' : 'FAIL'}</span></div>`).join('');
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; button.textContent = '전체 실행'; }
+});
+
+$('#runHttpExposure').addEventListener('click', async () => {
+  const button = $('#runHttpExposure');
+  button.disabled = true;
+  button.textContent = '검증 중...';
+  try {
+    const report = await api('/api/demo/http-exposure-validation', { method: 'POST', body: '{}' });
+    renderMetrics('#httpExposureSummary', [['전체', report.summary.total], ['PASS', report.summary.passed], ['FAIL', report.summary.failed], ['Swagger 경로', report.swaggerPath], ['허용 Origin', report.corsAllowedOrigin], ['리포트', report.reportFile]]);
+    $('#httpExposureResults').innerHTML = report.results.map((item) => `<div class="result ${item.passed ? '' : 'failed'}"><strong>${item.id}</strong><span>${item.name}<small>${item.reasons?.join(', ') ?? ''}</small></span><span class="status">${item.passed ? 'PASS' : 'FAIL'}</span></div>`).join('');
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; button.textContent = '노출 정책 검증'; }
 });
 
 $('#performanceForm').addEventListener('submit', async (event) => {
