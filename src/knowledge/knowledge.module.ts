@@ -7,17 +7,20 @@ import { ChunkingService } from './chunking.service';
 import { DocumentParserService } from './document-parser.service';
 import { EmbeddingService } from './embedding.service';
 import { KnowledgeController } from './knowledge.controller';
+import { KnowledgeAdminController } from './knowledge-admin.controller';
+import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { KnowledgeService } from './knowledge.service';
 
 @Module({
   imports: [AppInfoModule, PrismaModule, StorageModule],
-  controllers: [KnowledgeController],
+  controllers: [KnowledgeController, KnowledgeAdminController],
   providers: [
     KnowledgeService,
     DocumentParserService,
     ChunkingService,
     EmbeddingService,
     AppkeyGuard,
+    AdminApiKeyGuard,
   ],
 })
 export class KnowledgeModule {}

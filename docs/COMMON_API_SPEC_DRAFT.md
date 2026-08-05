@@ -41,17 +41,17 @@ GET  /health/ready
 
 ## 지식 운영 API
 
-`/admin/v1/knowledge/*`로 분리하고 지식 운영자 role을 요구합니다. 파일 등록은 비동기 job으로 전환하는 것을 목표로 합니다.
+`/admin/v1/knowledge/apps/:appId/*`로 분리하고 지식 운영자 또는 플랫폼 관리자 role을 요구합니다. `appId`로 대상 tenant를 명시하며 파일 등록은 향후 비동기 job으로 전환합니다.
 
 ```http
-POST   /admin/v1/knowledge/files
-GET    /admin/v1/knowledge/files
-GET    /admin/v1/knowledge/files/:id
-PATCH  /admin/v1/knowledge/files/:id/policy
-POST   /admin/v1/knowledge/files/:id/index
-POST   /admin/v1/knowledge/files/:id/reindex
-DELETE /admin/v1/knowledge/files/:id
-POST   /admin/v1/knowledge/texts
+POST   /admin/v1/knowledge/apps/:appId/files
+GET    /admin/v1/knowledge/apps/:appId/files
+GET    /admin/v1/knowledge/apps/:appId/files/:id
+PATCH  /admin/v1/knowledge/apps/:appId/files/:id/policy
+POST   /admin/v1/knowledge/apps/:appId/files/:id/index
+POST   /admin/v1/knowledge/apps/:appId/files/:id/reindex
+DELETE /admin/v1/knowledge/apps/:appId/files/:id
+POST   /admin/v1/knowledge/apps/:appId/texts
 ```
 
 ## 플랫폼 관리자 API

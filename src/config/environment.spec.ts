@@ -4,6 +4,7 @@ const validEnvironment = {
   DATABASE_URL: 'postgresql://user:password@localhost:5432/hj-ai',
   APPKEY_JWT_SECRET: 'a'.repeat(32),
   ADMIN_API_KEY: 'b'.repeat(32),
+  KNOWLEDGE_OPERATOR_API_KEY: 'c'.repeat(32),
   AWS_REGION: 'us-west-2',
   BEDROCK_MODEL_ID: 'model-id',
   BEDROCK_EMBEDDING_MODEL_ID: 'embedding-model-id',
@@ -43,5 +44,14 @@ describe('validateEnvironment', () => {
         ADMIN_API_KEY: validEnvironment.APPKEY_JWT_SECRET,
       }),
     ).toThrow(/ADMIN_API_KEY must differ/);
+  });
+
+  it('지식 운영자 키를 다른 credential과 분리한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        KNOWLEDGE_OPERATOR_API_KEY: validEnvironment.ADMIN_API_KEY,
+      }),
+    ).toThrow(/KNOWLEDGE_OPERATOR_API_KEY must differ/);
   });
 });

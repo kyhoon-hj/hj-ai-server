@@ -119,6 +119,7 @@ flowchart LR
 | Startup command | migration deploy 후 start | 동일 | 일치 |
 | 필수 환경변수 | startup validation 통과 | 누락 시 시작 실패 | 일치 |
 | AppInfo 인증 | `x-admin-key` 필수 | 외부 appkey와 분리 | 일치 |
+| 지식 운영 인증 | 별도 `x-admin-key` | knowledge-operator 역할 | 일치 |
 | DB migration | 9개 적용, pending 0 | 최신 schema | 일치 |
 | Image | 2026-08-05 재생성 | 현재 작업 소스 | 일치 |
 
@@ -243,6 +244,7 @@ Bucket policy는 public으로 판정되지 않았지만 account/bucket 단위 Bl
 - Secrets Manager, SSM Parameter Store, instance/task role 사용 증거는 없습니다.
 - `APPKEY_JWT_SECRET`도 `.env` 파일로 관리합니다.
 - AppInfo용 `ADMIN_API_KEY`는 appkey 서명 secret과 다른 32자 이상 값으로 분리했지만 현재는 `.env` 파일로 관리합니다.
+- 지식 운영용 `KNOWLEDGE_OPERATOR_API_KEY`도 두 기존 secret과 다른 32자 이상 값이며 현재는 `.env` 파일로 관리합니다.
 
 ### 위험
 

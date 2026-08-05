@@ -40,8 +40,9 @@
           <label>AI Server URL<input id="baseUrl" type="url" required placeholder="http://127.0.0.1:11000" /></label>
           <label>appkey<input id="appkey" type="password" autocomplete="off" placeholder="새 키를 설정할 때만 입력" /></label>
           <label>관리자 credential<input id="adminKey" type="password" autocomplete="off" placeholder="x-admin-key를 설정할 때만 입력" /></label>
+          <label>지식 운영자 credential<input id="operatorKey" type="password" autocomplete="off" placeholder="지식 운영자 x-admin-key" /></label>
           <label>요청 timeout(ms)<input id="timeoutMs" type="number" min="1000" max="120000" step="1000" /></label>
-          <div class="actions wide"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">appkey 제거</button><button id="clearAdminKey" class="secondary" type="button">관리자 키 제거</button></div>
+          <div class="actions wide"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">appkey 제거</button><button id="clearAdminKey" class="secondary" type="button">관리자 키 제거</button><button id="clearOperatorKey" class="secondary" type="button">운영자 키 제거</button></div>
         </form>
         <div class="card demo-environment">
           <div class="demo-environment-head">
@@ -55,6 +56,7 @@
           <div class="environment-actions">
             <button id="setupDemoData" class="primary" type="button">검증 환경 구성</button>
             <button id="runTenantValidation" class="secondary" type="button">테넌트 격리 검증</button>
+            <button id="runRbacValidation" class="secondary" type="button">역할 권한 검증</button>
             <label class="check cleanup-confirm"><input id="confirmCleanup" type="checkbox" /> 데모 데이터 정리 확인</label>
             <button id="cleanupDemoData" class="danger" type="button">검증 데이터 정리</button>
           </div>
@@ -86,7 +88,8 @@
         </div>
         <form id="uploadForm" class="card upload-card">
           <div><h3>파일 업로드 검증</h3><p>일반 S3 업로드와 지식 파일 업로드를 각각 확인합니다.</p></div>
-          <select id="uploadOperation"><option value="knowledge.upload">지식 파일 업로드</option><option value="storage.upload">일반 S3 업로드</option></select>
+          <select id="uploadOperation"><option value="knowledge.upload">지식 파일 업로드</option><option value="adminKnowledge.upload">관리자 지식 파일 업로드</option><option value="storage.upload">일반 S3 업로드</option></select>
+          <input id="uploadParams" type="text" value="{}" aria-label="업로드 경로 파라미터 JSON" placeholder='{"appId":"UUID"}' />
           <input id="uploadFile" type="file" required />
           <button class="secondary" type="submit">업로드</button>
         </form>

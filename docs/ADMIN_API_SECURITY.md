@@ -6,17 +6,19 @@
 
 | credential | 용도 | 허용 API |
 |---|---|---|
-| `x-admin-key` | 플랫폼 관리자 | `/app-info/*` |
+| `x-admin-key` (`ADMIN_API_KEY`) | 플랫폼 관리자 | `/app-info/*`, `/admin/v1/knowledge/*` |
+| `x-admin-key` (`KNOWLEDGE_OPERATOR_API_KEY`) | 지식 운영자 | `/admin/v1/knowledge/*` |
 | `appkey` | 외부 앱·tenant | `/bedrock/*`, `/storage/*`, `/knowledge/*` |
 
 관리자 키가 없거나 잘못되면 `401 AUTHENTICATION_REQUIRED`를 반환합니다. 응답과 로그, 데모 리포트에는 credential 원문을 포함하지 않습니다.
 
 ## 환경 설정
 
-`ADMIN_API_KEY`는 필수이며 32자 이상이어야 합니다. `APPKEY_JWT_SECRET`과 같은 값이면 서버가 시작되지 않습니다.
+`ADMIN_API_KEY`와 `KNOWLEDGE_OPERATOR_API_KEY`는 필수이며 32자 이상이어야 합니다. 세 credential 중 같은 값이 있으면 서버가 시작되지 않습니다.
 
 ```text
 ADMIN_API_KEY=<cryptographically-random-secret>
+KNOWLEDGE_OPERATOR_API_KEY=<different-operator-secret>
 APPKEY_JWT_SECRET=<different-signing-secret>
 ```
 
@@ -32,7 +34,7 @@ APPKEY_JWT_SECRET=<different-signing-secret>
 
 ## 현재 한계와 다음 단계
 
-- 현재 credential은 단일 `platform-admin` 역할입니다.
+- 현재 credential은 `platform-admin`, `knowledge-operator` 두 역할입니다.
 - 만료, 이중 키 무중단 회전, 관리자별 식별, 감사 이벤트가 없습니다.
-- 목표 API `/admin/v1/apps/*`에서 지식 운영자와 플랫폼 관리자를 분리하고 identity 기반 RBAC를 적용합니다.
+- 목표 API `/admin/v1/apps/*`로 AppInfo 호환 경로를 이전하고 identity 기반 RBAC와 tenant별 운영자 scope를 적용합니다.
 - 운영 Swagger와 내부 endpoint 노출 정책을 별도로 적용해야 합니다.

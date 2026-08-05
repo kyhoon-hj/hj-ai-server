@@ -2,6 +2,7 @@ const REQUIRED_ENVIRONMENT_KEYS = [
   'DATABASE_URL',
   'APPKEY_JWT_SECRET',
   'ADMIN_API_KEY',
+  'KNOWLEDGE_OPERATOR_API_KEY',
   'AWS_REGION',
   'BEDROCK_MODEL_ID',
   'BEDROCK_EMBEDDING_MODEL_ID',
@@ -36,6 +37,19 @@ export function validateEnvironment(
   }
   if (adminApiKey && appkeySecret && adminApiKey === appkeySecret) {
     errors.push('ADMIN_API_KEY must differ from APPKEY_JWT_SECRET');
+  }
+
+  const knowledgeOperatorApiKey = valueOf(config, 'KNOWLEDGE_OPERATOR_API_KEY');
+  if (knowledgeOperatorApiKey && knowledgeOperatorApiKey.length < 32) {
+    errors.push('KNOWLEDGE_OPERATOR_API_KEY must be at least 32 characters');
+  }
+  if (
+    knowledgeOperatorApiKey &&
+    [appkeySecret, adminApiKey].includes(knowledgeOperatorApiKey)
+  ) {
+    errors.push(
+      'KNOWLEDGE_OPERATOR_API_KEY must differ from ADMIN_API_KEY and APPKEY_JWT_SECRET',
+    );
   }
 
   const port = Number(valueOf(config, 'PORT') || 11000);

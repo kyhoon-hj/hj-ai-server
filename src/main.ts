@@ -64,7 +64,7 @@ async function bootstrap() {
         type: 'apiKey',
         name: 'x-admin-key',
         in: 'header',
-        description: '플랫폼 관리자 API 전용 credential',
+        description: '플랫폼 관리자 또는 지식 운영자 role credential',
       },
       'adminKey',
     )

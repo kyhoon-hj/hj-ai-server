@@ -49,6 +49,7 @@ const runtime = {
   baseUrl: normalizeBaseUrl(process.env.AI_SERVER_BASE_URL ?? serverTargets[0].url),
   appkey: process.env.AI_SERVER_APPKEY ?? '',
   adminKey: process.env.AI_SERVER_ADMIN_API_KEY ?? '',
+  operatorKey: process.env.AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY ?? '',
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
   updatedAt: new Date().toISOString(),
 };
@@ -92,6 +93,7 @@ function publicConfig() {
     targets: serverTargets,
     hasAppkey: Boolean(runtime.appkey),
     hasAdminKey: Boolean(runtime.adminKey),
+    hasOperatorKey: Boolean(runtime.operatorKey),
     timeoutMs: runtime.timeoutMs,
     updatedAt: runtime.updatedAt,
   };
@@ -146,12 +148,17 @@ async function invoke(operation, options = {}) {
   const path = renderPath(operation.path, options.params);
   const url = buildUrl(path, options.query);
   const headers = { accept: 'application/json' };
-  const sendAppkey = options.sendAppkey ?? ![false, 'admin'].includes(operation.auth);
+  const sendAppkey = options.sendAppkey ?? ![false, 'admin', 'operator'].includes(operation.auth);
   const sendAdminKey = options.sendAdminKey ?? operation.auth === 'admin';
+  const sendOperatorKey = options.sendOperatorKey ?? operation.auth === 'operator';
   if (sendAppkey && runtime.appkey) headers.appkey = runtime.appkey;
   if (sendAdminKey) {
     const adminKey = options.adminKey ?? runtime.adminKey;
     if (adminKey) headers['x-admin-key'] = adminKey;
+  }
+  if (sendOperatorKey) {
+    const operatorKey = options.operatorKey ?? runtime.operatorKey;
+    if (operatorKey) headers['x-admin-key'] = operatorKey;
   }
   if (options.correlationId) headers['x-correlation-id'] = options.correlationId;
   const init = {
@@ -225,6 +232,13 @@ function callAdminUpstream(path, options = {}) {
   return callUpstream(path, { ...options, adminKey: runtime.adminKey });
 }
 
+function callOperatorUpstream(path, options = {}) {
+  if (!runtime.operatorKey) {
+    throw Object.assign(new Error('지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  }
+  return callUpstream(path, { ...options, adminKey: runtime.operatorKey });
+}
+
 function requireUpstream(result, action) {
   if (result.ok) return result.body;
   const upstreamMessage = result.body && typeof result.body === 'object' ? result.body.message : undefined;
@@ -241,7 +255,7 @@ function assertLocalDemoMutation() {
 async function ensureDemoProfile(definition, fixtureVersion) {
   const appList = requireUpstream(await callAdminUpstream('/app-info'), 'AppInfo 목록 조회');
   const existing = appList.find((app) => app.appcode === definition.appcode);
-  if (existing?.status !== 'active') {
+  if (existing && existing.status !== 'active') {
     requireUpstream(await callAdminUpstream(`/app-info/${existing.id}`, { method: 'PATCH', body: { status: 'active' } }), '데모 앱 활성 복원');
   }
   const appResult = existing
@@ -266,6 +280,9 @@ async function ensureDemoProfile(definition, fixtureVersion) {
 
 async function setupDemoEnvironment() {
   assertLocalDemoMutation();
+  if (!runtime.adminKey || !runtime.operatorKey) {
+    throw Object.assign(new Error('관리자와 지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  }
   const startedAt = new Date().toISOString();
   const manifest = JSON.parse(await readFile(fixtureManifestPath, 'utf8'));
   const profiles = [];
@@ -274,9 +291,8 @@ async function setupDemoEnvironment() {
     for (const fixtureName of definition.fixtures) {
       const content = await readFile(join(root, 'fixtures', fixtureName), 'utf8');
       const created = requireUpstream(
-        await callUpstream('/knowledge/texts', {
+        await callOperatorUpstream(`/admin/v1/knowledge/apps/${profile.id}/texts`, {
           method: 'POST',
-          appkey: profile.appkey,
           body: {
             originalName: fixtureName,
             content,
@@ -368,6 +384,57 @@ async function runTenantIsolationScenario() {
   return report;
 }
 
+async function runRbacScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  const storeB = demoProfiles.get('hj-ai-demo-store-b');
+  if (!storeA || !storeB) throw Object.assign(new Error('먼저 STORE_A/STORE_B 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.adminKey || !runtime.operatorKey) throw Object.assign(new Error('관리자와 지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  const tests = [];
+  const check = async (id, name, execute) => {
+    try {
+      const passed = await execute();
+      tests.push({ id, name, passed: Boolean(passed), reasons: passed ? [] : ['기대 조건을 충족하지 않았습니다.'] });
+    } catch (error) {
+      tests.push({ id, name, passed: false, reasons: [error.message] });
+    }
+  };
+  await check('RBAC-001', '지식 운영자는 AppInfo에 접근할 수 없다', async () => {
+    const result = await callUpstream('/app-info', { adminKey: runtime.operatorKey });
+    return result.status === 403;
+  });
+  await check('RBAC-002', '플랫폼 관리자는 지식 운영 API에 접근할 수 있다', async () => {
+    const result = await callUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`, { adminKey: runtime.adminKey });
+    return result.status === 200;
+  });
+  await check('RBAC-003', '지식 운영자는 지식 운영 API에 접근할 수 있다', async () => {
+    const result = await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`);
+    return result.status === 200;
+  });
+  await check('RBAC-004', '외부 appkey는 지식 운영 API에 접근할 수 없다', async () => {
+    const result = await callUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`, { appkey: storeA.appkey });
+    return result.status === 401;
+  });
+  await check('RBAC-005', 'credential이 없으면 지식 운영 API에 접근할 수 없다', async () => {
+    const result = await callUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`);
+    return result.status === 401;
+  });
+  await check('RBAC-006', '지식 운영자는 명시된 다른 앱도 운영할 수 있다', async () => {
+    const result = await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeB.id}/files`);
+    return result.status === 200;
+  });
+  const report = {
+    type: 'rbac',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    summary: { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length },
+    results: tests,
+  };
+  report.reportFile = await saveReport('rbac', report);
+  return report;
+}
+
 async function cleanupDemoEnvironment() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
@@ -376,10 +443,9 @@ async function cleanupDemoEnvironment() {
   for (const definition of demoAppDefinitions) {
     const app = appList.find((candidate) => candidate.appcode === definition.appcode);
     if (!app) continue;
-    const rotated = requireUpstream(await callAdminUpstream(`/app-info/${app.id}/appkey`, { method: 'POST' }), 'cleanup appkey 발급');
-    const files = requireUpstream(await callUpstream('/knowledge/files', { appkey: rotated.appkey }), 'cleanup 파일 목록 조회');
+    const files = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${app.id}/files`), 'cleanup 파일 목록 조회');
     for (const file of files) {
-      requireUpstream(await callUpstream(`/knowledge/files/${file.id}`, { method: 'DELETE', appkey: rotated.appkey, query: { deleteObject: true } }), 'fixture 보관·원본 삭제');
+      requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${app.id}/files/${file.id}`, { method: 'DELETE', query: { deleteObject: true } }), 'fixture 보관·원본 삭제');
     }
     requireUpstream(await callAdminUpstream(`/app-info/${app.id}`, { method: 'DELETE' }), '데모 앱 삭제');
     cleaned.push({ appcode: definition.appcode, archivedFiles: files.length, appDeleted: true });
@@ -425,6 +491,8 @@ async function runContractScenario() {
       sendAppkey: scenarioTest.sendAppkey,
       sendAdminKey: scenarioTest.sendAdminKey,
       adminKey: scenarioTest.adminKey,
+      sendOperatorKey: scenarioTest.sendOperatorKey,
+      operatorKey: scenarioTest.operatorKey,
     });
     const evaluation = evaluateExpectation(result, scenarioTest.expect);
     results.push({ id: scenarioTest.id, name: scenarioTest.name, ...evaluation, result });
@@ -524,8 +592,10 @@ export const server = createServer(async (request, response) => {
       if (input.baseUrl) runtime.baseUrl = normalizeBaseUrl(input.baseUrl);
       if (typeof input.appkey === 'string' && input.appkey.trim()) runtime.appkey = input.appkey.trim();
       if (typeof input.adminKey === 'string' && input.adminKey.trim()) runtime.adminKey = input.adminKey.trim();
+      if (typeof input.operatorKey === 'string' && input.operatorKey.trim()) runtime.operatorKey = input.operatorKey.trim();
       if (input.clearAppkey === true) runtime.appkey = '';
       if (input.clearAdminKey === true) runtime.adminKey = '';
+      if (input.clearOperatorKey === true) runtime.operatorKey = '';
       if (input.timeoutMs !== undefined) runtime.timeoutMs = Math.min(120000, Math.max(1000, Number(input.timeoutMs)));
       runtime.updatedAt = new Date().toISOString();
       return sendJson(response, 200, publicConfig());
@@ -542,6 +612,11 @@ export const server = createServer(async (request, response) => {
       if (input.confirmValidation !== true) throw Object.assign(new Error('테넌트 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runTenantIsolationScenario());
     }
+    if (request.method === 'POST' && url.pathname === '/api/demo/rbac-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('RBAC 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runRbacScenario());
+    }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);
       if (input.confirmCleanup !== true || input.confirmation !== 'DELETE_DEMO_DATA') throw Object.assign(new Error('정리는 confirmCleanup=true와 confirmation=DELETE_DEMO_DATA가 필요합니다.'), { statusCode: 400 });
@@ -557,11 +632,14 @@ export const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/api/upload') {
       const operation = findOperation(url.searchParams.get('operationId'));
       if (!operation?.upload) throw Object.assign(new Error('업로드 operation이 필요합니다.'), { statusCode: 400 });
-      if (!runtime.appkey) throw Object.assign(new Error('appkey 설정이 필요합니다.'), { statusCode: 400 });
+      const credential = operation.auth === 'operator' ? runtime.operatorKey : runtime.appkey;
+      if (!credential) throw Object.assign(new Error(operation.auth === 'operator' ? '지식 운영자 credential 설정이 필요합니다.' : 'appkey 설정이 필요합니다.'), { statusCode: 400 });
       const body = await readBuffer(request);
-      const upstream = await fetch(buildUrl(operation.path), {
+      let params = {};
+      try { params = JSON.parse(url.searchParams.get('params') ?? '{}'); } catch { throw Object.assign(new Error('업로드 경로 파라미터는 유효한 JSON이어야 합니다.'), { statusCode: 400 }); }
+      const upstream = await fetch(buildUrl(renderPath(operation.path, params)), {
         method: 'POST',
-        headers: { 'content-type': request.headers['content-type'], appkey: runtime.appkey, 'x-correlation-id': randomUUID() },
+        headers: { 'content-type': request.headers['content-type'], [operation.auth === 'operator' ? 'x-admin-key' : 'appkey']: credential, 'x-correlation-id': randomUUID() },
         body,
         signal: AbortSignal.timeout(runtime.timeoutMs),
       });

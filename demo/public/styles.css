@@ -77,7 +77,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .response-card { min-width: 0; }
 .response-head { display: flex; align-items: center; justify-content: space-between; }
 pre { margin: 14px 0 0; padding: 17px; background: #061018; border-radius: 10px; overflow: auto; max-height: 600px; min-height: 170px; color: #cae6df; line-height: 1.55; font-size: 12px; }
-.upload-card, .run-card, .download-card { display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: center; margin-top: 18px; }
+.upload-card, .run-card, .download-card { display: grid; grid-template-columns: 1fr auto minmax(180px, .7fr) auto auto; gap: 16px; align-items: center; margin-top: 18px; }
 .download-card { grid-template-columns: 1fr minmax(260px, 1fr) auto; }
 .fixture-card { margin-top: 12px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .fixture-card code { color: var(--accent); }

@@ -16,11 +16,12 @@ $env:AI_SERVER_PRODUCTION_URL='https://ai.hjshub.com'
 $env:AI_SERVER_COMMIT='<deployed-server-commit>'
 $env:AI_SERVER_APPKEY='<appkey>'
 $env:AI_SERVER_ADMIN_API_KEY='<x-admin-key>'
+$env:AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY='<knowledge-operator-x-admin-key>'
 $env:DEMO_PORT='3200'
 npm start
 ```
 
-appkey와 관리자 credential은 데모 서버 메모리에만 보관되고 API 응답이나 브라우저 저장소로 반환되지 않습니다. AppInfo에는 관리자 credential만, Bedrock·Storage·Knowledge에는 appkey만 전송합니다. 데모 서버는 기본적으로 loopback 인터페이스에만 바인딩됩니다.
+appkey와 관리자·지식 운영자 credential은 데모 서버 메모리에만 보관되고 API 응답이나 브라우저 저장소로 반환되지 않습니다. AppInfo에는 플랫폼 관리자 키, `/admin/v1/knowledge`에는 지식 운영자 키, 검색·답변에는 appkey를 분리 전송합니다. 데모 서버는 기본적으로 loopback 인터페이스에만 바인딩됩니다.
 로컬 환경의 리포트에는 현재 저장소 commit이 자동 기록됩니다. 운영·staging처럼 다른 배포를 점검할 때는 `AI_SERVER_COMMIT`을 명시합니다.
 
 ## 제공 기능

@@ -17,6 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
+import { AdminRoles } from '../common/guards/admin-roles.decorator';
 import { AppInfoService } from './app-info.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
@@ -27,6 +28,7 @@ import {
 
 @ApiTags('app-info')
 @UseGuards(AdminApiKeyGuard)
+@AdminRoles('platform-admin')
 @ApiSecurity('adminKey')
 @ApiHeader({
   name: 'x-admin-key',

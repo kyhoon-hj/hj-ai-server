@@ -87,8 +87,8 @@ async function loadConfig() {
   renderServerTargets(config);
   const badge = $('#connectionBadge');
   const targetLabel = config.targets.find((target) => target.id === config.activeTarget)?.label ?? '사용자 지정';
-  badge.textContent = `${targetLabel} · ${config.baseUrl} · appkey ${config.hasAppkey ? '설정' : '없음'} · admin ${config.hasAdminKey ? '설정' : '없음'}`;
-  badge.classList.toggle('ready', config.hasAppkey && config.hasAdminKey);
+  badge.textContent = `${targetLabel} · ${config.baseUrl} · appkey ${config.hasAppkey ? '설정' : '없음'} · admin ${config.hasAdminKey ? '설정' : '없음'} · operator ${config.hasOperatorKey ? '설정' : '없음'}`;
+  badge.classList.toggle('ready', config.hasAppkey && config.hasAdminKey && config.hasOperatorKey);
 }
 
 function renderDemoReport(report) {
@@ -150,9 +150,10 @@ document.querySelectorAll('.tab').forEach((button) => button.addEventListener('c
 $('#configForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
-    await api('/api/config', { method: 'PUT', body: JSON.stringify({ baseUrl: $('#baseUrl').value, appkey: $('#appkey').value, adminKey: $('#adminKey').value, timeoutMs: Number($('#timeoutMs').value) }) });
+    await api('/api/config', { method: 'PUT', body: JSON.stringify({ baseUrl: $('#baseUrl').value, appkey: $('#appkey').value, adminKey: $('#adminKey').value, operatorKey: $('#operatorKey').value, timeoutMs: Number($('#timeoutMs').value) }) });
     $('#appkey').value = '';
     $('#adminKey').value = '';
+    $('#operatorKey').value = '';
     await loadConfig();
     toast('연결 설정을 저장했습니다.');
   } catch (error) { toast(error.message); }
@@ -162,6 +163,12 @@ $('#clearAdminKey').addEventListener('click', async () => {
   await api('/api/config', { method: 'PUT', body: JSON.stringify({ clearAdminKey: true }) });
   await loadConfig();
   toast('관리자 credential을 제거했습니다.');
+});
+
+$('#clearOperatorKey').addEventListener('click', async () => {
+  await api('/api/config', { method: 'PUT', body: JSON.stringify({ clearOperatorKey: true }) });
+  await loadConfig();
+  toast('지식 운영자 credential을 제거했습니다.');
 });
 
 $('#clearKey').addEventListener('click', async () => {
@@ -184,6 +191,14 @@ $('#runTenantValidation').addEventListener('click', async () => {
     body: JSON.stringify({ confirmValidation: true }),
   }));
   if (report) toast(`테넌트 검증: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
+$('#runRbacValidation').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runRbacValidation'), '검증 중...', () => api('/api/demo/rbac-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`역할 권한 검증: ${report.summary.passed}/${report.summary.total} PASS`);
 });
 
 $('#cleanupDemoData').addEventListener('click', async () => {
@@ -220,7 +235,7 @@ $('#uploadForm').addEventListener('submit', async (event) => {
   const form = new FormData();
   form.append('file', file);
   try {
-    const result = await api(`/api/upload?operationId=${encodeURIComponent($('#uploadOperation').value)}`, { method: 'POST', body: form });
+    const result = await api(`/api/upload?operationId=${encodeURIComponent($('#uploadOperation').value)}&params=${encodeURIComponent($('#uploadParams').value)}`, { method: 'POST', body: form });
     $('#response').textContent = JSON.stringify(result, null, 2);
     toast(result.ok ? '업로드가 완료되었습니다.' : '업로드 응답을 확인하세요.');
   } catch (error) { toast(error.message); }

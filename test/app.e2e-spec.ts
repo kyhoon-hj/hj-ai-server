@@ -65,6 +65,31 @@ describe('AppController (e2e)', () => {
       .expect(({ body }) => expect(Array.isArray(body)).toBe(true));
   });
 
+  it('지식 운영자는 AppInfo 플랫폼 관리 API를 사용할 수 없다', () => {
+    return request(app.getHttpServer())
+      .get('/app-info')
+      .set('x-admin-key', process.env.KNOWLEDGE_OPERATOR_API_KEY!)
+      .expect(403);
+  });
+
+  it('지식 운영자는 지식 관리 API에 진입할 수 있다', () => {
+    return request(app.getHttpServer())
+      .get(
+        '/admin/v1/knowledge/apps/00000000-0000-4000-8000-000000000000/files',
+      )
+      .set('x-admin-key', process.env.KNOWLEDGE_OPERATOR_API_KEY!)
+      .expect(404);
+  });
+
+  it('외부 appkey는 지식 관리 API에 진입할 수 없다', () => {
+    return request(app.getHttpServer())
+      .get(
+        '/admin/v1/knowledge/apps/00000000-0000-4000-8000-000000000000/files',
+      )
+      .set('appkey', 'external-appkey')
+      .expect(401);
+  });
+
   afterEach(async () => {
     await app.close();
   });
