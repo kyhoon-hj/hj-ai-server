@@ -1,5 +1,6 @@
 export const operations = [
-  { id: 'health', group: '상태', label: '기본 상태 확인', method: 'GET', path: '/', auth: false, performanceSafe: true },
+  { id: 'health', group: '상태', label: 'Liveness 확인', method: 'GET', path: '/health/live', auth: false, performanceSafe: true },
+  { id: 'health.ready', group: '상태', label: 'Readiness 확인', method: 'GET', path: '/health/ready', auth: false, performanceSafe: true },
   { id: 'app.create', group: '앱 관리', label: 'AppInfo 생성', method: 'POST', path: '/app-info' },
   { id: 'app.list', group: '앱 관리', label: 'AppInfo 목록', method: 'GET', path: '/app-info' },
   { id: 'app.get', group: '앱 관리', label: 'AppInfo 상세', method: 'GET', path: '/app-info/:id' },

@@ -47,6 +47,7 @@ demo/
 - 핵심 계약 시나리오
 - 제한 부하 시험
 - Markdown/CSV fixture
+- STORE_A/STORE_B tenant 격리용 버전 fixture manifest
 - 결과 JSON 저장
 
 ### 2단계: AI Server 개선과 함께 확장

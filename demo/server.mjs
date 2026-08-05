@@ -1,3 +1,4 @@
+
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
@@ -5,12 +6,14 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { collectTotalTokens, evaluateExpectation, identifyServerTarget, normalizeBaseUrl, percentile, renderPath } from './lib.mjs';
 import { findOperation, operations } from './catalog.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const publicRoot = join(root, 'public');
 const scenarioPath = join(root, 'scenarios', 'core.json');
+const fixtureManifestPath = join(root, 'fixtures', 'manifest.json');
 const reportRoot = join(root, 'reports');
 const port = Number(process.env.DEMO_PORT ?? 3200);
 const host = process.env.DEMO_HOST ?? '127.0.0.1';
@@ -19,7 +22,7 @@ const serverTargets = [
   {
     id: 'local',
     label: '로컬',
-    url: normalizeBaseUrl(process.env.AI_SERVER_LOCAL_URL ?? 'http://127.0.0.1:11000/ai'),
+    url: normalizeBaseUrl(process.env.AI_SERVER_LOCAL_URL ?? 'http://127.0.0.1:11000'),
   },
   {
     id: 'production',
@@ -34,6 +37,32 @@ const runtime = {
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
   updatedAt: new Date().toISOString(),
 };
+
+function readLocalServerCommit() {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: join(root, '..'),
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const localServerCommit = readLocalServerCommit();
+
+async function reportContext(scenarioVersion = null) {
+  const fixtureManifest = JSON.parse(await readFile(fixtureManifestPath, 'utf8'));
+  const environment = identifyServerTarget(runtime.baseUrl, serverTargets);
+  return {
+    environment,
+    baseUrl: runtime.baseUrl,
+    serverCommit: process.env.AI_SERVER_COMMIT ?? (environment === 'local' ? localServerCommit : 'unknown'),
+    scenarioVersion,
+    fixtureVersion: fixtureManifest.version,
+  };
+}
 
 function publicConfig() {
   return {
@@ -169,7 +198,7 @@ async function runContractScenario() {
   const report = {
     type: 'contract',
     scenario: scenario.name,
-    baseUrl: runtime.baseUrl,
+    ...(await reportContext(scenario.version)),
     startedAt: new Date().toISOString(),
     summary: {
       total: results.length,
@@ -211,7 +240,7 @@ async function runPerformance(input) {
   const totalTokens = results.reduce((sum, result) => sum + collectTotalTokens(result.body), 0);
   const report = {
     type: 'performance',
-    baseUrl: runtime.baseUrl,
+    ...(await reportContext()),
     operationId: operation.id,
     startedAt: new Date().toISOString(),
     configuration: { total, concurrency, body, query: input.query ?? {} },

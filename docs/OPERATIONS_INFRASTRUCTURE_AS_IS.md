@@ -69,9 +69,10 @@ flowchart LR
 | Runtime port | 컨테이너 `11000` |
 | Architecture | amd64 |
 | 현재 image tag | `hj-ai-server:latest` |
-| 현재 image 생성 시점 | 2026-06-21 UTC |
+| 현재 image 생성 시점 | 2026-08-05 UTC |
+| Rollback tag | `hj-ai-server:rollback-20260805` (2026-06-21 image) |
 
-현재 실행 이미지의 생성 시점이 현재 소스와 migration보다 오래되어 최신 코드 반영 여부를 보장할 수 없습니다. immutable version tag나 commit SHA tag는 사용하지 않고 있습니다.
+현재 로컬 실행 이미지는 2026-08-05 작업 소스로 재생성했습니다. 이전 이미지는 rollback tag로 보관했지만, 배포 승인용 immutable commit SHA tag는 아직 사용하지 않습니다.
 
 ### 3.2 Compose 실행 상태
 
@@ -80,7 +81,7 @@ flowchart LR
 | Project/service | `hj_ai_server` / `app` |
 | Container | `hj_ai_server-app-1` |
 | 상태 | healthy, failing streak 0 |
-| 시작 시점 | 2026-08-03 UTC |
+| 시작 시점 | 2026-08-05 UTC |
 | Restart | `unless-stopped` |
 | Port publish | `0.0.0.0:11000 → 11000/tcp` |
 | Network | Compose bridge `hj_ai_server_default` |
@@ -93,7 +94,7 @@ flowchart LR
 | Linux capability drop | 별도 설정 없음 |
 | Log driver | Docker `json-file`, rotation 설정 없음 |
 
-현재 health check는 `/ai`의 HTTP 200만 확인합니다. DB, S3, Bedrock 상태를 확인하지 않으므로 readiness가 아닌 process-level smoke check에 가깝습니다.
+현재 컨테이너는 `/health/live`와 `/health/ready`를 분리합니다. readiness는 DB를 실제 질의하고 S3·Bedrock 필수 설정을 확인하며, Compose health check는 외부 dependency 장애와 분리된 liveness를 사용합니다.
 
 ### 3.3 저장소 Compose 목표 설정
 
@@ -105,31 +106,22 @@ flowchart LR
 - 시작 시 `npx prisma migrate deploy`
 - 이후 `npm run start:prod`
 - host 11000 공개
-- `/` health check, 30초 간격, timeout 5초, 5회 재시도
+- `/health/live` health check, 30초 간격, timeout 5초, 5회 재시도
 
-## 4. 구성 드리프트
+## 4. 구성 드리프트 해소 결과
 
-실행 중 컨테이너와 현재 저장소/`.env` 사이에 다음 차이가 있습니다.
+2026-08-05 로컬 Compose 재생성으로 다음 항목을 저장소 목표와 일치시켰습니다.
 
-| 구분 | 실행 중 컨테이너 | 현재 저장소 목표 | 영향 |
+| 구분 | 실행 중 컨테이너 | 현재 저장소 목표 | 결과 |
 |---|---|---|---|
-| API prefix | `/ai` | prefix 미설정, 루트 | health/API 경로 불일치 |
-| Health path | `/ai` | `/` | rebuild 시 health 동작 변경 |
-| Startup command | `npm run start:prod` | migration 후 start | 실행 DB schema가 자동 갱신되지 않음 |
-| Appkey secret | 미주입 | `.env`에 설정 | 실행 이미지는 fallback secret 사용 가능성 |
-| S3 설정 | 미주입 | bucket/region/CDN 설정 | 실행 컨테이너 storage 기능 실패 가능성 |
-| Embedding model | 미주입 | Titan V2 설정 | code/image 버전에 따라 default 의존 |
-| Image age | 2026-06-21 생성 | 현재 소스는 이후 변경 | 현재 코드와 배포 API 차이 |
+| API prefix | 루트, `/ai` 404 | `API_GLOBAL_PREFIX=""`, 루트 | 일치 |
+| Health path | `/health/live`, `/health/ready` | 동일 | 일치 |
+| Startup command | migration deploy 후 start | 동일 | 일치 |
+| 필수 환경변수 | startup validation 통과 | 누락 시 시작 실패 | 일치 |
+| DB migration | 9개 적용, pending 0 | 최신 schema | 일치 |
+| Image | 2026-08-05 재생성 | 현재 작업 소스 | 일치 |
 
-실제 컨테이너에 빠진 주요 환경변수:
-
-- `APPKEY_JWT_SECRET`
-- `AWS_S3_BUCKET`
-- `AWS_S3_REGION`
-- `AWS_S3_CDN_URL`
-- `BEDROCK_EMBEDDING_MODEL_ID`
-
-현재 컨테이너를 단순 재시작하는 것과 현재 Compose로 재생성하는 것은 결과가 다릅니다. 재배포 전 API prefix, health path, migration preflight를 먼저 확정해야 합니다.
+남은 차이는 공개 서비스에 live/readiness가 아직 배포되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다. 공개 배포 전 인증·권한과 내부 endpoint 노출 문제를 먼저 해결해야 합니다.
 
 ## 5. 공개 API 배포 상태
 
@@ -178,9 +170,9 @@ README의 `/ai` 기반 예시, 로컬 Compose의 `/ai` 실행 이미지, 공개 
 | Timezone | UTC |
 | Vector extension | pgvector 0.8.5 |
 | 확인 시 DB 크기 | 약 8.3 MiB |
-| Prisma migrations | 9개 발견, 최신 1개 미적용 |
+| Prisma migrations | 9개 발견, 9개 적용, pending 0 |
 
-미적용 migration:
+2026-08-05 적용한 migration:
 
 ```text
 20260718060000_add_rag_contract_baseline
@@ -286,7 +278,7 @@ Bucket policy는 public으로 판정되지 않았지만 account/bucket 단위 Bl
 docker compose up -d --build
 ```
 
-현재 저장소 Compose는 컨테이너 시작 시 migration을 실행하도록 정의하지만, 실행 중 컨테이너는 migration 없이 `npm run start:prod`만 실행합니다.
+현재 실행 컨테이너는 Compose 정의에 따라 `prisma migrate deploy`가 성공한 뒤 `npm run start:prod`를 실행합니다. 2026-08-05 재생성 로그에서 pending migration 0건과 서버 시작 성공을 확인했습니다.
 
 ### 배포 전 확인
 
@@ -415,7 +407,8 @@ npx prisma migrate status
 
 # 공개/로컬 health smoke
 curl.exe -i https://ai.hjshub.com/
-curl.exe -i http://127.0.0.1:11000/ai
+curl.exe -i http://127.0.0.1:11000/health/live
+curl.exe -i http://127.0.0.1:11000/health/ready
 
 # 공개 OpenAPI
 curl.exe -o public-openapi.json https://ai.hjshub.com/api-docs-json

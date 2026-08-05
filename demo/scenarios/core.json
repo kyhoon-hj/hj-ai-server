@@ -1,5 +1,6 @@
 {
   "name": "HJ AI Server 핵심 계약 점검",
+  "version": "1.1.0",
   "description": "파괴적 변경 없이 상태, 인증, correlation ID, Bedrock 및 RAG 기본 계약을 확인합니다.",
   "tests": [
     {
@@ -11,13 +12,20 @@
     },
     {
       "id": "CON-002",
+      "name": "필수 dependency가 준비됐다",
+      "operationId": "health.ready",
+      "sendAppkey": false,
+      "expect": { "statuses": [200], "bodyIncludes": "ready", "correlationId": true }
+    },
+    {
+      "id": "CON-003",
       "name": "보호 endpoint는 appkey 없이 거절한다",
       "operationId": "bedrock.config",
       "sendAppkey": false,
       "expect": { "statuses": [401], "correlationId": true }
     },
     {
-      "id": "CON-003",
+      "id": "CON-004",
       "name": "잘못된 correlation ID를 거절한다",
       "operationId": "health",
       "sendAppkey": false,
@@ -25,14 +33,14 @@
       "expect": { "statuses": [400], "bodyIncludes": "VALIDATION_ERROR", "correlationId": true }
     },
     {
-      "id": "CON-004",
+      "id": "CON-005",
       "name": "유효 appkey로 Bedrock 설정을 조회한다",
       "operationId": "bedrock.config",
       "requiresAppkey": true,
       "expect": { "statuses": [200], "correlationId": true }
     },
     {
-      "id": "CON-005",
+      "id": "CON-006",
       "name": "저위험 일반 질문 계약을 확인한다",
       "operationId": "bedrock.general",
       "requiresAppkey": true,
@@ -40,7 +48,7 @@
       "expect": { "statuses": [200], "bodyIncludes": "promptVersion", "correlationId": true }
     },
     {
-      "id": "CON-006",
+      "id": "CON-007",
       "name": "RAG 검색 계약을 확인한다",
       "operationId": "knowledge.search",
       "requiresAppkey": true,
@@ -48,7 +56,7 @@
       "expect": { "statuses": [200], "bodyIncludes": "matches", "correlationId": true }
     },
     {
-      "id": "CON-007",
+      "id": "CON-008",
       "name": "제품 답변의 출처·사용량 계약을 확인한다",
       "operationId": "knowledge.answers",
       "requiresAppkey": true,

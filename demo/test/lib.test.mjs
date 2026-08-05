@@ -16,10 +16,10 @@ test('base URL을 정규화한다', () => {
 
 test('현재 URL에 해당하는 서버 환경을 식별한다', () => {
   const targets = [
-    { id: 'local', url: 'http://127.0.0.1:11000/ai' },
+    { id: 'local', url: 'http://127.0.0.1:11000' },
     { id: 'production', url: 'https://ai.hjshub.com' },
   ];
-  assert.equal(identifyServerTarget('http://127.0.0.1:11000/ai/', targets), 'local');
+  assert.equal(identifyServerTarget('http://127.0.0.1:11000/', targets), 'local');
   assert.equal(identifyServerTarget('https://ai.hjshub.com', targets), 'production');
   assert.equal(identifyServerTarget('https://staging.example.com', targets), 'custom');
 });

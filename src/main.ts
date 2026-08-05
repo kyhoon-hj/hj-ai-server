@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -34,7 +34,12 @@ async function bootstrap() {
     .get<string>('API_GLOBAL_PREFIX')
     ?.trim();
   if (apiGlobalPrefix) {
-    app.setGlobalPrefix(apiGlobalPrefix);
+    app.setGlobalPrefix(apiGlobalPrefix, {
+      exclude: [
+        { path: 'health/live', method: RequestMethod.GET },
+        { path: 'health/ready', method: RequestMethod.GET },
+      ],
+    });
   }
 
   const config = new DocumentBuilder()

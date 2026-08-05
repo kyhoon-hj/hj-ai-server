@@ -10,10 +10,13 @@ import { StorageModule } from './storage/storage.module';
 import { TestTableModule } from './test-table/test-table.module';
 import { CorrelationIdMiddleware } from './common/http/correlation-id.middleware';
 import { StructuredHttpExceptionFilter } from './common/http/structured-http-exception.filter';
+import { validateEnvironment } from './config/environment';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
+    HealthModule,
     AppInfoModule,
     BedrockModule,
     KnowledgeModule,

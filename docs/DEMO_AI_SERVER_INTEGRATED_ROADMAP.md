@@ -69,14 +69,14 @@
 - [ ] `ENV-DEM-01` STORE_A/STORE_B fixture와 app 생성 절차 자동화
 - [ ] `ENV-DEM-02` fixture 업로드·인덱싱·게시를 한 번에 실행하는 setup scenario
 - [ ] `ENV-DEM-03` 테스트 데이터 정리 scenario와 명시적 파괴 작업 확인
-- [ ] `ENV-DEM-04` 실행 환경, 서버 commit, scenario version을 리포트에 기록
+- [x] `ENV-DEM-04` 실행 환경, 서버 commit, scenario version을 리포트에 기록
 
 #### AI Server
 
-- [ ] `ENV-SRV-01` 미적용 migration preflight 및 적용
-- [ ] `ENV-SRV-02` migration 중복 appcode 확인·복구 절차 검증
-- [ ] `ENV-SRV-03` startup 필수 환경변수 validation
-- [ ] `ENV-SRV-04` live/readiness endpoint 분리
+- [x] `ENV-SRV-01` 미적용 migration preflight 및 적용
+- [~] `ENV-SRV-02` migration 중복 appcode 확인 완료, 중복 데이터 복구 리허설 예정
+- [x] `ENV-SRV-03` startup 필수 환경변수 validation
+- [x] `ENV-SRV-04` live/readiness endpoint 분리
 
 #### Exit Gate
 

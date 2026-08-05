@@ -2,7 +2,7 @@
 
 | 영역 | 기능 | 수동 콘솔 | 자동 계약 | 성능 시험 | 추가 고도화 |
 |---|---|:---:|:---:|:---:|---|
-| 상태 | 기본 health | O | O | O | DB/S3/Bedrock readiness 분리 |
+| 상태 | live/readiness | O | O | O | DB 실제 질의, S3/Bedrock 필수 설정 판정 |
 | 앱 | 생성·조회·수정·삭제 | O |  |  | 관리자 인증 이후 권한 자동화 |
 | 앱 | appkey 재발급·비활성 | O | 일부 |  | 이전 키 폐기·동시 회전 시험 |
 | Bedrock | config·models | O | O |  | 외부 API에서 제거 여부 확인 |
