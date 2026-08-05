@@ -103,7 +103,7 @@
 - [x] `SEC-SRV-02` 외부 appkey와 관리자 credential 분리
 - [x] `SEC-SRV-03` 고정 appkey secret fallback 제거 및 전용 secret 누락 시 fail-closed
 - [ ] `SEC-SRV-04` appkey 만료·회전·감사 이벤트 정책
-- [ ] `SEC-SRV-05` `test-tables`, demo seed, config/models 운영 노출 제거
+- [x] `SEC-SRV-05` `test-tables`, demo seed, config/models·legacy 지식 쓰기 기본 차단 및 관리자 대체 경로
 - [x] `SEC-SRV-06` exact-origin CORS allowlist 및 운영 Swagger 명시적 활성화 정책
 
 #### Exit Gate
@@ -325,10 +325,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `SEC-SRV-05`: legacy 지식 쓰기·demo seed·config/models 운영 노출 제거
-2. `SEC-SRV-04`: 관리자/appkey 만료·회전·감사 이벤트 정책
-3. `KNW-DEM-01`: 다중 형식 parser fixture 구성
-4. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
-5. `OBS-SRV-01`: 구조화 로그·metric·trace 상관관계
+1. `SEC-SRV-04`: 관리자/appkey 만료·회전·감사 이벤트 정책
+2. `KNW-DEM-01`: 다중 형식 parser fixture 구성
+3. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
+4. `OBS-SRV-01`: 구조화 로그·metric·trace 상관관계
+5. `SEC-SRV-07`: raw Converse·text-response 호환 종료 여부 확정
 
-HTTP 노출 정책까지 자동 검증됐으므로 다음 작업은 legacy 지식 쓰기·demo seed·config/models 운영 endpoint 축소에 집중합니다.
+개발·legacy 운영 endpoint 경계가 기본 차단됐으므로 다음 작업은 credential 만료·회전·감사 정책과 다중 형식 지식 fixture에 집중합니다.

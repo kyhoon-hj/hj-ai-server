@@ -530,6 +530,63 @@ async function runHttpExposureScenario() {
   return report;
 }
 
+async function runInternalExposureScenario() {
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  if (!storeA) throw Object.assign(new Error('먼저 STORE_A 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.adminKey || !runtime.operatorKey) throw Object.assign(new Error('관리자와 지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  const tests = [];
+  const check = async (id, name, execute) => {
+    try {
+      const passed = await execute();
+      tests.push({ id, name, passed: Boolean(passed), reasons: passed ? [] : ['기대 조건을 충족하지 않았습니다.'] });
+    } catch (error) {
+      tests.push({ id, name, passed: false, reasons: [error.message] });
+    }
+  };
+  await check('INT-001', 'Legacy Bedrock 설정 조회는 appkey가 있어도 404다', async () => {
+    const result = await callUpstream('/bedrock/config', { appkey: storeA.appkey });
+    return result.status === 404;
+  });
+  await check('INT-002', 'Legacy Bedrock 모델 조회는 appkey가 있어도 404다', async () => {
+    const result = await callUpstream('/bedrock/models', { appkey: storeA.appkey });
+    return result.status === 404;
+  });
+  await check('INT-003', 'Legacy 텍스트 지식 쓰기는 validation 전에 404다', async () => {
+    const result = await callUpstream('/knowledge/texts', { method: 'POST', appkey: storeA.appkey, body: {} });
+    return result.status === 404;
+  });
+  await check('INT-004', 'Legacy 지식 업로드는 파일 처리 전에 404다', async () => {
+    const result = await callUpstream('/knowledge/files', { method: 'POST', appkey: storeA.appkey, body: {} });
+    return result.status === 404;
+  });
+  await check('INT-005', 'test-tables는 플랫폼 관리자에게도 운영에서 404다', async () => {
+    const result = await callAdminUpstream('/test-tables');
+    return result.status === 404;
+  });
+  await check('INT-006', '플랫폼 관리자는 Bedrock 운영 설정을 조회한다', async () => {
+    const result = await callAdminUpstream('/admin/v1/bedrock/config');
+    return result.status === 200;
+  });
+  await check('INT-007', '지식 운영자는 Bedrock 운영 설정에 접근할 수 없다', async () => {
+    const result = await callUpstream('/admin/v1/bedrock/config', { adminKey: runtime.operatorKey });
+    return result.status === 403;
+  });
+  await check('INT-008', '지식 운영자 API는 계속 사용할 수 있다', async () => {
+    const result = await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`);
+    return result.status === 200;
+  });
+  const report = {
+    type: 'internal-exposure',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    summary: { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length },
+    results: tests,
+  };
+  report.reportFile = await saveReport('internal-exposure', report);
+  return report;
+}
+
 async function cleanupDemoEnvironment() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
@@ -716,6 +773,11 @@ export const server = createServer(async (request, response) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/http-exposure-validation') {
       return sendJson(response, 200, await runHttpExposureScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/internal-exposure-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('운영 API 경계 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runInternalExposureScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);

@@ -14,6 +14,9 @@ services:
       SWAGGER_ENABLED: "${SWAGGER_ENABLED:-false}"
       SWAGGER_PATH: "${SWAGGER_PATH:-api-docs}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      ENABLE_TEST_TABLE_API: "${ENABLE_TEST_TABLE_API:-false}"
+      ENABLE_LEGACY_BEDROCK_INSPECTION_API: "${ENABLE_LEGACY_BEDROCK_INSPECTION_API:-false}"
+      ENABLE_LEGACY_KNOWLEDGE_WRITE_API: "${ENABLE_LEGACY_KNOWLEDGE_WRITE_API:-false}"
     command: sh -c "npx prisma migrate deploy && npm run start:prod"
     ports:
       - "11000:11000"

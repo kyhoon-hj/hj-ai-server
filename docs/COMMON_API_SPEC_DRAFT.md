@@ -60,6 +60,8 @@ POST   /admin/v1/knowledge/apps/:appId/texts
 
 현재 호환 API인 `/app-info/*`는 `x-admin-key` 전용 credential을 필수로 요구합니다. appkey는 AppInfo 관리 권한을 부여하지 않습니다. 목표 `/admin/v1/apps/*`에서는 role 기반 관리자 인증으로 교체하며 현재 정적 키는 호환 전환 단계로만 사용합니다.
 
+Bedrock 설정·모델 조회는 `/admin/v1/bedrock/config`, `/admin/v1/bedrock/models`로 분리하며 platform-admin만 접근할 수 있습니다.
+
 ## 외부 계약에서 제외할 현재 endpoint
 
 - `/bedrock/config`
@@ -68,6 +70,8 @@ POST   /admin/v1/knowledge/apps/:appId/texts
 - `/bedrock/text-response`
 - `/knowledge/demo/store-seed`
 - `/test-tables`
+
+위 config/models, demo seed, test-tables와 legacy 지식 쓰기 endpoint는 운영 기본값에서 404이며 Swagger에도 포함하지 않습니다. 제한된 호환 시험에서만 명시적 환경 플래그로 일시 활성화합니다.
 
 모델 ID와 system prompt는 서버 정책으로 결정하고 외부 소비자가 임의 변경하지 못하게 합니다.
 

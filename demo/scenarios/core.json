@@ -1,6 +1,6 @@
 {
   "name": "HJ AI Server 핵심 계약 점검",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "파괴적 변경 없이 상태, 관리자·appkey 인증, correlation ID, Bedrock 및 RAG 기본 계약을 확인합니다.",
   "tests": [
     {
@@ -20,7 +20,7 @@
     {
       "id": "CON-003",
       "name": "보호 endpoint는 appkey 없이 거절한다",
-      "operationId": "bedrock.config",
+      "operationId": "bedrock.general",
       "sendAppkey": false,
       "expect": { "statuses": [401], "correlationId": true }
     },
@@ -64,9 +64,9 @@
     },
     {
       "id": "CON-009",
-      "name": "유효 appkey로 Bedrock 설정을 조회한다",
+      "name": "플랫폼 관리자가 Bedrock 설정을 조회한다",
       "operationId": "bedrock.config",
-      "requiresAppkey": true,
+      "requiresAdminKey": true,
       "expect": { "statuses": [200], "correlationId": true }
     },
     {
@@ -92,6 +92,21 @@
       "requiresAppkey": true,
       "body": { "query": "교환과 환불 정책을 알려주세요.", "strict": true, "includeSources": true, "maxTokens": 512 },
       "expect": { "statuses": [200], "bodyIncludes": "sources", "correlationId": true }
+    },
+    {
+      "id": "CON-013",
+      "name": "Legacy Bedrock 설정 조회는 운영에서 숨겨진다",
+      "operationId": "bedrock.legacyConfig",
+      "requiresAppkey": true,
+      "expect": { "statuses": [404], "correlationId": true }
+    },
+    {
+      "id": "CON-014",
+      "name": "Legacy 지식 쓰기는 운영에서 숨겨진다",
+      "operationId": "knowledge.text",
+      "requiresAppkey": true,
+      "body": {},
+      "expect": { "statuses": [404], "correlationId": true }
     }
   ]
 }

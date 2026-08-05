@@ -122,6 +122,7 @@ flowchart LR
 | 지식 운영 인증 | 별도 `x-admin-key` | knowledge-operator 역할 | 일치 |
 | CORS | 공개 서비스 미확인 | exact-origin allowlist, 미설정 시 비활성 | 배포 확인 필요 |
 | Swagger | 공개 OpenAPI 노출 확인 | 운영 기본 비활성, 명시적 활성화만 허용 | 배포 확인 필요 |
+| 개발·legacy API | 공개 서비스에 다수 노출 | 세 호환 플래그 기본 false, 관리자 대체 경로 | 배포 확인 필요 |
 | DB migration | 9개 적용, pending 0 | 최신 schema | 일치 |
 | Image | 2026-08-05 재생성 | 현재 작업 소스 | 일치 |
 
@@ -301,6 +302,7 @@ docker compose up -d --build
 11. 공개 OpenAPI와 source OpenAPI 비교
 
 HTTP 노출 변수와 검증 절차는 [HTTP 노출 보안 정책](HTTP_EXPOSURE_SECURITY.md)을 따릅니다.
+개발·legacy endpoint와 관리자 대체 경로는 [운영 API 노출 정책](API_EXPOSURE_POLICY.md)을 따릅니다.
 
 ### Rollback 주의
 

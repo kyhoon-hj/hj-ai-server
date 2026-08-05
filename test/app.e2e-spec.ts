@@ -90,6 +90,32 @@ describe('AppController (e2e)', () => {
       .expect(401);
   });
 
+  it('플랫폼 관리자는 Bedrock 운영 설정을 조회할 수 있다', () => {
+    return request(app.getHttpServer())
+      .get('/admin/v1/bedrock/config')
+      .set('x-admin-key', process.env.ADMIN_API_KEY!)
+      .expect(200)
+      .expect((response) => {
+        expect(typeof (response.body as { region?: unknown }).region).toBe(
+          'string',
+        );
+      });
+  });
+
+  it('지식 운영자는 Bedrock 운영 설정을 조회할 수 없다', () => {
+    return request(app.getHttpServer())
+      .get('/admin/v1/bedrock/config')
+      .set('x-admin-key', process.env.KNOWLEDGE_OPERATOR_API_KEY!)
+      .expect(403);
+  });
+
+  it('test-tables는 명시적 활성화가 없으면 플랫폼 관리자에게도 404다', () => {
+    return request(app.getHttpServer())
+      .get('/test-tables')
+      .set('x-admin-key', process.env.ADMIN_API_KEY!)
+      .expect(404);
+  });
+
   afterEach(async () => {
     await app.close();
   });

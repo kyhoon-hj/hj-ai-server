@@ -121,6 +121,7 @@ async function loadDemoState() {
     }
   }
   $('#runTenantValidation').disabled = !state.ready;
+  $('#runInternalExposure').disabled = !state.ready;
   return state;
 }
 
@@ -271,6 +272,18 @@ $('#runHttpExposure').addEventListener('click', async () => {
     $('#httpExposureResults').innerHTML = report.results.map((item) => `<div class="result ${item.passed ? '' : 'failed'}"><strong>${item.id}</strong><span>${item.name}<small>${item.reasons?.join(', ') ?? ''}</small></span><span class="status">${item.passed ? 'PASS' : 'FAIL'}</span></div>`).join('');
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; button.textContent = '노출 정책 검증'; }
+});
+
+$('#runInternalExposure').addEventListener('click', async () => {
+  const button = $('#runInternalExposure');
+  button.disabled = true;
+  button.textContent = '검증 중...';
+  try {
+    const report = await api('/api/demo/internal-exposure-validation', { method: 'POST', body: JSON.stringify({ confirmValidation: true }) });
+    renderMetrics('#internalExposureSummary', [['전체', report.summary.total], ['PASS', report.summary.passed], ['FAIL', report.summary.failed], ['리포트', report.reportFile]]);
+    $('#internalExposureResults').innerHTML = report.results.map((item) => `<div class="result ${item.passed ? '' : 'failed'}"><strong>${item.id}</strong><span>${item.name}<small>${item.reasons?.join(', ') ?? ''}</small></span><span class="status">${item.passed ? 'PASS' : 'FAIL'}</span></div>`).join('');
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; button.textContent = '내부 API 경계 검증'; }
 });
 
 $('#performanceForm').addEventListener('submit', async (event) => {

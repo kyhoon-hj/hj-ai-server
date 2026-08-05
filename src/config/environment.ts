@@ -10,6 +10,13 @@ const REQUIRED_ENVIRONMENT_KEYS = [
   'AWS_S3_REGION',
 ] as const;
 
+const BOOLEAN_ENVIRONMENT_KEYS = [
+  'SWAGGER_ENABLED',
+  'ENABLE_TEST_TABLE_API',
+  'ENABLE_LEGACY_BEDROCK_INSPECTION_API',
+  'ENABLE_LEGACY_KNOWLEDGE_WRITE_API',
+] as const;
+
 function valueOf(config: Record<string, unknown>, key: string): string {
   const value = config[key];
   return typeof value === 'string' || typeof value === 'number'
@@ -79,9 +86,11 @@ export function validateEnvironment(
     }
   }
 
-  const swaggerEnabled = valueOf(config, 'SWAGGER_ENABLED').toLowerCase();
-  if (swaggerEnabled && !['true', 'false'].includes(swaggerEnabled)) {
-    errors.push('SWAGGER_ENABLED must be true or false');
+  for (const key of BOOLEAN_ENVIRONMENT_KEYS) {
+    const value = valueOf(config, key).toLowerCase();
+    if (value && !['true', 'false'].includes(value)) {
+      errors.push(`${key} must be true or false`);
+    }
   }
 
   const swaggerPath = valueOf(config, 'SWAGGER_PATH') || 'api-docs';

@@ -8,7 +8,7 @@
 
 - [x] AppInfo platform-admin과 지식 운영자 admin API 역할 RBAC 적용
 - [x] 외부 appkey와 관리자 credential 분리 및 startup 검증
-- `test-tables`, demo seed, config/models endpoint 운영 노출 제거
+- [x] `test-tables`, demo seed, config/models·legacy 지식 쓰기 endpoint 운영 기본 차단
 - appkey secret 기본값 제거 및 startup 환경 검증
 - DB migration preflight와 배포 절차 확정
 - 모든 Bedrock 호출에 model allowlist와 명시적 maxTokens 적용

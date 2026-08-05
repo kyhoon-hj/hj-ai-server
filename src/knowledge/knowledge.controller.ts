@@ -21,6 +21,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBody,
   ApiConsumes,
+  ApiExcludeEndpoint,
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
@@ -36,6 +37,8 @@ import { CreateKnowledgeTextDto } from './dto/create-knowledge-text.dto';
 import { KnowledgeFileEntity } from './entities/knowledge-file.entity';
 import { UpdateKnowledgeFilePolicyDto } from './dto/knowledge-policy.dto';
 import { KnowledgeService } from './knowledge.service';
+import { ApiExposure } from '../common/guards/api-exposure.decorator';
+import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 
 @ApiTags('knowledge')
 @UseGuards(AppkeyGuard)
@@ -55,6 +58,9 @@ export class KnowledgeController {
   constructor(private readonly knowledgeService: KnowledgeService) {}
 
   @Post('files')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -108,6 +114,9 @@ export class KnowledgeController {
   }
 
   @Patch('files/:id/policy')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary: '지식 파일의 공개 범위, 게시 상태와 적용 기간을 변경합니다.',
   })
@@ -125,6 +134,9 @@ export class KnowledgeController {
   }
 
   @Delete('files/:id')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary:
       'RAG 지식 파일을 보관 처리하고 chunk를 삭제합니다. deleteObject=true면 S3 원본도 삭제합니다.',
@@ -143,6 +155,9 @@ export class KnowledgeController {
   }
 
   @Post('texts')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary: '텍스트를 직접 RAG 지식 문서로 등록하고 인덱싱합니다.',
   })
@@ -154,6 +169,9 @@ export class KnowledgeController {
   }
 
   @Post('demo/store-seed')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary: '가상 생활용품 매장 안내 데모 데이터를 RAG 지식으로 적재합니다.',
   })
@@ -162,6 +180,9 @@ export class KnowledgeController {
   }
 
   @Post('files/:id/index')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary: 'S3 파일 내용을 추출해 chunk와 embedding을 생성합니다.',
   })
@@ -170,6 +191,9 @@ export class KnowledgeController {
   }
 
   @Post('files/:id/reindex')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyKnowledgeWrite')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary: '등록된 지식 파일을 다시 인덱싱합니다.',
   })

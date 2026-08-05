@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiExcludeEndpoint,
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
@@ -21,6 +22,8 @@ import { ConverseDto } from './dto/converse.dto';
 import { GeneralAnswerDto } from './dto/general-answer.dto';
 import { TextResponseDto } from './dto/text-response.dto';
 import { GeneralAnswerEntity } from './entities/general-answer.entity';
+import { ApiExposure } from '../common/guards/api-exposure.decorator';
+import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 
 @ApiTags('bedrock')
 @UseGuards(AppkeyGuard)
@@ -34,6 +37,9 @@ export class BedrockController {
   constructor(private readonly bedrockService: BedrockService) {}
 
   @Get('config')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyBedrockInspection')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({ summary: '현재 Bedrock 연동 설정을 확인합니다.' })
   @ApiOkResponse({
     schema: {
@@ -52,6 +58,9 @@ export class BedrockController {
   }
 
   @Get('models')
+  @ApiExcludeEndpoint()
+  @ApiExposure('legacyBedrockInspection')
+  @UseGuards(ApiExposureGuard)
   @ApiOperation({
     summary:
       '현재 AWS 계정/리전에서 조회 가능한 Bedrock 모델 목록을 확인합니다.',

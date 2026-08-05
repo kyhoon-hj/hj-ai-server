@@ -10,6 +10,7 @@ import { KnowledgeController } from './knowledge.controller';
 import { KnowledgeAdminController } from './knowledge-admin.controller';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { KnowledgeService } from './knowledge.service';
+import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 
 @Module({
   imports: [AppInfoModule, PrismaModule, StorageModule],
@@ -21,6 +22,7 @@ import { KnowledgeService } from './knowledge.service';
     EmbeddingService,
     AppkeyGuard,
     AdminApiKeyGuard,
+    ApiExposureGuard,
   ],
 })
 export class KnowledgeModule {}

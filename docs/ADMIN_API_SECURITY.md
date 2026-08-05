@@ -6,7 +6,7 @@
 
 | credential | 용도 | 허용 API |
 |---|---|---|
-| `x-admin-key` (`ADMIN_API_KEY`) | 플랫폼 관리자 | `/app-info/*`, `/admin/v1/knowledge/*` |
+| `x-admin-key` (`ADMIN_API_KEY`) | 플랫폼 관리자 | `/app-info/*`, `/admin/v1/knowledge/*`, `/admin/v1/bedrock/*` |
 | `x-admin-key` (`KNOWLEDGE_OPERATOR_API_KEY`) | 지식 운영자 | `/admin/v1/knowledge/*` |
 | `appkey` | 외부 앱·tenant | `/bedrock/*`, `/storage/*`, `/knowledge/*` |
 
@@ -30,11 +30,11 @@ APPKEY_JWT_SECRET=<different-signing-secret>
 2. 새 image를 시작하고 `/health/live`, `/health/ready`를 확인합니다.
 3. `/app-info` 무헤더와 오류 키 요청이 401인지 확인합니다.
 4. 정상 `x-admin-key` 요청이 200인지 확인합니다.
-5. 데모 core contract 12건을 실행합니다.
+5. 데모 core contract 14건과 운영 API 경계 검증 8건을 실행합니다.
 
 ## 현재 한계와 다음 단계
 
 - 현재 credential은 `platform-admin`, `knowledge-operator` 두 역할입니다.
 - 만료, 이중 키 무중단 회전, 관리자별 식별, 감사 이벤트가 없습니다.
 - 목표 API `/admin/v1/apps/*`로 AppInfo 호환 경로를 이전하고 identity 기반 RBAC와 tenant별 운영자 scope를 적용합니다.
-- 운영 Swagger와 내부 endpoint 노출 정책을 별도로 적용해야 합니다.
+- Legacy·개발 endpoint의 기본 차단 정책은 [운영 API 노출 정책](API_EXPOSURE_POLICY.md)을 따릅니다.

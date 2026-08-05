@@ -68,6 +68,19 @@ describe('validateEnvironment', () => {
     );
   });
 
+  it('운영 제외 API 플래그는 명시적 boolean만 허용한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        ENABLE_TEST_TABLE_API: 'yes',
+        ENABLE_LEGACY_BEDROCK_INSPECTION_API: '1',
+        ENABLE_LEGACY_KNOWLEDGE_WRITE_API: 'enabled',
+      }),
+    ).toThrow(
+      /ENABLE_TEST_TABLE_API must be.*ENABLE_LEGACY_BEDROCK_INSPECTION_API must be.*ENABLE_LEGACY_KNOWLEDGE_WRITE_API must be/,
+    );
+  });
+
   it('정확한 CORS origin allowlist와 Swagger 설정을 허용한다', () => {
     expect(
       validateEnvironment({

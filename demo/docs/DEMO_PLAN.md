@@ -37,7 +37,7 @@ demo/
 
 - 연결 설정: 대상 서버, appkey, timeout 설정과 STORE_A/STORE_B 구성·격리 검증·정리
 - 전체 기능: 모든 endpoint의 요청/응답 수동 확인
-- 자동 계약 검증: 상태, 인증, correlation, 일반 답변, 검색, 제품 답변 계약 확인
+- 자동 계약 검증: 상태, 인증, correlation, 일반 답변, 검색, 제품 답변, HTTP·내부 API 노출 계약 확인
 - 성능 검증: 성공률, 처리량, latency percentile, 상태 코드와 토큰 집계
 
 ## 고도화 단계
@@ -51,12 +51,14 @@ demo/
 - STORE_A/STORE_B tenant 격리용 버전 fixture manifest와 자동 setup/cleanup
 - 교차 파일 상세·목록·검색, 변조 키, 키 회전, 비활성 키 자동 검증
 - 결과 JSON 저장
+- CORS·Swagger 및 legacy·개발 endpoint 운영 노출 자동 검증
+- 플랫폼 관리자·지식 운영자·외부 appkey 역할 경계 검증
 
 ### 2단계: AI Server 개선과 함께 확장
 
 - `/v1` 외부 소비자 API 시나리오 추가
-- 관리자 인증과 role별 권한 검증
-- STORE_A/STORE_B 답변 tenant isolation 확장 시험
+- 관리자 credential 만료·회전·감사 이벤트 검증
+- STORE_A/STORE_B source 정답률 품질 시험
 - PDF/DOCX/XLSX fixture와 parser 회귀 시험
 - 인덱싱 비동기 job 상태 시험
 - retry/timeout/throttling fault injection

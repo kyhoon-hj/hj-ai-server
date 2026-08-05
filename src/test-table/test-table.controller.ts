@@ -8,13 +8,27 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiExcludeController,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CreateTestTableDto } from './dto/create-test-table.dto';
 import { UpdateTestTableDto } from './dto/update-test-table.dto';
 import { TestTableEntity } from './entities/test-table.entity';
 import { TestTableService } from './test-table.service';
+import { UseGuards } from '@nestjs/common';
+import { ApiExposure } from '../common/guards/api-exposure.decorator';
+import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
+import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
+import { AdminRoles } from '../common/guards/admin-roles.decorator';
 
 @ApiTags('test-tables')
+@ApiExcludeController()
+@ApiExposure('testTable')
+@UseGuards(ApiExposureGuard, AdminApiKeyGuard)
+@AdminRoles('platform-admin')
 @Controller('test-tables')
 export class TestTableController {
   constructor(private readonly testTableService: TestTableService) {}
