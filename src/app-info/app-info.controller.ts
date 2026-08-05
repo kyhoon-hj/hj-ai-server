@@ -7,8 +7,16 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { AppInfoService } from './app-info.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
@@ -18,6 +26,13 @@ import {
 } from './entities/app-info.entity';
 
 @ApiTags('app-info')
+@UseGuards(AdminApiKeyGuard)
+@ApiSecurity('adminKey')
+@ApiHeader({
+  name: 'x-admin-key',
+  description: '플랫폼 관리자 전용 credential입니다.',
+  required: true,
+})
 @Controller('app-info')
 export class AppInfoController {
   constructor(private readonly appInfoService: AppInfoService) {}

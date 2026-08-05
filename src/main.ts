@@ -17,6 +17,7 @@ async function bootstrap() {
       'x-app-key',
       'x-appkey',
       'x-correlation-id',
+      'x-admin-key',
     ],
     exposedHeaders: ['x-correlation-id'],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -57,6 +58,15 @@ async function bootstrap() {
         description: 'AppInfo에서 발급한 서버 전용 appkey',
       },
       'appkey',
+    )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-admin-key',
+        in: 'header',
+        description: '플랫폼 관리자 API 전용 credential',
+      },
+      'adminKey',
     )
     .build();
   const document = SwaggerModule.createDocument(app, config);

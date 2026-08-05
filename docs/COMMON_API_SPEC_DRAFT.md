@@ -58,6 +58,8 @@ POST   /admin/v1/knowledge/texts
 
 `/admin/v1/apps/*`로 분리하고 외부 appkey가 아닌 관리자 인증과 권한 검사를 요구합니다.
 
+현재 호환 API인 `/app-info/*`는 `x-admin-key` 전용 credential을 필수로 요구합니다. appkey는 AppInfo 관리 권한을 부여하지 않습니다. 목표 `/admin/v1/apps/*`에서는 role 기반 관리자 인증으로 교체하며 현재 정적 키는 호환 전환 단계로만 사용합니다.
+
 ## 외부 계약에서 제외할 현재 endpoint
 
 - `/bedrock/config`

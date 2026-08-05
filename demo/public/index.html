@@ -39,8 +39,9 @@
           </div>
           <label>AI Server URL<input id="baseUrl" type="url" required placeholder="http://127.0.0.1:11000" /></label>
           <label>appkey<input id="appkey" type="password" autocomplete="off" placeholder="새 키를 설정할 때만 입력" /></label>
+          <label>관리자 credential<input id="adminKey" type="password" autocomplete="off" placeholder="x-admin-key를 설정할 때만 입력" /></label>
           <label>요청 timeout(ms)<input id="timeoutMs" type="number" min="1000" max="120000" step="1000" /></label>
-          <div class="actions"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">키 제거</button></div>
+          <div class="actions wide"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">appkey 제거</button><button id="clearAdminKey" class="secondary" type="button">관리자 키 제거</button></div>
         </form>
         <div class="card demo-environment">
           <div class="demo-environment-head">

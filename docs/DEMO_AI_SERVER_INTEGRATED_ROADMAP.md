@@ -91,7 +91,7 @@
 
 #### 데모
 
-- [x] `SEC-DEM-01` 인증 없음·변조 키·비활성 키 자동 시나리오
+- [x] `SEC-DEM-01` 관리자 인증 없음·오류 키와 appkey 변조·비활성 자동 시나리오
 - [x] `SEC-DEM-02` 키 재발급 후 이전 키 폐기 검증
 - [~] `SEC-DEM-03` STORE_A 키로 STORE_B 파일·검색 차단 완료, 답변 source 시나리오 예정
 - [ ] `SEC-DEM-04` 플랫폼 관리자·지식 운영자·외부 소비자 role matrix
@@ -99,8 +99,8 @@
 
 #### AI Server
 
-- [ ] `SEC-SRV-01` AppInfo API 관리자 인증과 RBAC
-- [ ] `SEC-SRV-02` 외부 appkey와 관리자 credential 분리
+- [~] `SEC-SRV-01` AppInfo 관리자 인증·platform-admin 경계 완료, 세분화된 RBAC 예정
+- [x] `SEC-SRV-02` 외부 appkey와 관리자 credential 분리
 - [ ] `SEC-SRV-03` 고정 appkey secret fallback 제거
 - [ ] `SEC-SRV-04` appkey 만료·회전·감사 이벤트 정책
 - [ ] `SEC-SRV-05` `test-tables`, demo seed, config/models 운영 노출 제거
@@ -325,10 +325,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `SEC-SRV-01`: AppInfo 관리자 인증 설계 및 구현
-2. `SEC-SRV-02`: 외부 appkey와 관리자 credential 분리
+1. `SEC-DEM-04`: 관리자·운영자·외부 소비자 role matrix 작성
+2. `SEC-SRV-01`: role별 세분화된 RBAC 구현
 3. `SEC-DEM-03`: 답변 source tenant isolation 시나리오 추가
-4. `SEC-DEM-04`: 관리자·운영자·외부 소비자 role matrix 작성
-5. `SEC-DEM-05`: CORS와 운영 Swagger 노출 점검
+4. `SEC-DEM-05`: CORS와 운영 Swagger 노출 점검
+5. `SEC-SRV-04`: 관리자/appkey 만료·회전·감사 이벤트 정책
 
 재현 환경과 기본 격리 검증이 완료됐으므로 다음 작업은 관리자 API 무인증 노출 제거에 집중합니다.

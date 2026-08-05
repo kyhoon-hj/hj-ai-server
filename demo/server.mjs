@@ -48,6 +48,7 @@ const serverTargets = [
 const runtime = {
   baseUrl: normalizeBaseUrl(process.env.AI_SERVER_BASE_URL ?? serverTargets[0].url),
   appkey: process.env.AI_SERVER_APPKEY ?? '',
+  adminKey: process.env.AI_SERVER_ADMIN_API_KEY ?? '',
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
   updatedAt: new Date().toISOString(),
 };
@@ -90,6 +91,7 @@ function publicConfig() {
     activeTarget: identifyServerTarget(runtime.baseUrl, serverTargets),
     targets: serverTargets,
     hasAppkey: Boolean(runtime.appkey),
+    hasAdminKey: Boolean(runtime.adminKey),
     timeoutMs: runtime.timeoutMs,
     updatedAt: runtime.updatedAt,
   };
@@ -144,8 +146,13 @@ async function invoke(operation, options = {}) {
   const path = renderPath(operation.path, options.params);
   const url = buildUrl(path, options.query);
   const headers = { accept: 'application/json' };
-  const sendAppkey = options.sendAppkey ?? operation.auth !== false;
+  const sendAppkey = options.sendAppkey ?? ![false, 'admin'].includes(operation.auth);
+  const sendAdminKey = options.sendAdminKey ?? operation.auth === 'admin';
   if (sendAppkey && runtime.appkey) headers.appkey = runtime.appkey;
+  if (sendAdminKey) {
+    const adminKey = options.adminKey ?? runtime.adminKey;
+    if (adminKey) headers['x-admin-key'] = adminKey;
+  }
   if (options.correlationId) headers['x-correlation-id'] = options.correlationId;
   const init = {
     method: operation.method,
@@ -195,6 +202,7 @@ async function callUpstream(path, options = {}) {
   const url = buildUrl(path, options.query);
   const headers = { accept: 'application/json', 'x-correlation-id': randomUUID() };
   if (options.appkey) headers.appkey = options.appkey;
+  if (options.adminKey) headers['x-admin-key'] = options.adminKey;
   const init = { method: options.method ?? 'GET', headers, signal: AbortSignal.timeout(runtime.timeoutMs) };
   if (options.body !== undefined) {
     headers['content-type'] = 'application/json';
@@ -208,6 +216,13 @@ async function callUpstream(path, options = {}) {
     try { body = JSON.parse(text); } catch { body = text; }
   }
   return { status: response.status, ok: response.ok, body, correlationId: response.headers.get('x-correlation-id') };
+}
+
+function callAdminUpstream(path, options = {}) {
+  if (!runtime.adminKey) {
+    throw Object.assign(new Error('관리자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  }
+  return callUpstream(path, { ...options, adminKey: runtime.adminKey });
 }
 
 function requireUpstream(result, action) {
@@ -224,14 +239,14 @@ function assertLocalDemoMutation() {
 }
 
 async function ensureDemoProfile(definition, fixtureVersion) {
-  const appList = requireUpstream(await callUpstream('/app-info'), 'AppInfo 목록 조회');
+  const appList = requireUpstream(await callAdminUpstream('/app-info'), 'AppInfo 목록 조회');
   const existing = appList.find((app) => app.appcode === definition.appcode);
   if (existing?.status !== 'active') {
-    requireUpstream(await callUpstream(`/app-info/${existing.id}`, { method: 'PATCH', body: { status: 'active' } }), '데모 앱 활성 복원');
+    requireUpstream(await callAdminUpstream(`/app-info/${existing.id}`, { method: 'PATCH', body: { status: 'active' } }), '데모 앱 활성 복원');
   }
   const appResult = existing
-    ? await callUpstream(`/app-info/${existing.id}/appkey`, { method: 'POST' })
-    : await callUpstream('/app-info', {
+    ? await callAdminUpstream(`/app-info/${existing.id}/appkey`, { method: 'POST' })
+    : await callAdminUpstream('/app-info', {
         method: 'POST',
         body: {
           appname: definition.appname,
@@ -327,19 +342,19 @@ async function runTenantIsolationScenario() {
   });
   await check('TEN-005', '키 회전 후 이전 STORE_B 키는 폐기된다', async () => {
     const oldKey = storeB.appkey;
-    const rotated = requireUpstream(await callUpstream(`/app-info/${storeB.id}/appkey`, { method: 'POST' }), 'STORE_B appkey 회전');
+    const rotated = requireUpstream(await callAdminUpstream(`/app-info/${storeB.id}/appkey`, { method: 'POST' }), 'STORE_B appkey 회전');
     storeB.appkey = rotated.appkey;
     const oldResult = await callUpstream('/knowledge/files', { appkey: oldKey });
     const newResult = await callUpstream('/knowledge/files', { appkey: storeB.appkey });
     return oldResult.status === 401 && newResult.status === 200;
   });
   await check('TEN-006', '비활성 STORE_B 키는 403으로 거절된다', async () => {
-    requireUpstream(await callUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'inactive' } }), 'STORE_B 비활성화');
+    requireUpstream(await callAdminUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'inactive' } }), 'STORE_B 비활성화');
     try {
       const result = await callUpstream('/knowledge/files', { appkey: storeB.appkey });
       return result.status === 403;
     } finally {
-      requireUpstream(await callUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'active' } }), 'STORE_B 활성 복원');
+      requireUpstream(await callAdminUpstream(`/app-info/${storeB.id}`, { method: 'PATCH', body: { status: 'active' } }), 'STORE_B 활성 복원');
     }
   });
   const report = {
@@ -356,17 +371,17 @@ async function runTenantIsolationScenario() {
 async function cleanupDemoEnvironment() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
-  const appList = requireUpstream(await callUpstream('/app-info'), 'AppInfo 목록 조회');
+  const appList = requireUpstream(await callAdminUpstream('/app-info'), 'AppInfo 목록 조회');
   const cleaned = [];
   for (const definition of demoAppDefinitions) {
     const app = appList.find((candidate) => candidate.appcode === definition.appcode);
     if (!app) continue;
-    const rotated = requireUpstream(await callUpstream(`/app-info/${app.id}/appkey`, { method: 'POST' }), 'cleanup appkey 발급');
+    const rotated = requireUpstream(await callAdminUpstream(`/app-info/${app.id}/appkey`, { method: 'POST' }), 'cleanup appkey 발급');
     const files = requireUpstream(await callUpstream('/knowledge/files', { appkey: rotated.appkey }), 'cleanup 파일 목록 조회');
     for (const file of files) {
       requireUpstream(await callUpstream(`/knowledge/files/${file.id}`, { method: 'DELETE', appkey: rotated.appkey, query: { deleteObject: true } }), 'fixture 보관·원본 삭제');
     }
-    requireUpstream(await callUpstream(`/app-info/${app.id}`, { method: 'DELETE' }), '데모 앱 삭제');
+    requireUpstream(await callAdminUpstream(`/app-info/${app.id}`, { method: 'DELETE' }), '데모 앱 삭제');
     cleaned.push({ appcode: definition.appcode, archivedFiles: files.length, appDeleted: true });
   }
   demoProfiles.clear();
@@ -399,11 +414,17 @@ async function runContractScenario() {
       results.push({ ...scenarioTest, skipped: true, passed: false, reasons: ['appkey가 설정되지 않았습니다.'] });
       continue;
     }
+    if (scenarioTest.requiresAdminKey && !runtime.adminKey) {
+      results.push({ ...scenarioTest, skipped: true, passed: false, reasons: ['관리자 credential이 설정되지 않았습니다.'] });
+      continue;
+    }
     const operation = findOperation(scenarioTest.operationId);
     const result = await invoke(operation, {
       body: scenarioTest.body,
       correlationId: scenarioTest.correlationId,
       sendAppkey: scenarioTest.sendAppkey,
+      sendAdminKey: scenarioTest.sendAdminKey,
+      adminKey: scenarioTest.adminKey,
     });
     const evaluation = evaluateExpectation(result, scenarioTest.expect);
     results.push({ id: scenarioTest.id, name: scenarioTest.name, ...evaluation, result });
@@ -502,7 +523,9 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.baseUrl) runtime.baseUrl = normalizeBaseUrl(input.baseUrl);
       if (typeof input.appkey === 'string' && input.appkey.trim()) runtime.appkey = input.appkey.trim();
+      if (typeof input.adminKey === 'string' && input.adminKey.trim()) runtime.adminKey = input.adminKey.trim();
       if (input.clearAppkey === true) runtime.appkey = '';
+      if (input.clearAdminKey === true) runtime.adminKey = '';
       if (input.timeoutMs !== undefined) runtime.timeoutMs = Math.min(120000, Math.max(1000, Number(input.timeoutMs)));
       runtime.updatedAt = new Date().toISOString();
       return sendJson(response, 200, publicConfig());

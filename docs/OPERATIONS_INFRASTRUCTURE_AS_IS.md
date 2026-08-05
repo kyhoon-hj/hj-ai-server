@@ -118,10 +118,11 @@ flowchart LR
 | Health path | `/health/live`, `/health/ready` | 동일 | 일치 |
 | Startup command | migration deploy 후 start | 동일 | 일치 |
 | 필수 환경변수 | startup validation 통과 | 누락 시 시작 실패 | 일치 |
+| AppInfo 인증 | `x-admin-key` 필수 | 외부 appkey와 분리 | 일치 |
 | DB migration | 9개 적용, pending 0 | 최신 schema | 일치 |
 | Image | 2026-08-05 재생성 | 현재 작업 소스 | 일치 |
 
-남은 차이는 공개 서비스에 live/readiness가 아직 배포되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다. 공개 배포 전 인증·권한과 내부 endpoint 노출 문제를 먼저 해결해야 합니다.
+AppInfo 관리자 인증은 현재 소스와 로컬 Compose에는 적용됐지만 공개 서비스 배포 여부는 미확인입니다. 남은 차이는 공개 서비스에 live/readiness와 최신 인증 계약이 아직 확인되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다.
 
 ## 5. 공개 API 배포 상태
 
@@ -241,6 +242,7 @@ Bucket policy는 public으로 판정되지 않았지만 account/bucket 단위 Bl
 - CloudFront distribution 목록 조회 권한은 없습니다.
 - Secrets Manager, SSM Parameter Store, instance/task role 사용 증거는 없습니다.
 - `APPKEY_JWT_SECRET`도 `.env` 파일로 관리합니다.
+- AppInfo용 `ADMIN_API_KEY`는 appkey 서명 secret과 다른 32자 이상 값으로 분리했지만 현재는 `.env` 파일로 관리합니다.
 
 ### 위험
 
@@ -363,7 +365,7 @@ RPO/RTO, DB backup 복구 시험, S3 version 복원 시험과 image rollback 절
 1. 현재 image/source/OpenAPI drift 해소
 2. pending migration preflight와 적용
 3. API prefix와 health path 단일화
-4. AppInfo와 내부 endpoint 공개 차단
+4. AppInfo 최신 관리자 인증 배포 확인과 내부 endpoint 공개 차단
 5. 고정 appkey fallback 제거
 6. S3/embedding/appkey 환경변수 누락 해결
 7. PostgreSQL TLS 및 접근 범위 제한

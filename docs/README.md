@@ -5,5 +5,6 @@
 - [외부 앱 공통 API 명세 초안](COMMON_API_SPEC_DRAFT.md)
 - [AI Server 실서비스 고도화 계획](AI_SERVER_HARDENING_PLAN.md)
 - [기능·품질·성능 검증 전략](TEST_AND_PERFORMANCE_STRATEGY.md)
+- [관리자 API 보안 계약](ADMIN_API_SECURITY.md)
 
 데모 프로그램의 설계·사용·검증 매트릭스는 [`demo/docs`](../demo/docs/)에서 관리합니다.

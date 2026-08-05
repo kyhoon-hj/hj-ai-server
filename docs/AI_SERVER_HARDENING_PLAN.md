@@ -6,7 +6,8 @@
 
 ## P0: 외부 노출 전 필수
 
-- AppInfo API 관리자 인증 및 RBAC 적용
+- [~] AppInfo API `x-admin-key` 인증·platform-admin 경계 적용, 세분화된 RBAC 예정
+- [x] 외부 appkey와 관리자 credential 분리 및 startup 검증
 - `test-tables`, demo seed, config/models endpoint 운영 노출 제거
 - appkey secret 기본값 제거 및 startup 환경 검증
 - DB migration preflight와 배포 절차 확정

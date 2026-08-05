@@ -13,6 +13,8 @@ npm run start:dev
 
 Copy `.env.example` to `.env` and set AWS credentials in your environment or AWS profile. `BEDROCK_MODEL_ID` can be provided globally or per request.
 
+Set a unique 32-character-or-longer `ADMIN_API_KEY`. It must differ from `APPKEY_JWT_SECRET`; `/app-info/*` requires it in the `x-admin-key` header. Consumer appkeys cannot call administrator APIs.
+
 For S3 uploads, set `AWS_S3_BUCKET`. `AWS_S3_CDN_URL` is optional and is used to build the returned public file URL.
 
 This project uses PostgreSQL through Prisma 7. Configure `DATABASE_URL` in `.env`, then run `npm run prisma:migrate` to create the test table.

@@ -48,6 +48,23 @@ describe('AppController (e2e)', () => {
       });
   });
 
+  it.each([
+    ['관리자 credential 없음', undefined],
+    ['잘못된 관리자 credential', 'invalid-admin-credential'],
+  ])('/app-info (GET)는 %s 요청을 거절한다', (_name, adminKey) => {
+    const testRequest = request(app.getHttpServer()).get('/app-info');
+    if (adminKey) testRequest.set('x-admin-key', adminKey);
+    return testRequest.expect(401);
+  });
+
+  it('/app-info (GET)는 유효한 관리자 credential을 허용한다', () => {
+    return request(app.getHttpServer())
+      .get('/app-info')
+      .set('x-admin-key', process.env.ADMIN_API_KEY!)
+      .expect(200)
+      .expect(({ body }) => expect(Array.isArray(body)).toBe(true));
+  });
+
   afterEach(async () => {
     await app.close();
   });

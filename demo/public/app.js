@@ -87,8 +87,8 @@ async function loadConfig() {
   renderServerTargets(config);
   const badge = $('#connectionBadge');
   const targetLabel = config.targets.find((target) => target.id === config.activeTarget)?.label ?? '사용자 지정';
-  badge.textContent = `${targetLabel} · ${config.baseUrl} · appkey ${config.hasAppkey ? '설정됨' : '없음'}`;
-  badge.classList.toggle('ready', config.hasAppkey);
+  badge.textContent = `${targetLabel} · ${config.baseUrl} · appkey ${config.hasAppkey ? '설정' : '없음'} · admin ${config.hasAdminKey ? '설정' : '없음'}`;
+  badge.classList.toggle('ready', config.hasAppkey && config.hasAdminKey);
 }
 
 function renderDemoReport(report) {
@@ -150,11 +150,18 @@ document.querySelectorAll('.tab').forEach((button) => button.addEventListener('c
 $('#configForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
-    await api('/api/config', { method: 'PUT', body: JSON.stringify({ baseUrl: $('#baseUrl').value, appkey: $('#appkey').value, timeoutMs: Number($('#timeoutMs').value) }) });
+    await api('/api/config', { method: 'PUT', body: JSON.stringify({ baseUrl: $('#baseUrl').value, appkey: $('#appkey').value, adminKey: $('#adminKey').value, timeoutMs: Number($('#timeoutMs').value) }) });
     $('#appkey').value = '';
+    $('#adminKey').value = '';
     await loadConfig();
     toast('연결 설정을 저장했습니다.');
   } catch (error) { toast(error.message); }
+});
+
+$('#clearAdminKey').addEventListener('click', async () => {
+  await api('/api/config', { method: 'PUT', body: JSON.stringify({ clearAdminKey: true }) });
+  await loadConfig();
+  toast('관리자 credential을 제거했습니다.');
 });
 
 $('#clearKey').addEventListener('click', async () => {
