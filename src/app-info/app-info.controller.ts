@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -21,6 +22,8 @@ import { AdminRoles } from '../common/guards/admin-roles.decorator';
 import { AppInfoService } from './app-info.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
+import { RotateAppKeyDto } from './dto/rotate-appkey.dto';
+import type { AdminRequest } from '../common/guards/admin-api-key.guard';
 import {
   AppInfoCreatedEntity,
   AppInfoPublicEntity,
@@ -41,14 +44,18 @@ export class AppInfoController {
 
   @Post()
   @ApiCreatedResponse({ type: AppInfoCreatedEntity })
-  create(@Body() dto: CreateAppInfoDto) {
-    return this.appInfoService.create(dto);
+  create(@Body() dto: CreateAppInfoDto, @Req() request: AdminRequest) {
+    return this.appInfoService.create(dto, request);
   }
 
   @Post(':id/appkey')
   @ApiCreatedResponse({ type: AppInfoCreatedEntity })
-  rotateAppKey(@Param('id', ParseUUIDPipe) id: string) {
-    return this.appInfoService.rotateAppKey(id);
+  rotateAppKey(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RotateAppKeyDto,
+    @Req() request: AdminRequest,
+  ) {
+    return this.appInfoService.rotateAppKey(id, dto, request);
   }
 
   @Get()

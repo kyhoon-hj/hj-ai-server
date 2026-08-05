@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -15,6 +16,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppInfoDto } from './dto/create-app-info.dto';
 import { UpdateAppInfoDto } from './dto/update-app-info.dto';
+import { RotateAppKeyDto } from './dto/rotate-appkey.dto';
+import { SecurityAuditService } from '../security/security-audit.service';
+import type { AdminRequest } from '../common/guards/admin-api-key.guard';
 
 @Injectable()
 export class AppInfoService {
@@ -24,6 +28,9 @@ export class AppInfoService {
     appcode: true,
     allowedAccessLevels: true,
     status: true,
+    appkeyExpiresAt: true,
+    appkeyRotatedAt: true,
+    previousAppkeyValidUntil: true,
     s3Prefix: true,
     defaultModelId: true,
     defaultEmbeddingModelId: true,
@@ -39,17 +46,21 @@ export class AppInfoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly securityAudit: SecurityAuditService,
   ) {}
 
-  async create(dto: CreateAppInfoDto) {
+  async create(dto: CreateAppInfoDto, request?: AdminRequest) {
     await this.ensureUniqueAppCode(dto.appcode);
 
     const id = randomUUID();
+    const issuedAt = new Date();
+    const expiresAt = this.createExpiry(issuedAt, dto.appkeyTtlDays);
     const appkey = this.createAppKey({
       sub: id,
       appname: dto.appname,
       appcode: dto.appcode,
-      iat: Math.floor(Date.now() / 1000),
+      iat: Math.floor(issuedAt.getTime() / 1000),
+      exp: Math.floor(expiresAt.getTime() / 1000),
       jti: randomBytes(12).toString('base64url'),
     });
     const appkeyHash = this.hashAppKey(appkey);
@@ -60,6 +71,8 @@ export class AppInfoService {
           id,
           appkey: null,
           appkeyHash,
+          appkeyExpiresAt: expiresAt,
+          appkeyRotatedAt: issuedAt,
           appname: dto.appname,
           appcode: dto.appcode,
           allowedAccessLevels: dto.allowedAccessLevels,
@@ -78,6 +91,16 @@ export class AppInfoService {
       .catch((error: unknown) =>
         this.rethrowAppCodeConflict(error, dto.appcode),
       );
+
+    await this.securityAudit.record({
+      eventType: 'APPKEY_ISSUED',
+      actorType: 'platform-admin',
+      appId: row.id,
+      appcode: row.appcode,
+      credentialSlot: request?.admin?.credentialSlot,
+      requestId: request?.correlationId,
+      metadata: { expiresAt: expiresAt.toISOString() },
+    });
 
     return {
       ...row,
@@ -145,13 +168,39 @@ export class AppInfoService {
     });
   }
 
-  async rotateAppKey(id: string) {
-    const appInfo = await this.findOne(id);
+  async rotateAppKey(
+    id: string,
+    dto: RotateAppKeyDto = {},
+    request?: AdminRequest,
+  ) {
+    const appInfo = await this.prisma.appInfo.findUnique({
+      where: { id },
+      select: {
+        ...this.publicSelect,
+        appkey: true,
+        appkeyHash: true,
+      },
+    });
+    if (!appInfo) throw new NotFoundException(`AppInfo ${id} not found`);
+
+    const issuedAt = new Date();
+    const expiresAt = this.createExpiry(issuedAt, dto.ttlDays);
+    const gracePeriodSeconds = this.resolveGracePeriod(
+      dto.gracePeriodSeconds ?? 0,
+    );
+    const currentHash =
+      appInfo.appkeyHash ??
+      (appInfo.appkey ? this.hashAppKey(appInfo.appkey) : null);
+    const previousValidUntil =
+      gracePeriodSeconds > 0 && currentHash
+        ? new Date(issuedAt.getTime() + gracePeriodSeconds * 1000)
+        : null;
     const appkey = this.createAppKey({
       sub: id,
       appname: appInfo.appname,
       appcode: appInfo.appcode,
-      iat: Math.floor(Date.now() / 1000),
+      iat: Math.floor(issuedAt.getTime() / 1000),
+      exp: Math.floor(expiresAt.getTime() / 1000),
       jti: randomBytes(12).toString('base64url'),
     });
 
@@ -160,8 +209,26 @@ export class AppInfoService {
       data: {
         appkey: null,
         appkeyHash: this.hashAppKey(appkey),
+        previousAppkeyHash: previousValidUntil ? currentHash : null,
+        previousAppkeyValidUntil: previousValidUntil,
+        appkeyExpiresAt: expiresAt,
+        appkeyRotatedAt: issuedAt,
       },
       select: this.publicSelect,
+    });
+
+    await this.securityAudit.record({
+      eventType: 'APPKEY_ROTATED',
+      actorType: 'platform-admin',
+      appId: row.id,
+      appcode: row.appcode,
+      credentialSlot: request?.admin?.credentialSlot,
+      requestId: request?.correlationId,
+      metadata: {
+        gracePeriodSeconds,
+        expiresAt: expiresAt.toISOString(),
+        previousValidUntil: previousValidUntil?.toISOString() ?? null,
+      },
     });
 
     return {
@@ -175,9 +242,14 @@ export class AppInfoService {
       return null;
     }
 
-    return this.prisma.appInfo.findFirst({
+    const hashed = this.hashAppKey(appkey);
+    const row = await this.prisma.appInfo.findFirst({
       where: {
-        OR: [{ appkeyHash: this.hashAppKey(appkey) }, { appkey }],
+        OR: [
+          { appkeyHash: hashed },
+          { previousAppkeyHash: hashed },
+          { appkey },
+        ],
       },
       select: {
         id: true,
@@ -191,8 +263,40 @@ export class AppInfoService {
         maxStorageMb: true,
         monthlyTokenLimit: true,
         metadata: true,
+        appkey: true,
+        appkeyHash: true,
+        previousAppkeyHash: true,
+        appkeyExpiresAt: true,
+        previousAppkeyValidUntil: true,
       },
     });
+
+    if (!row) return null;
+
+    const now = new Date();
+    const currentMatches = row.appkeyHash === hashed || row.appkey === appkey;
+    const previousMatches = row.previousAppkeyHash === hashed;
+    if (
+      (currentMatches && row.appkeyExpiresAt && row.appkeyExpiresAt <= now) ||
+      (previousMatches &&
+        (!row.previousAppkeyValidUntil || row.previousAppkeyValidUntil <= now))
+    ) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      appcode: row.appcode,
+      allowedAccessLevels: row.allowedAccessLevels,
+      status: row.status,
+      s3Prefix: row.s3Prefix,
+      defaultModelId: row.defaultModelId,
+      defaultEmbeddingModelId: row.defaultEmbeddingModelId,
+      systemPrompt: row.systemPrompt,
+      maxStorageMb: row.maxStorageMb,
+      monthlyTokenLimit: row.monthlyTokenLimit,
+      metadata: row.metadata,
+    };
   }
 
   private async ensureUniqueAppCode(appcode: string, exceptId?: string) {
@@ -237,6 +341,27 @@ export class AppInfoService {
     return `${unsignedToken}.${signature}`;
   }
 
+  private createExpiry(issuedAt: Date, requestedTtlDays?: number) {
+    const configuredTtl = Number(
+      this.configService.get<string>('APPKEY_TTL_DAYS') ?? 90,
+    );
+    const ttlDays = requestedTtlDays ?? configuredTtl;
+    return new Date(issuedAt.getTime() + ttlDays * 24 * 60 * 60 * 1000);
+  }
+
+  private resolveGracePeriod(requestedSeconds: number) {
+    const maxSeconds = Number(
+      this.configService.get<string>('APPKEY_MAX_ROTATION_GRACE_SECONDS') ??
+        86400,
+    );
+    if (requestedSeconds > maxSeconds) {
+      throw new BadRequestException(
+        `gracePeriodSeconds must not exceed ${maxSeconds}`,
+      );
+    }
+    return requestedSeconds;
+  }
+
   private isValidAppKeySignature(appkey: string) {
     const parts = appkey.split('.');
 
@@ -250,7 +375,36 @@ export class AppInfoService {
       .update(unsignedToken)
       .digest('base64url');
 
-    return this.safeEqual(signature, expectedSignature);
+    if (!this.safeEqual(signature, expectedSignature)) {
+      return false;
+    }
+
+    try {
+      const header = JSON.parse(
+        Buffer.from(encodedHeader, 'base64url').toString('utf8'),
+      ) as Record<string, unknown>;
+      const payload = JSON.parse(
+        Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+      ) as Record<string, unknown>;
+
+      if (header.alg !== 'HS256' || header.typ !== 'JWT') {
+        return false;
+      }
+
+      // Tokens issued before the lifecycle migration have no exp claim and
+      // remain bounded by the backfilled DB expiry until they are rotated.
+      if (!('exp' in payload)) {
+        return true;
+      }
+
+      return (
+        typeof payload.exp === 'number' &&
+        Number.isInteger(payload.exp) &&
+        payload.exp > Math.floor(Date.now() / 1000)
+      );
+    } catch {
+      return false;
+    }
   }
 
   private getAppKeySecret() {

@@ -4,7 +4,7 @@
 |---|---|:---:|:---:|:---:|---|
 | 상태 | live/readiness | O | O | O | DB 실제 질의, S3/Bedrock 필수 설정 판정 |
 | 앱 | 생성·조회·수정·삭제 | O | 관리자 인증·구성·정리 |  | 세분화된 role 확장 |
-| 앱 | appkey 재발급·비활성 | O | O |  | 동시 회전 시험 |
+| 앱 | appkey 만료·재발급·비활성 | O | 수명주기 4/4 |  | 다중 인스턴스 동시 회전 시험 |
 | Bedrock | config·models | O | 관리자 200·legacy 404 |  | 플랫폼 관리자 identity 전환 |
 | Bedrock | Converse | O |  | O | model allowlist·quota 시험 |
 | Bedrock | text response | O |  | O | 공통 API 유지 여부 결정 |
@@ -19,7 +19,8 @@
 | RAG | 제품 Answer | O | O | O | `/v1/answers` 확정 |
 | 공통 | validation 오류 | O | 일부 |  | DTO boundary 전체 자동화 |
 | 공통 | correlation ID | O | O | O | 로그·trace 연결 검증 |
-| 공통 | 관리자/appkey credential 분리 | O | O |  | 관리자 key 만료·감사 로그 |
+| 공통 | 관리자/appkey credential 분리 | O | 수명주기·RBAC |  | 관리자 identity 전환 |
+| 공통 | credential 감사 이벤트 | O | 발급·회전·접근·거부 |  | retention·중앙 감사 저장소 |
 | 공통 | platform-admin/knowledge-operator RBAC | O | 6/6 |  | legacy 지식 쓰기 경로 폐기 |
 | 공통 | tenant isolation | O | 파일·목록·검색·답변 source 8/8 |  | source 품질·근거 정확도 평가 |
 | 공통 | CORS·Swagger 운영 노출 | O | 허용/비허용 Origin·Swagger 4/4 |  | CDN/reverse proxy 배포 후 재검증 |

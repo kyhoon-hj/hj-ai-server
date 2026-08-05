@@ -25,6 +25,8 @@ GET  /health/ready
 | `content-type` | POST | `application/json` |
 | `idempotency-key` | 조건부 | 향후 변경·비동기 요청에 적용 |
 
+appkey는 유효기간이 있는 JWT이며 서버는 서명, JWT `exp`, DB 만료 시각, app 상태를 모두 검사합니다. 만료·폐기·변조 키는 `401 AUTHENTICATION_REQUIRED`입니다. 키 회전 중 이전 키는 관리자가 지정한 제한된 grace period에만 허용되며, 외부 앱은 응답이나 로그에 키 원문을 기록하지 않아야 합니다.
+
 ### 공통 오류
 
 ```json
@@ -61,6 +63,18 @@ POST   /admin/v1/knowledge/apps/:appId/texts
 현재 호환 API인 `/app-info/*`는 `x-admin-key` 전용 credential을 필수로 요구합니다. appkey는 AppInfo 관리 권한을 부여하지 않습니다. 목표 `/admin/v1/apps/*`에서는 role 기반 관리자 인증으로 교체하며 현재 정적 키는 호환 전환 단계로만 사용합니다.
 
 Bedrock 설정·모델 조회는 `/admin/v1/bedrock/config`, `/admin/v1/bedrock/models`로 분리하며 platform-admin만 접근할 수 있습니다.
+
+현재 appkey 발급·회전 호환 계약은 다음과 같습니다.
+
+```http
+POST /app-info/{appId}/appkey
+x-admin-key: <platform-admin credential>
+content-type: application/json
+
+{ "gracePeriodSeconds": 300, "ttlDays": 90 }
+```
+
+새 appkey 원문은 생성·회전 응답에서만 반환합니다. 이후 조회에는 `appkeyExpiresAt`, `appkeyRotatedAt`, `previousAppkeyValidUntil`만 노출합니다. 관리자 보안 이벤트는 platform-admin 전용 `GET /admin/v1/security/audit-events`에서 조회합니다.
 
 ## 외부 계약에서 제외할 현재 endpoint
 

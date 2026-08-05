@@ -12,11 +12,13 @@ import { CorrelationIdMiddleware } from './common/http/correlation-id.middleware
 import { StructuredHttpExceptionFilter } from './common/http/structured-http-exception.filter';
 import { validateEnvironment } from './config/environment';
 import { HealthModule } from './health/health.module';
+import { SecurityModule } from './security/security.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     HealthModule,
+    SecurityModule,
     AppInfoModule,
     BedrockModule,
     KnowledgeModule,

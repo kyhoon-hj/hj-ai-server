@@ -116,6 +116,23 @@ describe('AppController (e2e)', () => {
       .expect(404);
   });
 
+  it('플랫폼 관리자는 보안 감사 이벤트를 조회할 수 있다', () => {
+    return request(app.getHttpServer())
+      .get('/admin/v1/security/audit-events?limit=10')
+      .set('x-admin-key', process.env.ADMIN_API_KEY!)
+      .expect(200)
+      .expect((response) => {
+        expect(Array.isArray(response.body)).toBe(true);
+      });
+  });
+
+  it('지식 운영자는 보안 감사 이벤트를 조회할 수 없다', () => {
+    return request(app.getHttpServer())
+      .get('/admin/v1/security/audit-events')
+      .set('x-admin-key', process.env.KNOWLEDGE_OPERATOR_API_KEY!)
+      .expect(403);
+  });
+
   afterEach(async () => {
     await app.close();
   });

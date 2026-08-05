@@ -41,6 +41,7 @@ function updateOperationMeta() {
   $('#operationMeta').textContent = `${operation.method} ${operation.path}${operation.destructive ? ' · 파괴적 요청' : ''}`;
   const presets = {
     'app.create': { appname: 'Demo Store A', appcode: 'demo-store-a', allowedAccessLevels: ['PUBLIC'], status: 'active', maxStorageMb: 100, monthlyTokenLimit: 100000 },
+    'app.rotateKey': { gracePeriodSeconds: 300, ttlDays: 90 },
     'bedrock.converse': { message: '이 API 서버의 역할을 한 문단으로 설명해 주세요.', maxTokens: 512, temperature: 0.2 },
     'bedrock.text': { message: '안녕하세요.' },
     'bedrock.general': { query: '클라우드 컴퓨팅이 무엇인가요?' },
@@ -122,6 +123,7 @@ async function loadDemoState() {
   }
   $('#runTenantValidation').disabled = !state.ready;
   $('#runInternalExposure').disabled = !state.ready;
+  $('#runCredentialLifecycle').disabled = !state.ready;
   return state;
 }
 
@@ -202,6 +204,14 @@ $('#runRbacValidation').addEventListener('click', async () => {
     body: JSON.stringify({ confirmValidation: true }),
   }));
   if (report) toast(`역할 권한 검증: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
+$('#runCredentialLifecycle').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runCredentialLifecycle'), '검증 중...', () => api('/api/demo/credential-lifecycle-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) await loadDemoState();
 });
 
 $('#cleanupDemoData').addEventListener('click', async () => {

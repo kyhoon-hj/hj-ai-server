@@ -123,7 +123,7 @@ flowchart LR
 | CORS | 공개 서비스 미확인 | exact-origin allowlist, 미설정 시 비활성 | 배포 확인 필요 |
 | Swagger | 공개 OpenAPI 노출 확인 | 운영 기본 비활성, 명시적 활성화만 허용 | 배포 확인 필요 |
 | 개발·legacy API | 공개 서비스에 다수 노출 | 세 호환 플래그 기본 false, 관리자 대체 경로 | 배포 확인 필요 |
-| DB migration | 9개 적용, pending 0 | 최신 schema | 일치 |
+| DB migration | 10개 적용, pending 0 | 최신 schema | 일치 |
 | Image | 2026-08-05 재생성 | 현재 작업 소스 | 일치 |
 
 AppInfo 관리자 인증과 HTTP 노출 정책은 현재 소스와 로컬 Compose에는 적용됐지만 공개 서비스 배포 여부는 미확인입니다. 로컬에서는 `SWAGGER_ENABLED=false`, exact CORS allowlist와 비허용 Origin 차단을 확인했습니다. 남은 차이는 공개 서비스에 live/readiness·최신 인증·CORS/Swagger 계약이 아직 확인되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다.
@@ -175,7 +175,7 @@ README의 `/ai` 기반 예시, 로컬 Compose의 `/ai` 실행 이미지, 공개 
 | Timezone | UTC |
 | Vector extension | pgvector 0.8.5 |
 | 확인 시 DB 크기 | 약 8.3 MiB |
-| Prisma migrations | 9개 발견, 9개 적용, pending 0 |
+| Prisma migrations | 10개 발견, 10개 적용, pending 0 |
 
 2026-08-05 적용한 migration:
 
@@ -248,6 +248,9 @@ Bucket policy는 public으로 판정되지 않았지만 account/bucket 단위 Bl
 - `APPKEY_JWT_SECRET`도 `.env` 파일로 관리합니다.
 - AppInfo용 `ADMIN_API_KEY`는 appkey 서명 secret과 다른 32자 이상 값으로 분리했지만 현재는 `.env` 파일로 관리합니다.
 - 지식 운영용 `KNOWLEDGE_OPERATOR_API_KEY`도 두 기존 secret과 다른 32자 이상 값이며 현재는 `.env` 파일로 관리합니다.
+- appkey는 기본 `APPKEY_TTL_DAYS=90`의 JWT `exp`와 DB 만료 시각을 함께 사용합니다.
+- appkey 회전 grace 상한은 `APPKEY_MAX_ROTATION_GRACE_SECONDS=86400`이며 기본 회전은 이전 키를 즉시 폐기합니다.
+- 관리자·지식 운영자는 역할별 `*_PREVIOUS`와 `*_PREVIOUS_VALID_UNTIL`을 한 쌍으로 설정해 배포 중 신·구 키를 제한적으로 병행할 수 있습니다.
 
 ### 위험
 
@@ -285,7 +288,7 @@ Bucket policy는 public으로 판정되지 않았지만 account/bucket 단위 Bl
 docker compose up -d --build
 ```
 
-현재 실행 컨테이너는 Compose 정의에 따라 `prisma migrate deploy`가 성공한 뒤 `npm run start:prod`를 실행합니다. 2026-08-05 재생성 로그에서 pending migration 0건과 서버 시작 성공을 확인했습니다.
+현재 실행 컨테이너는 Compose 정의에 따라 `prisma migrate deploy`가 성공한 뒤 `npm run start:prod`를 실행합니다. 2026-08-05 `20260805090000_add_security_credential_lifecycle`을 포함한 10개 migration 적용, pending migration 0건과 서버 시작 성공을 확인했습니다. 해당 migration은 기존 appkey에 90일 만료 시각을 backfill하고 보안 감사 테이블을 생성합니다.
 
 ### 배포 전 확인
 
@@ -320,6 +323,7 @@ HTTP 노출 변수와 검증 절차는 [HTTP 노출 보안 정책](HTTP_EXPOSURE
 - Nest 기본 logging
 - correlation ID 응답
 - Bedrock와 knowledge query를 PostgreSQL에 일부 기록
+- appkey 발급·회전과 관리자 API 접근·인증 실패·권한 거부를 PostgreSQL `security_audit_events`에 기록
 - CloudWatch application log, Container Insights, trace, alert 설정 증거 없음
 - S3 server access logging 비활성
 
@@ -332,6 +336,7 @@ HTTP 노출 변수와 검증 절차는 [HTTP 노출 보안 정책](HTTP_EXPOSURE
 - container CPU/memory/restart/health metric
 - Bedrock token과 throttle metric
 - S3 access audit와 CloudTrail data event 범위 결정
+- 보안 감사 이벤트 retention, 외부 보관, 위변조 방지와 조회 권한 정책
 
 Guardrail PII masking을 사용하더라도 원본 요청이 model invocation log에 남을 수 있으므로 로그 목적지 암호화, 접근 제어와 retention을 별도로 적용해야 합니다.
 
@@ -387,6 +392,7 @@ RPO/RTO, DB backup 복구 시험, S3 version 복원 시험과 image rollback 절
 4. DB backup/PITR 확인과 복원 시험
 5. Block Public Access와 S3 access logging 정책
 6. 구조화 로그, metric, trace, alert
+7. 관리자 identity 인증과 감사 retention·중앙 보관
 
 ### P2 — 확장 가능한 목표 인프라
 
@@ -432,3 +438,4 @@ curl.exe -o public-openapi.json https://ai.hjshub.com/api-docs-json
 - [AI Server 실서비스 고도화 계획](AI_SERVER_HARDENING_PLAN.md)
 - [외부 앱 공통 API 명세 초안](COMMON_API_SPEC_DRAFT.md)
 - [기능·품질·성능 검증 전략](TEST_AND_PERFORMANCE_STRATEGY.md)
+- [Credential 수명주기와 감사 운영 가이드](CREDENTIAL_LIFECYCLE_AND_AUDIT.md)

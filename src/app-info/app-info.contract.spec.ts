@@ -16,6 +16,7 @@ describe('AppInfo appcode uniqueness contract', () => {
     const service = new AppInfoService(
       prisma as never,
       config as unknown as ConfigService,
+      { record: jest.fn().mockResolvedValue(true) } as never,
     );
 
     await expect(
@@ -36,13 +37,13 @@ describe('AppInfo appcode uniqueness contract', () => {
     const service = new AppInfoService(
       prisma as never,
       config as unknown as ConfigService,
+      { record: jest.fn().mockResolvedValue(true) } as never,
     );
 
     await expect(
       service.create({ appname: 'Support', appcode: 'SUPPORT' }),
     ).rejects.toThrow('APPKEY_JWT_SECRET is required');
     expect(prisma.appInfo.create).not.toHaveBeenCalled();
-    expect(config.get).toHaveBeenCalledTimes(1);
     expect(config.get).toHaveBeenCalledWith('APPKEY_JWT_SECRET');
   });
 });

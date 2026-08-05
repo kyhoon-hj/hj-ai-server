@@ -102,7 +102,7 @@
 - [x] `SEC-SRV-01` AppInfo platform-admin과 지식 운영자 API 역할 RBAC
 - [x] `SEC-SRV-02` 외부 appkey와 관리자 credential 분리
 - [x] `SEC-SRV-03` 고정 appkey secret fallback 제거 및 전용 secret 누락 시 fail-closed
-- [ ] `SEC-SRV-04` appkey 만료·회전·감사 이벤트 정책
+- [x] `SEC-SRV-04` appkey 만료·제한된 grace 회전, 관리자 이중 키 교체와 감사 이벤트 정책
 - [x] `SEC-SRV-05` `test-tables`, demo seed, config/models·legacy 지식 쓰기 기본 차단 및 관리자 대체 경로
 - [x] `SEC-SRV-06` exact-origin CORS allowlist 및 운영 Swagger 명시적 활성화 정책
 
@@ -110,7 +110,7 @@
 
 - 관리자 API 무인증 접근은 모두 401/403입니다.
 - tenant 교차 접근과 검색 결과 노출은 0건입니다.
-- 키 재발급 이후 이전 키는 즉시 사용할 수 없습니다.
+- 기본 회전에서는 이전 키가 즉시 폐기되고, 명시한 제한된 grace 회전에서는 종료 시각 뒤 사용할 수 없습니다.
 - 외부 소비자 키로 모델·system prompt·한도를 변경할 수 없습니다.
 
 ### 단계 2 — 지식 전체 생명주기와 파일 안전성
@@ -325,10 +325,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `SEC-SRV-04`: 관리자/appkey 만료·회전·감사 이벤트 정책
-2. `KNW-DEM-01`: 다중 형식 parser fixture 구성
-3. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
-4. `OBS-SRV-01`: 구조화 로그·metric·trace 상관관계
-5. `SEC-SRV-07`: raw Converse·text-response 호환 종료 여부 확정
+1. `KNW-DEM-01`: 다중 형식 parser fixture 구성
+2. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
+3. `OBS-SRV-01`: 구조화 로그·metric·trace 상관관계
+4. `SEC-SRV-07`: raw Converse·text-response 호환 종료 여부 확정
+5. `SEC-SRV-08`: 관리자 identity 기반 인증과 감사 보존 정책
 
-개발·legacy 운영 endpoint 경계가 기본 차단됐으므로 다음 작업은 credential 만료·회전·감사 정책과 다중 형식 지식 fixture에 집중합니다.
+credential 수명주기와 개발·legacy 운영 endpoint 경계를 자동 검증했으므로 다음 작업은 다중 형식 지식 fixture와 인덱싱 job 신뢰성에 집중합니다.

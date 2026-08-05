@@ -11,11 +11,12 @@
 
 | 구분 | 결과 | 증거 |
 |---|---:|---|
-| AI Server 단위 테스트 | 56/56 PASS | Jest 15 suites |
-| AI Server HTTP e2e | 12/12 PASS | AppInfo·지식 운영자·Bedrock 관리자 RBAC 포함 |
+| AI Server 단위 테스트 | 63/63 PASS | Jest 16 suites, appkey·관리자 이중 키 수명주기 포함 |
+| AI Server HTTP e2e | 14/14 PASS | AppInfo·지식 운영자·Bedrock 관리자 RBAC와 감사 조회 포함 |
 | Demo 단위 테스트 | 5/5 PASS | Node test runner |
 | setup | PASS | tenant 2개, fixture 3개 등록·인덱싱·게시 |
 | tenant isolation | 8/8 PASS | 파일 상세·목록·검색·양방향 Answer source 격리, 변조·회전·비활성 키 |
+| credential lifecycle | 4/4 PASS | JWT 만료, 2초 grace의 신·구 키 허용, 종료 뒤 이전 키 401, 회전 감사 이벤트 |
 | role-based access control | 6/6 PASS | 플랫폼 관리자·지식 운영자·외부 appkey 경계 |
 | core contract | 14/14 PASS | 상태·인증·correlation·Bedrock·RAG·legacy 차단 |
 | HTTP exposure | 4/4 PASS | Swagger 404, CORS 허용·비허용 Origin과 preflight |
@@ -40,10 +41,13 @@ CORS는 `CORS_ALLOWED_ORIGINS`의 정확한 http(s) Origin에만 응답하도록
 
 Legacy Bedrock config/models와 appkey 기반 지식 쓰기, demo seed, test-tables를 명시적 호환 플래그가 없으면 404로 차단했습니다. Bedrock 운영 조회는 platform-admin 전용 `/admin/v1/bedrock/*`로 이동했습니다. Swagger를 일시 활성화한 검증 환경에서 제외 대상 path 0건, 필수 관리자 path 누락 0건을 확인한 뒤 다시 비활성화했습니다.
 
+appkey에 JWT `exp`와 DB 만료 시각을 추가하고 기본 90일 수명, 최대 86,400초의 제한된 이전 키 grace를 적용했습니다. 관리자는 primary/previous 키와 종료 시각으로 무중단 교체할 수 있습니다. 발급·회전·관리자 접근·인증 실패·권한 거부는 PostgreSQL 감사 이벤트로 기록하며 platform-admin 전용 조회 API는 credential 원문과 hash를 반환하지 않습니다. migration 적용과 컨테이너 재빌드 후 수명주기 4/4 및 전체 회귀 시나리오를 다시 통과했습니다.
+
 ## 남은 위험
 
 - Legacy 경로 구현과 일시 활성화 플래그는 호환 진단을 위해 남아 있으므로 사용 관찰 후 코드와 플래그를 최종 제거해야 합니다.
-- 관리자·운영자 키 만료, 사용자별 식별, 감사 이벤트와 무중단 회전은 남아 있습니다.
+- 관리자·운영자 previous 키 종료와 무중단 교체는 지원하지만 정적 키에 자체 만료 claim이 없고 사용자별 identity를 식별하지 못합니다.
+- 감사 이벤트의 retention·중앙 보관·위변조 방지와 만료 previous appkey hash 정리 작업은 남아 있습니다.
 - tenant 데이터 경계는 파일·목록·검색·Answer source까지 자동화됐지만 source 내용의 정답률 평가는 별도 품질 dataset으로 확장해야 합니다.
 - production dependency audit에 high 5건, moderate 6건이 있어 영향 분석과 업그레이드가 필요합니다.
 - 전체 lint는 기존 Knowledge parser/chunking type-safety 규칙 5건 때문에 실패합니다. 이번 변경 파일의 빌드와 테스트는 통과했습니다.

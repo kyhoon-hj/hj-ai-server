@@ -587,6 +587,62 @@ async function runInternalExposureScenario() {
   return report;
 }
 
+async function runCredentialLifecycleScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeB = demoProfiles.get('hj-ai-demo-store-b');
+  if (!storeB) throw Object.assign(new Error('먼저 STORE_B 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.adminKey) throw Object.assign(new Error('관리자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  const tests = [];
+  const check = async (id, name, execute) => {
+    try {
+      const passed = await execute();
+      tests.push({ id, name, passed: Boolean(passed), reasons: passed ? [] : ['기대 조건을 충족하지 않았습니다.'] });
+    } catch (error) {
+      tests.push({ id, name, passed: false, reasons: [error.message] });
+    }
+  };
+  await check('LIFE-001', '현재 appkey에 미래 만료 시각이 있다', async () => {
+    const result = await callAdminUpstream(`/app-info/${storeB.id}`);
+    return result.status === 200 && Date.parse(result.body.appkeyExpiresAt) > Date.now();
+  });
+  const previousKey = storeB.appkey;
+  await check('LIFE-002', 'grace period 중 이전 키와 새 키를 함께 허용한다', async () => {
+    const rotated = requireUpstream(
+      await callAdminUpstream(`/app-info/${storeB.id}/appkey`, {
+        method: 'POST',
+        body: { gracePeriodSeconds: 2, ttlDays: 90 },
+      }),
+      'grace appkey 회전',
+    );
+    storeB.appkey = rotated.appkey;
+    const oldResult = await callUpstream('/knowledge/files', { appkey: previousKey });
+    const newResult = await callUpstream('/knowledge/files', { appkey: storeB.appkey });
+    return oldResult.status === 200 && newResult.status === 200 && Date.parse(rotated.previousAppkeyValidUntil) > Date.now();
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2200));
+  await check('LIFE-003', 'grace period 종료 후 이전 키를 즉시 거절한다', async () => {
+    const oldResult = await callUpstream('/knowledge/files', { appkey: previousKey });
+    const newResult = await callUpstream('/knowledge/files', { appkey: storeB.appkey });
+    return oldResult.status === 401 && newResult.status === 200;
+  });
+  await check('LIFE-004', 'appkey 회전 감사 이벤트를 조회할 수 있다', async () => {
+    const result = await callAdminUpstream('/admin/v1/security/audit-events', {
+      query: { eventType: 'APPKEY_ROTATED', appId: storeB.id, limit: 10 },
+    });
+    return result.status === 200 && Array.isArray(result.body) && result.body.some((event) => event.eventType === 'APPKEY_ROTATED' && event.appId === storeB.id && event.metadata?.gracePeriodSeconds === 2);
+  });
+  const report = {
+    type: 'credential-lifecycle',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    summary: { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length },
+    results: tests,
+  };
+  report.reportFile = await saveReport('credential-lifecycle', report);
+  return report;
+}
+
 async function cleanupDemoEnvironment() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
@@ -778,6 +834,11 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.confirmValidation !== true) throw Object.assign(new Error('운영 API 경계 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runInternalExposureScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/credential-lifecycle-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('credential 수명주기 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runCredentialLifecycleScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);

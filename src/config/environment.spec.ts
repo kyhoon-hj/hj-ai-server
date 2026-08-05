@@ -18,6 +18,8 @@ describe('validateEnvironment', () => {
     expect(validateEnvironment(validEnvironment)).toMatchObject({
       PORT: '11000',
       API_GLOBAL_PREFIX: '',
+      APPKEY_TTL_DAYS: '90',
+      APPKEY_MAX_ROTATION_GRACE_SECONDS: '86400',
     });
   });
 
@@ -78,6 +80,49 @@ describe('validateEnvironment', () => {
       }),
     ).toThrow(
       /ENABLE_TEST_TABLE_API must be.*ENABLE_LEGACY_BEDROCK_INSPECTION_API must be.*ENABLE_LEGACY_KNOWLEDGE_WRITE_API must be/,
+    );
+  });
+
+  it('appkey TTL과 최대 rotation grace 범위를 검증한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        APPKEY_TTL_DAYS: '0',
+        APPKEY_MAX_ROTATION_GRACE_SECONDS: '86401',
+      }),
+    ).toThrow(/APPKEY_TTL_DAYS must be.*APPKEY_MAX_ROTATION_GRACE_SECONDS/);
+  });
+
+  it('이전 관리자 credential은 만료 시각과 함께 설정해야 한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        ADMIN_API_KEY_PREVIOUS: 'd'.repeat(32),
+      }),
+    ).toThrow(/ADMIN_API_KEY_PREVIOUS.*must be set together/);
+  });
+
+  it('이전 관리자 credential의 만료 시각과 값 분리를 검증한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        ADMIN_API_KEY_PREVIOUS: validEnvironment.ADMIN_API_KEY,
+        ADMIN_API_KEY_PREVIOUS_VALID_UNTIL: 'not-a-date',
+      }),
+    ).toThrow(
+      /ADMIN_API_KEY_PREVIOUS_VALID_UNTIL must be.*ADMIN_API_KEY must differ from ADMIN_API_KEY_PREVIOUS/,
+    );
+  });
+
+  it('이전 관리자 credential 종료 시각은 완전한 ISO date-time이어야 한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        ADMIN_API_KEY_PREVIOUS: 'd'.repeat(32),
+        ADMIN_API_KEY_PREVIOUS_VALID_UNTIL: '2026',
+      }),
+    ).toThrow(
+      /ADMIN_API_KEY_PREVIOUS_VALID_UNTIL must be a valid ISO date-time/,
     );
   });
 

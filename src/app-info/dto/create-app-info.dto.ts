@@ -87,6 +87,18 @@ export class CreateAppInfoDto {
   monthlyTokenLimit?: number;
 
   @ApiPropertyOptional({
+    example: 90,
+    minimum: 1,
+    maximum: 3650,
+    description: '최초 발급 appkey 유효기간(일)입니다.',
+  })
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  @IsOptional()
+  appkeyTtlDays?: number;
+
+  @ApiPropertyOptional({
     example: { industry: 'retail', owner: 'demo-team' },
   })
   @IsObject()

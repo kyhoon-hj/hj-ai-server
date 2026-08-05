@@ -26,6 +26,24 @@ export class AppInfoEntity {
   @ApiProperty({ example: 'active', enum: ['active', 'inactive'] })
   status: string;
 
+  @ApiPropertyOptional({
+    example: '2026-11-03T00:00:00.000Z',
+    nullable: true,
+  })
+  appkeyExpiresAt: Date | null;
+
+  @ApiPropertyOptional({
+    example: '2026-08-05T09:00:00.000Z',
+    nullable: true,
+  })
+  appkeyRotatedAt: Date | null;
+
+  @ApiPropertyOptional({
+    example: '2026-08-05T09:05:00.000Z',
+    nullable: true,
+  })
+  previousAppkeyValidUntil: Date | null;
+
   @ApiPropertyOptional({ example: 'external-crm/knowledge', nullable: true })
   s3Prefix: string | null;
 

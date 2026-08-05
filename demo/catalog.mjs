@@ -17,6 +17,7 @@ export const operations = [
   { id: 'adminKnowledge.reindex', group: '지식 운영자', label: '관리자 지식 재인덱싱', method: 'POST', path: '/admin/v1/knowledge/apps/:appId/files/:id/reindex', auth: 'operator' },
   { id: 'bedrock.config', group: '플랫폼 관리자', label: 'Bedrock 설정', method: 'GET', path: '/admin/v1/bedrock/config', auth: 'admin' },
   { id: 'bedrock.models', group: '플랫폼 관리자', label: 'Bedrock 모델 목록', method: 'GET', path: '/admin/v1/bedrock/models', auth: 'admin' },
+  { id: 'security.audit', group: '플랫폼 관리자', label: '보안 감사 이벤트', method: 'GET', path: '/admin/v1/security/audit-events', auth: 'admin' },
   { id: 'bedrock.legacyConfig', group: 'Legacy (운영 차단)', label: 'Legacy Bedrock 설정', method: 'GET', path: '/bedrock/config' },
   { id: 'bedrock.legacyModels', group: 'Legacy (운영 차단)', label: 'Legacy Bedrock 모델 목록', method: 'GET', path: '/bedrock/models' },
   { id: 'bedrock.converse', group: 'Bedrock', label: 'Converse', method: 'POST', path: '/bedrock/converse', performanceSafe: true },

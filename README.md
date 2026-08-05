@@ -15,6 +15,8 @@ Copy `.env.example` to `.env` and set AWS credentials in your environment or AWS
 
 Set a unique 32-character-or-longer `ADMIN_API_KEY`. It must differ from `APPKEY_JWT_SECRET`; `/app-info/*` requires it in the `x-admin-key` header. Consumer appkeys cannot call administrator APIs.
 
+Consumer appkeys expire after `APPKEY_TTL_DAYS` (90 by default). Rotation can temporarily accept the previous key up to `APPKEY_MAX_ROTATION_GRACE_SECONDS`. Administrator credentials support a deployment-time primary/previous pair with an explicit previous-key expiry. See [Credential lifecycle and audit operations](docs/CREDENTIAL_LIFECYCLE_AND_AUDIT.md).
+
 Set a separate `KNOWLEDGE_OPERATOR_API_KEY` for `/admin/v1/knowledge/apps/:appId/*`. Platform administrators may also call these endpoints, while knowledge operators receive 403 from `/app-info/*`.
 
 For S3 uploads, set `AWS_S3_BUCKET`. `AWS_S3_CDN_URL` is optional and is used to build the returned public file URL.

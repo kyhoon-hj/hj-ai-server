@@ -17,6 +17,9 @@ const BOOLEAN_ENVIRONMENT_KEYS = [
   'ENABLE_LEGACY_KNOWLEDGE_WRITE_API',
 ] as const;
 
+const ISO_DATE_TIME_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
 function valueOf(config: Record<string, unknown>, key: string): string {
   const value = config[key];
   return typeof value === 'string' || typeof value === 'number'
@@ -56,6 +59,80 @@ export function validateEnvironment(
   ) {
     errors.push(
       'KNOWLEDGE_OPERATOR_API_KEY must differ from ADMIN_API_KEY and APPKEY_JWT_SECRET',
+    );
+  }
+
+  const previousCredentials = [
+    {
+      key: 'ADMIN_API_KEY_PREVIOUS',
+      validUntilKey: 'ADMIN_API_KEY_PREVIOUS_VALID_UNTIL',
+    },
+    {
+      key: 'KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS',
+      validUntilKey: 'KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS_VALID_UNTIL',
+    },
+  ] as const;
+  for (const pair of previousCredentials) {
+    const previous = valueOf(config, pair.key);
+    const validUntil = valueOf(config, pair.validUntilKey);
+    if (Boolean(previous) !== Boolean(validUntil)) {
+      errors.push(`${pair.key} and ${pair.validUntilKey} must be set together`);
+    }
+    if (previous && previous.length < 32) {
+      errors.push(`${pair.key} must be at least 32 characters`);
+    }
+    if (
+      validUntil &&
+      (!ISO_DATE_TIME_PATTERN.test(validUntil) ||
+        !Number.isFinite(Date.parse(validUntil)))
+    ) {
+      errors.push(`${pair.validUntilKey} must be a valid ISO date-time`);
+    }
+  }
+
+  const credentialValues = [
+    ['APPKEY_JWT_SECRET', appkeySecret],
+    ['ADMIN_API_KEY', adminApiKey],
+    ['KNOWLEDGE_OPERATOR_API_KEY', knowledgeOperatorApiKey],
+    ['ADMIN_API_KEY_PREVIOUS', valueOf(config, 'ADMIN_API_KEY_PREVIOUS')],
+    [
+      'KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS',
+      valueOf(config, 'KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS'),
+    ],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+  for (let index = 0; index < credentialValues.length; index += 1) {
+    for (
+      let comparison = index + 1;
+      comparison < credentialValues.length;
+      comparison += 1
+    ) {
+      if (credentialValues[index][1] === credentialValues[comparison][1]) {
+        errors.push(
+          `${credentialValues[index][0]} must differ from ${credentialValues[comparison][0]}`,
+        );
+      }
+    }
+  }
+
+  const appkeyTtlDays = Number(valueOf(config, 'APPKEY_TTL_DAYS') || 90);
+  if (
+    !Number.isInteger(appkeyTtlDays) ||
+    appkeyTtlDays < 1 ||
+    appkeyTtlDays > 3650
+  ) {
+    errors.push('APPKEY_TTL_DAYS must be an integer between 1 and 3650');
+  }
+
+  const maxRotationGraceSeconds = Number(
+    valueOf(config, 'APPKEY_MAX_ROTATION_GRACE_SECONDS') || 86400,
+  );
+  if (
+    !Number.isInteger(maxRotationGraceSeconds) ||
+    maxRotationGraceSeconds < 0 ||
+    maxRotationGraceSeconds > 86400
+  ) {
+    errors.push(
+      'APPKEY_MAX_ROTATION_GRACE_SECONDS must be an integer between 0 and 86400',
     );
   }
 
@@ -134,5 +211,7 @@ export function validateEnvironment(
     PORT: String(port),
     API_GLOBAL_PREFIX: prefix,
     SWAGGER_PATH: swaggerPath,
+    APPKEY_TTL_DAYS: String(appkeyTtlDays),
+    APPKEY_MAX_ROTATION_GRACE_SECONDS: String(maxRotationGraceSeconds),
   };
 }
