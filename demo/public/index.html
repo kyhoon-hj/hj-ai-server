@@ -30,7 +30,14 @@
           <p>appkey는 데모 서버 메모리에만 보관하며 브라우저로 다시 반환하지 않습니다.</p>
         </div>
         <form id="configForm" class="card form-grid">
-          <label>AI Server URL<input id="baseUrl" type="url" required placeholder="http://127.0.0.1:3000" /></label>
+          <div class="server-targets wide">
+            <div class="target-heading">
+              <strong>서버 환경</strong>
+              <span>환경을 선택한 뒤 연결 저장을 누르세요.</span>
+            </div>
+            <div id="serverTargets" class="target-grid" aria-label="AI Server 환경 선택"></div>
+          </div>
+          <label>AI Server URL<input id="baseUrl" type="url" required placeholder="http://127.0.0.1:11000/ai" /></label>
           <label>appkey<input id="appkey" type="password" autocomplete="off" placeholder="새 키를 설정할 때만 입력" /></label>
           <label>요청 timeout(ms)<input id="timeoutMs" type="number" min="1000" max="120000" step="1000" /></label>
           <div class="actions"><button class="primary" type="submit">연결 저장</button><button id="clearKey" class="secondary" type="button">키 제거</button></div>

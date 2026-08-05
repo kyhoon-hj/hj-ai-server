@@ -7,10 +7,12 @@ cd demo
 npm start
 ```
 
-브라우저에서 `http://127.0.0.1:3200`을 엽니다. 기본 AI Server 주소는 `http://127.0.0.1:3000`이며 화면에서 변경할 수 있습니다.
+브라우저에서 `http://127.0.0.1:3200`을 엽니다. 기본 AI Server 주소는 현재 로컬 컨테이너의 `http://127.0.0.1:11000/ai`입니다. 연결 화면에는 로컬 `http://127.0.0.1:11000/ai`와 운영 `https://ai.hjshub.com`이 표시되며 선택 후 저장할 수 있습니다.
 
 ```powershell
-$env:AI_SERVER_BASE_URL='http://127.0.0.1:11000'
+$env:AI_SERVER_BASE_URL='http://127.0.0.1:11000/ai'
+$env:AI_SERVER_LOCAL_URL='http://127.0.0.1:11000/ai'
+$env:AI_SERVER_PRODUCTION_URL='https://ai.hjshub.com'
 $env:AI_SERVER_APPKEY='<appkey>'
 $env:DEMO_PORT='3200'
 npm start

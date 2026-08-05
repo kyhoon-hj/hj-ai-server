@@ -5,7 +5,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { collectTotalTokens, evaluateExpectation, normalizeBaseUrl, percentile, renderPath } from './lib.mjs';
+import { collectTotalTokens, evaluateExpectation, identifyServerTarget, normalizeBaseUrl, percentile, renderPath } from './lib.mjs';
 import { findOperation, operations } from './catalog.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
@@ -15,13 +15,36 @@ const reportRoot = join(root, 'reports');
 const port = Number(process.env.DEMO_PORT ?? 3200);
 const host = process.env.DEMO_HOST ?? '127.0.0.1';
 const maxBodyBytes = 40 * 1024 * 1024;
+const serverTargets = [
+  {
+    id: 'local',
+    label: '로컬',
+    url: normalizeBaseUrl(process.env.AI_SERVER_LOCAL_URL ?? 'http://127.0.0.1:11000/ai'),
+  },
+  {
+    id: 'production',
+    label: '운영',
+    url: normalizeBaseUrl(process.env.AI_SERVER_PRODUCTION_URL ?? 'https://ai.hjshub.com'),
+  },
+];
 
 const runtime = {
-  baseUrl: normalizeBaseUrl(process.env.AI_SERVER_BASE_URL ?? 'http://127.0.0.1:3000'),
+  baseUrl: normalizeBaseUrl(process.env.AI_SERVER_BASE_URL ?? serverTargets[0].url),
   appkey: process.env.AI_SERVER_APPKEY ?? '',
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
   updatedAt: new Date().toISOString(),
 };
+
+function publicConfig() {
+  return {
+    baseUrl: runtime.baseUrl,
+    activeTarget: identifyServerTarget(runtime.baseUrl, serverTargets),
+    targets: serverTargets,
+    hasAppkey: Boolean(runtime.appkey),
+    timeoutMs: runtime.timeoutMs,
+    updatedAt: runtime.updatedAt,
+  };
+}
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -231,7 +254,7 @@ export const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
   try {
     if (request.method === 'GET' && url.pathname === '/api/config') {
-      return sendJson(response, 200, { baseUrl: runtime.baseUrl, hasAppkey: Boolean(runtime.appkey), timeoutMs: runtime.timeoutMs, updatedAt: runtime.updatedAt });
+      return sendJson(response, 200, publicConfig());
     }
     if (request.method === 'PUT' && url.pathname === '/api/config') {
       const input = await readJson(request);
@@ -240,7 +263,7 @@ export const server = createServer(async (request, response) => {
       if (input.clearAppkey === true) runtime.appkey = '';
       if (input.timeoutMs !== undefined) runtime.timeoutMs = Math.min(120000, Math.max(1000, Number(input.timeoutMs)));
       runtime.updatedAt = new Date().toISOString();
-      return sendJson(response, 200, { baseUrl: runtime.baseUrl, hasAppkey: Boolean(runtime.appkey), timeoutMs: runtime.timeoutMs, updatedAt: runtime.updatedAt });
+      return sendJson(response, 200, publicConfig());
     }
     if (request.method === 'GET' && url.pathname === '/api/catalog') return sendJson(response, 200, operations);
     if (request.method === 'POST' && url.pathname === '/api/invoke') {

@@ -3,14 +3,25 @@ import assert from 'node:assert/strict';
 import {
   collectTotalTokens,
   evaluateExpectation,
+  identifyServerTarget,
   normalizeBaseUrl,
   percentile,
   renderPath,
 } from '../lib.mjs';
 
 test('base URL을 정규화한다', () => {
-  assert.equal(normalizeBaseUrl('http://localhost:3000/'), 'http://localhost:3000');
+  assert.equal(normalizeBaseUrl('http://localhost:11000/'), 'http://localhost:11000');
   assert.throws(() => normalizeBaseUrl('file:///tmp/server'));
+});
+
+test('현재 URL에 해당하는 서버 환경을 식별한다', () => {
+  const targets = [
+    { id: 'local', url: 'http://127.0.0.1:11000/ai' },
+    { id: 'production', url: 'https://ai.hjshub.com' },
+  ];
+  assert.equal(identifyServerTarget('http://127.0.0.1:11000/ai/', targets), 'local');
+  assert.equal(identifyServerTarget('https://ai.hjshub.com', targets), 'production');
+  assert.equal(identifyServerTarget('https://staging.example.com', targets), 'custom');
 });
 
 test('경로 파라미터를 안전하게 렌더링한다', () => {

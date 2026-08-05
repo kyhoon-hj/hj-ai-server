@@ -53,12 +53,41 @@ function updateOperationMeta() {
   $('#requestBody').value = JSON.stringify(presets[operation.id] ?? {}, null, 2);
 }
 
+function renderServerTargets(config) {
+  const container = $('#serverTargets');
+  container.replaceChildren();
+  for (const target of config.targets) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `target-option${target.id === config.activeTarget ? ' active' : ''}`;
+    button.dataset.url = target.url;
+    button.setAttribute('aria-pressed', target.id === config.activeTarget ? 'true' : 'false');
+
+    const label = document.createElement('strong');
+    label.textContent = target.label;
+    const url = document.createElement('code');
+    url.textContent = target.url;
+    button.append(label, url);
+    button.addEventListener('click', () => {
+      $('#baseUrl').value = target.url;
+      document.querySelectorAll('.target-option').forEach((option) => {
+        const active = option === button;
+        option.classList.toggle('active', active);
+        option.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    });
+    container.append(button);
+  }
+}
+
 async function loadConfig() {
   const config = await api('/api/config');
   $('#baseUrl').value = config.baseUrl;
   $('#timeoutMs').value = config.timeoutMs;
+  renderServerTargets(config);
   const badge = $('#connectionBadge');
-  badge.textContent = `${config.baseUrl} · appkey ${config.hasAppkey ? '설정됨' : '없음'}`;
+  const targetLabel = config.targets.find((target) => target.id === config.activeTarget)?.label ?? '사용자 지정';
+  badge.textContent = `${targetLabel} · ${config.baseUrl} · appkey ${config.hasAppkey ? '설정됨' : '없음'}`;
   badge.classList.toggle('ready', config.hasAppkey);
 }
 

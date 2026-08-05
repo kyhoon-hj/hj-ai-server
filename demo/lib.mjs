@@ -9,6 +9,11 @@ export function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
+export function identifyServerTarget(baseUrl, targets) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  return targets.find((target) => normalizeBaseUrl(target.url) === normalizedBaseUrl)?.id ?? 'custom';
+}
+
 export function renderPath(template, params = {}) {
   const rendered = template.replace(/:([A-Za-z][A-Za-z0-9]*)/g, (_, key) => {
     const value = params[key];
