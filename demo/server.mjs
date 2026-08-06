@@ -23,12 +23,14 @@ const demoAppDefinitions = [
     appcode: 'hj-ai-demo-store-a',
     appname: 'HJ AI 검증 STORE_A',
     fixtures: ['store-a-policy.md', 'store-a-products.csv'],
+    parserFixtures: ['store-a-returns-guide.pdf', 'store-a-service-manual.docx', 'store-a-inventory.xlsx'],
     productCodes: ['STORE_A'],
   },
   {
     appcode: 'hj-ai-demo-store-b',
     appname: 'HJ AI 검증 STORE_B',
     fixtures: ['store-b-policy.md'],
+    parserFixtures: [],
     productCodes: ['STORE_B'],
   },
 ];
@@ -215,7 +217,9 @@ async function callUpstream(path, options = {}) {
   if (options.appkey) headers.appkey = options.appkey;
   if (options.adminKey) headers['x-admin-key'] = options.adminKey;
   const init = { method: options.method ?? 'GET', headers, signal: AbortSignal.timeout(runtime.timeoutMs) };
-  if (options.body !== undefined) {
+  if (options.formData) {
+    init.body = options.formData;
+  } else if (options.body !== undefined) {
     headers['content-type'] = 'application/json';
     init.body = JSON.stringify(options.body);
   }
@@ -284,9 +288,48 @@ async function ensureDemoProfile(definition, fixtureVersion) {
         },
       });
   const app = requireUpstream(appResult, existing ? '데모 appkey 회전' : '데모 앱 생성');
-  const profile = { id: app.id, appcode: app.appcode, appkey: app.appkey, fileIds: [] };
+  const profile = { id: app.id, appcode: app.appcode, appkey: app.appkey, fileIds: [], parserFixtures: {} };
   demoProfiles.set(profile.appcode, profile);
   return profile;
+}
+
+async function ensureParserFixture(profile, definition, descriptor, existingFiles) {
+  let file = existingFiles.find((candidate) => candidate.originalName === descriptor.name);
+  if (!file) {
+    const fixtureBody = await readFile(join(root, 'fixtures', descriptor.name));
+    const formData = new FormData();
+    formData.append('file', new Blob([fixtureBody], { type: descriptor.contentType }), descriptor.name);
+    file = requireUpstream(
+      await callOperatorUpstream(`/admin/v1/knowledge/apps/${profile.id}/files`, {
+        method: 'POST',
+        formData,
+      }),
+      `${descriptor.name} 업로드`,
+    );
+    existingFiles.unshift(file);
+  }
+
+  const indexed = requireUpstream(
+    await callOperatorUpstream(`/admin/v1/knowledge/apps/${profile.id}/files/${file.id}/reindex`, { method: 'POST' }),
+    `${descriptor.name} parser·인덱싱`,
+  );
+  requireUpstream(
+    await callOperatorUpstream(`/admin/v1/knowledge/apps/${profile.id}/files/${file.id}/policy`, {
+      method: 'PATCH',
+      body: {
+        accessLevel: 'PUBLIC',
+        businessStatus: 'PUBLISHED',
+        productCodes: definition.productCodes,
+      },
+    }),
+    `${descriptor.name} 공개 정책 적용`,
+  );
+
+  profile.fileIds.push(file.id);
+  profile.parserFixtures[descriptor.name] = {
+    fileId: file.id,
+    chunkCount: indexed.chunkCount,
+  };
 }
 
 async function setupDemoEnvironment() {
@@ -317,17 +360,97 @@ async function setupDemoEnvironment() {
       );
       profile.fileIds.push(created.fileId);
     }
+    const existingFiles = requireUpstream(
+      await callOperatorUpstream(`/admin/v1/knowledge/apps/${profile.id}/files`),
+      `${definition.appcode} 파일 목록 조회`,
+    );
+    for (const fixtureName of definition.parserFixtures) {
+      const descriptor = manifest.parserFixtures.find((candidate) => candidate.name === fixtureName);
+      if (!descriptor) throw new Error(`manifest에 parser fixture가 없습니다: ${fixtureName}`);
+      await ensureParserFixture(profile, definition, descriptor, existingFiles);
+    }
     profiles.push(profile);
   }
   runtime.appkey = demoProfiles.get('hj-ai-demo-store-a').appkey;
   runtime.updatedAt = new Date().toISOString();
   const report = {
     type: 'setup',
-    ...(await reportContext('1.0.0')),
+    ...(await reportContext('2.0.0')),
     startedAt,
-    profiles: profiles.map((profile) => ({ id: profile.id, appcode: profile.appcode, fileIds: profile.fileIds, status: 'ready' })),
+    profiles: profiles.map((profile) => ({
+      id: profile.id,
+      appcode: profile.appcode,
+      fileIds: profile.fileIds,
+      parserFixtures: profile.parserFixtures,
+      status: 'ready',
+    })),
   };
   report.reportFile = await saveReport('setup', report);
+  return report;
+}
+
+async function runParserRegressionScenario() {
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  if (!storeA) throw Object.assign(new Error('먼저 STORE_A 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  const manifest = JSON.parse(await readFile(fixtureManifestPath, 'utf8'));
+  const tests = [];
+  const check = async (id, name, execute) => {
+    try {
+      const passed = await execute();
+      tests.push({ id, name, passed: Boolean(passed), reasons: passed ? [] : ['기대 조건을 충족하지 않았습니다.'] });
+    } catch (error) {
+      tests.push({ id, name, passed: false, reasons: [error.message] });
+    }
+  };
+
+  for (const [index, descriptor] of manifest.parserFixtures.entries()) {
+    const fixture = storeA.parserFixtures[descriptor.name];
+    await check(`PAR-${String(index * 2 + 1).padStart(3, '0')}`, `${descriptor.name} parser metadata와 chunk 수가 일치한다`, async () => {
+      if (!fixture) return false;
+      const detail = await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fixture.fileId}`);
+      if (!detail.ok) return false;
+      const parsed = detail.body.metadata?.parsed;
+      const sheetsMatch = !descriptor.sheetNames || descriptor.sheetNames.every((sheetName) => parsed?.sheetNames?.includes(sheetName));
+      const pagesMatch = !descriptor.pageCount || parsed?.pageCount === descriptor.pageCount;
+      return detail.body.status === 'indexed'
+        && detail.body._count?.chunks >= descriptor.minimumChunkCount
+        && parsed?.parser === descriptor.parser
+        && parsed?.sourceType === descriptor.sourceType
+        && sheetsMatch
+        && pagesMatch;
+    });
+
+    await check(`PAR-${String(index * 2 + 2).padStart(3, '0')}`, `${descriptor.name} 고유 표식을 검색할 수 있다`, async () => {
+      if (!fixture) return false;
+      const result = await callUpstream('/knowledge/search', {
+        method: 'POST',
+        appkey: storeA.appkey,
+        body: {
+          query: descriptor.searchMarker,
+          limit: 20,
+          scoreThreshold: -1,
+          filters: { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'] },
+        },
+      });
+      return result.ok && result.body.matches.some((match) =>
+        match.fileId === fixture.fileId
+        && match.content.includes(descriptor.searchMarker)
+        && match.metadata?.sourceType === descriptor.sourceType,
+      );
+    });
+  }
+
+  const summary = { total: tests.length, passed: tests.filter((test) => test.passed).length, failed: tests.filter((test) => !test.passed).length };
+  const report = {
+    type: 'parser-regression',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    summary,
+    results: tests,
+  };
+  report.reportFile = await saveReport('parser-regression', report);
   return report;
 }
 
@@ -661,7 +784,7 @@ async function cleanupDemoEnvironment() {
   demoProfiles.clear();
   runtime.appkey = '';
   runtime.updatedAt = new Date().toISOString();
-  const report = { type: 'cleanup', ...(await reportContext('1.0.0')), startedAt, cleaned };
+  const report = { type: 'cleanup', ...(await reportContext('2.0.0')), startedAt, cleaned };
   report.reportFile = await saveReport('cleanup', report);
   return report;
 }
@@ -839,6 +962,11 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.confirmValidation !== true) throw Object.assign(new Error('credential 수명주기 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runCredentialLifecycleScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/parser-regression-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('parser 회귀 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runParserRegressionScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);

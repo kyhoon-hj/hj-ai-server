@@ -1,4 +1,39 @@
 {
-  "version": "1.0.0",
-  "files": ["store-a-policy.md", "store-a-products.csv", "store-b-policy.md"]
+  "version": "2.0.0",
+  "files": [
+    "store-a-policy.md",
+    "store-a-products.csv",
+    "store-b-policy.md",
+    "store-a-returns-guide.pdf",
+    "store-a-service-manual.docx",
+    "store-a-inventory.xlsx"
+  ],
+  "parserFixtures": [
+    {
+      "name": "store-a-returns-guide.pdf",
+      "contentType": "application/pdf",
+      "sourceType": "pdf",
+      "parser": "pdf-parse",
+      "searchMarker": "PDF-RMA-4827",
+      "minimumChunkCount": 2,
+      "pageCount": 2
+    },
+    {
+      "name": "store-a-service-manual.docx",
+      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "sourceType": "docx",
+      "parser": "mammoth",
+      "searchMarker": "DOCX-PAIR-7319",
+      "minimumChunkCount": 1
+    },
+    {
+      "name": "store-a-inventory.xlsx",
+      "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sourceType": "xlsx",
+      "parser": "xlsx",
+      "searchMarker": "XLSX-SVC-882",
+      "minimumChunkCount": 6,
+      "sheetNames": ["Inventory", "Support"]
+    }
+  ]
 }

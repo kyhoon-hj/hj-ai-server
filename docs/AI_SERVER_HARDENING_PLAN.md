@@ -28,6 +28,7 @@
 - 요청 timeout 및 abort 전파
 - 인덱싱을 queue 기반 비동기 job으로 전환
 - chunk embedding 동시성 제한과 부분 실패 재시도
+- [x] PDF page, DOCX text/table, XLSX sheet/row metadata parser 회귀 자동화
 - quota 확인과 사용량 기록을 원자적으로 처리
 - 구조화 로그, metrics, distributed trace, alert 추가
 - 질문·응답 로그의 PII 마스킹, 암호화, 보존기간 적용

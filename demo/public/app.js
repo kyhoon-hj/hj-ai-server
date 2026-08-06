@@ -124,6 +124,7 @@ async function loadDemoState() {
   $('#runTenantValidation').disabled = !state.ready;
   $('#runInternalExposure').disabled = !state.ready;
   $('#runCredentialLifecycle').disabled = !state.ready;
+  $('#runParserRegression').disabled = !state.ready;
   return state;
 }
 
@@ -212,6 +213,14 @@ $('#runCredentialLifecycle').addEventListener('click', async () => {
     body: JSON.stringify({ confirmValidation: true }),
   }));
   if (report) await loadDemoState();
+});
+
+$('#runParserRegression').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runParserRegression'), '검증 중...', () => api('/api/demo/parser-regression-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`parser 회귀: ${report.summary.passed}/${report.summary.total} PASS`);
 });
 
 $('#cleanupDemoData').addEventListener('click', async () => {

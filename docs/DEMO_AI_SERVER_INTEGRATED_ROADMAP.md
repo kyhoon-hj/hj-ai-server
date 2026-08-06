@@ -119,7 +119,7 @@
 
 #### 데모
 
-- [ ] `KNW-DEM-01` TXT/MD/JSON/CSV/PDF/DOCX/XLS/XLSX fixture 구성
+- [x] `KNW-DEM-01` 현재 지원 형식 MD/CSV/PDF/DOCX/XLSX fixture 구성과 parser 회귀 자동화
 - [ ] `KNW-DEM-02` upload → index → policy → search → answer 자동 흐름
 - [ ] `KNW-DEM-03` reindex, archive, S3 삭제와 중복 실행 시나리오
 - [ ] `KNW-DEM-04` 확장자 위장·빈 문서·손상 문서·대용량 문서 시나리오
@@ -325,10 +325,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `KNW-DEM-01`: 다중 형식 parser fixture 구성
-2. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
+1. `KNW-SRV-01`: 인덱싱 job 상태·재시도·중복 실행 제어
+2. `KNW-DEM-04`: 확장자 위장·빈 문서·손상 문서·대용량 문서 시나리오
 3. `OBS-SRV-01`: 구조화 로그·metric·trace 상관관계
 4. `SEC-SRV-07`: raw Converse·text-response 호환 종료 여부 확정
 5. `SEC-SRV-08`: 관리자 identity 기반 인증과 감사 보존 정책
 
-credential 수명주기와 개발·legacy 운영 endpoint 경계를 자동 검증했으므로 다음 작업은 다중 형식 지식 fixture와 인덱싱 job 신뢰성에 집중합니다.
+다중 형식 정상 fixture의 업로드·인덱싱·metadata·검색을 자동 검증했으므로 다음 작업은 인덱싱 job 신뢰성과 악성·경계 파일 안전성에 집중합니다.

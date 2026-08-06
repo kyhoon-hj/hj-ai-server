@@ -10,7 +10,7 @@
 | Bedrock | text response | O |  | O | 공통 API 유지 여부 결정 |
 | Bedrock | general answer | O | O | O | 위험 질문 기준 dataset 확장 |
 | Storage | upload·list·detail·download | O |  |  | streaming·용량 제한 시험 |
-| Knowledge | 파일 업로드 | O |  |  | PDF/DOCX/XLSX parser 회귀 |
+| Knowledge | 파일 업로드 | O | PDF/DOCX/XLSX parser·검색 6/6 |  | 손상·위장·대용량 파일 회귀 |
 | Knowledge | 직접 텍스트·seed | 운영자 API | fixture setup·legacy 404 |  | legacy flag 최종 제거 |
 | Knowledge | index·reindex | O |  |  | 비동기 job·retry·중복 실행 |
 | Knowledge | 정책·보관·S3 삭제 | O | cleanup |  | role 및 감사 로그 검증 |

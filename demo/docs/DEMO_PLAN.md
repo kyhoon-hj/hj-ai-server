@@ -48,6 +48,7 @@ demo/
 - 핵심 계약 시나리오
 - 제한 부하 시험
 - Markdown/CSV fixture
+- 실제 PDF/DOCX/XLSX 바이너리 fixture와 형식별 metadata·검색 marker 회귀 시험
 - STORE_A/STORE_B tenant 격리용 버전 fixture manifest와 자동 setup/cleanup
 - 교차 파일 상세·목록·검색, 변조 키, 키 회전, 비활성 키 자동 검증
 - 결과 JSON 저장
@@ -60,7 +61,6 @@ demo/
 - `/v1` 외부 소비자 API 시나리오 추가
 - 관리자 identity 인증과 감사 retention 검증
 - STORE_A/STORE_B source 정답률 품질 시험
-- PDF/DOCX/XLSX fixture와 parser 회귀 시험
 - 인덱싱 비동기 job 상태 시험
 - retry/timeout/throttling fault injection
 - RAG 기준 질문과 예상 source를 이용한 품질 점수
