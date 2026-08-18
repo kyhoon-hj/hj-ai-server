@@ -34,22 +34,22 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 ## 3. 현재 기준선
 
-| 항목                  | 현재 상태                                              | 목표                                   |
-| --------------------- | ------------------------------------------------------ | -------------------------------------- |
-| AI Server build       | PASS                                                   | 계속 PASS                              |
-| 단위 테스트           | 67/67 PASS                                             | 핵심 서비스 branch 80% 이상            |
-| 검증 데모 자체 테스트 | 6/6 PASS                                               | 시나리오·fixture 변경마다 계속 PASS    |
-| E2E                   | 환경 의존 시험 수동 실행                               | 외부·관리·지식 생명주기 전체 자동 실행 |
-| line coverage         | 30.34%                                                 | 핵심 서비스 80% 이상                   |
-| typecheck             | PASS                                                   | 계속 PASS                              |
-| lint                  | PASS                                                   | 계속 PASS                              |
-| dependency audit      | 전체 High 9, Moderate 5; production High 8, Moderate 5 | High 0 또는 승인 예외                  |
-| DB migration          | 로컬 readiness PASS, 재배포 전 status 재확인 필요      | 배포 환경과 schema 일치                |
-| 검증 데모             | 핵심 계약·보안·parser 검증과 제한 성능 러너            | 전체 자동 검증 및 승인 리포트          |
-| 서비스 데모           | 미구현                                                 | 마트 고객응대 MVP 후 매출 분석 확장    |
-| 외부 API              | 기존 내부 endpoint 혼재                                | `/v1` 안정 계약 확정                   |
-| 관리자 API            | API key 기반 관리자·지식 운영자 RBAC 적용              | identity 기반 인증과 감사 보존 정책    |
-| 관측성                | correlation ID와 DB log 일부                           | 로그·metric·trace·alert 연결           |
+| 항목                  | 현재 상태                                         | 목표                                   |
+| --------------------- | ------------------------------------------------- | -------------------------------------- |
+| AI Server build       | PASS                                              | 계속 PASS                              |
+| 단위 테스트           | 67/67 PASS                                        | 핵심 서비스 branch 80% 이상            |
+| 검증 데모 자체 테스트 | 6/6 PASS                                          | 시나리오·fixture 변경마다 계속 PASS    |
+| E2E                   | 환경 의존 시험 수동 실행                          | 외부·관리·지식 생명주기 전체 자동 실행 |
+| line coverage         | 30.34%                                            | 핵심 서비스 80% 이상                   |
+| typecheck             | PASS                                              | 계속 PASS                              |
+| lint                  | PASS                                              | 계속 PASS                              |
+| dependency audit      | 전체·production High 4, Moderate 0                | High 0 또는 승인 예외                  |
+| DB migration          | 로컬 readiness PASS, 재배포 전 status 재확인 필요 | 배포 환경과 schema 일치                |
+| 검증 데모             | 핵심 계약·보안·parser 검증과 제한 성능 러너       | 전체 자동 검증 및 승인 리포트          |
+| 서비스 데모           | 미구현                                            | 마트 고객응대 MVP 후 매출 분석 확장    |
+| 외부 API              | 기존 내부 endpoint 혼재                           | `/v1` 안정 계약 확정                   |
+| 관리자 API            | API key 기반 관리자·지식 운영자 RBAC 적용         | identity 기반 인증과 감사 보존 정책    |
+| 관측성                | correlation ID와 DB log 일부                      | 로그·metric·trace·alert 연결           |
 
 기준선 수치는 코드 또는 환경 변경 시 다시 측정하고 이 표와 실행 리포트를 함께 갱신합니다.
 
@@ -97,7 +97,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [~] `ENV-SRV-02` migration 중복 appcode 확인 완료, 중복 데이터 복구 리허설 예정
 - [x] `ENV-SRV-03` startup 필수 환경변수 validation
 - [x] `ENV-SRV-04` live/readiness endpoint 분리
-- [~] `QLT-SRV-01` typecheck·lint 오류 0건 완료, production dependency High 정리 예정
+- [~] `QLT-SRV-01` typecheck·lint 오류 0건, dependency High 9→4 완료; Prisma·XLSX 잔여 위험 처리 예정
 
 #### 서비스 데모
 
@@ -465,7 +465,7 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `QLT-SRV-01`: production dependency High 정리와 위험 수용 기준 확정
+1. `QLT-SRV-01`: Prisma 전이 취약점의 안전한 수정 버전 추적과 XLSX parser 교체·격리
 2. `QLT-DEM-01`: build·typecheck·lint·unit·demo test CI 게이트 연결
 3. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
 4. `KNW-DEM-02~05`와 `KNW-SRV-01~06`: 지식 생명주기와 파일 안전성 완성
