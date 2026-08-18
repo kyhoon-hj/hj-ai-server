@@ -50,4 +50,23 @@ describe('ChunkingService', () => {
       sectionChunkIndex: 0,
     });
   });
+
+  it('treats a non-string source type as plain text', () => {
+    const chunks = service.createChunks(
+      [
+        {
+          title: 'invalid-metadata.txt',
+          content: 'A'.repeat(40),
+          metadata: { sourceType: { unexpected: true } },
+        },
+      ],
+      { chunkSize: 20, overlap: 5 },
+    );
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0].metadata).toMatchObject({
+      chunkStrategy: 'text-window',
+      sourceType: { unexpected: true },
+    });
+  });
 });

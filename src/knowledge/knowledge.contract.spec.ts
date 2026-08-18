@@ -9,38 +9,29 @@ describe('KnowledgeService provider contract', () => {
   }) => {
     let capturedQuery: unknown;
     let loggedRequestId: string | undefined;
-    const queryLogCreate = jest
-      .fn<
-        (args: {
-          data: { requestId?: string };
-        }) => Promise<Record<string, never>>
-      >()
-      .mockImplementation((args: { data: { requestId?: string } }) => {
-        loggedRequestId = args.data.requestId;
-        return Promise.resolve({});
-      });
+    const queryLogCreate = jest.fn((args: { data: { requestId?: string } }) => {
+      loggedRequestId = args.data.requestId;
+      return Promise.resolve({});
+    });
     const chunkFindMany = jest
       .fn()
       .mockResolvedValue(options?.memoryMatches ?? []);
-    const queryRaw = jest.fn<(query: unknown) => Promise<unknown[]>>(
-      (query: unknown) => {
-        capturedQuery = query;
+    const queryRaw = jest.fn((query: unknown): Promise<unknown[]> => {
+      capturedQuery = query;
 
-        if (options?.rawError) {
-          return Promise.reject(
-            options.rawError instanceof Error
-              ? options.rawError
-              : new Error(
-                  typeof options.rawError === 'string'
-                    ? options.rawError
-                    : 'mock raw query error',
-                ),
-          );
-        }
-
-        return Promise.resolve(options?.rawMatches ?? []);
-      },
-    );
+      if (options?.rawError) {
+        return Promise.reject(
+          options.rawError instanceof Error
+            ? options.rawError
+            : new Error(
+                typeof options.rawError === 'string'
+                  ? options.rawError
+                  : 'mock raw query error',
+              ),
+        );
+      }
+      return Promise.resolve(options?.rawMatches ?? []);
+    });
     const prisma = {
       $queryRaw: queryRaw,
       knowledgeChunk: { findMany: chunkFindMany },

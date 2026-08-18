@@ -28,7 +28,10 @@ export class EmbeddingService {
     );
   }
 
-  async createEmbedding(text: string, modelId = this.getDefaultEmbeddingModelId()) {
+  async createEmbedding(
+    text: string,
+    modelId = this.getDefaultEmbeddingModelId(),
+  ) {
     const maxAttempts =
       this.configService.get<number>('BEDROCK_EMBEDDING_MAX_ATTEMPTS') ?? 3;
     let lastError: unknown;

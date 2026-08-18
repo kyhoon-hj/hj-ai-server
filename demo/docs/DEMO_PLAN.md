@@ -1,4 +1,4 @@
-# 데모 개발 계획
+# 검증 데모 개발 계획
 
 전체 실행 순서, 서버 개선 작업 ID와 단계별 승인 기준은
 [`docs/DEMO_AI_SERVER_INTEGRATED_ROADMAP.md`](../../docs/DEMO_AI_SERVER_INTEGRATED_ROADMAP.md)를 기준으로 합니다.
@@ -6,6 +6,8 @@
 ## 목적
 
 이 데모의 주목적은 업무 화면 시연이 아니라 HJ AI Server를 실사용 수준으로 고도화하기 위한 반복 가능한 시험 환경을 제공하는 것입니다. AI Server를 블랙박스 HTTP API로 호출해 기능, 계약, 보안 경계, RAG 품질과 성능을 확인합니다.
+
+마트 고객응대·상담원·매출 분석처럼 실제 사용자 경험을 보여주는 애플리케이션은 `service-demo/`로 분리합니다. 서비스 데모의 계획과 단계는 [`docs/SERVICE_DEMO_PLAN.md`](../../docs/SERVICE_DEMO_PLAN.md)를 따르며, 이 검증 데모가 PASS한 공개 계약만 사용합니다.
 
 ## 설계 원칙
 

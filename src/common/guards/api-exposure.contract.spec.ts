@@ -12,6 +12,9 @@ function methodPolicy(
   method: string,
 ): ApiExposurePolicy | undefined {
   const handler = (controller as Record<string, unknown>)[method];
+  if (typeof handler !== 'function') {
+    return undefined;
+  }
   const metadata = Reflect.getMetadata(
     API_EXPOSURE_POLICY_KEY,
     handler,

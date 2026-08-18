@@ -21,7 +21,7 @@ describe('AdminApiKeyGuard contract', () => {
         switchToHttp: () => ({ getRequest: () => request }),
         getHandler: () => contextWithHeaders,
         getClass: () => AdminApiKeyGuard,
-      } as ExecutionContext,
+      } as unknown as ExecutionContext,
     };
   };
 
@@ -78,7 +78,12 @@ describe('AdminApiKeyGuard contract', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it.each([{}, { 'x-admin-key': 'wrong-key' }])(
+  const invalidHeaders: Array<Record<string, string>> = [
+    {},
+    { 'x-admin-key': 'wrong-key' },
+  ];
+
+  it.each(invalidHeaders)(
     'rejects a missing or invalid administrator key',
     async (headers) => {
       await expect(

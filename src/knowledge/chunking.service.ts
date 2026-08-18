@@ -18,7 +18,7 @@ export class ChunkingService {
     options: ChunkingOptions = {},
   ): KnowledgeChunkInput[] {
     return sections.flatMap((section, sectionIndex) => {
-      const sourceType = String(section.metadata?.sourceType ?? 'text');
+      const sourceType = this.getSourceType(section);
 
       if (this.isStructuredRowSource(sourceType)) {
         return this.createStructuredRowChunks(section, sectionIndex);
@@ -66,7 +66,7 @@ export class ChunkingService {
       return [];
     }
 
-    const sourceType = String(section.metadata?.sourceType ?? 'text');
+    const sourceType = this.getSourceType(section);
     const chunkSize = options.chunkSize ?? this.getDefaultChunkSize(sourceType);
     const overlap = options.overlap ?? this.getDefaultOverlap(sourceType);
     const chunks: KnowledgeChunkInput[] = [];
@@ -121,7 +121,15 @@ export class ChunkingService {
   }
 
   private isStructuredRowSource(sourceType: string) {
-    return sourceType === 'xlsx' || sourceType === 'xls' || sourceType === 'csv-row';
+    return (
+      sourceType === 'xlsx' || sourceType === 'xls' || sourceType === 'csv-row'
+    );
+  }
+
+  private getSourceType(section: ParsedDocumentSection) {
+    const sourceType = section.metadata?.sourceType;
+
+    return typeof sourceType === 'string' ? sourceType : 'text';
   }
 
   private getDefaultChunkSize(sourceType: string) {

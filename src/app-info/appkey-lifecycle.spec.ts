@@ -3,7 +3,12 @@ import { AppInfoService } from './app-info.service';
 
 describe('AppInfo appkey lifecycle', () => {
   it('발급 만료와 rotation grace window를 적용한다', async () => {
-    let state: Record<string, unknown> | null = null;
+    type AppState = Record<string, unknown> & {
+      previousAppkeyValidUntil?: Date;
+      appkeyExpiresAt?: Date;
+    };
+    let state: AppState | null = null;
+    const getState = (): AppState | null => state;
     const appInfo = {
       findFirst: jest.fn((args: { where: Record<string, unknown> }) => {
         if ('appcode' in args.where) return null;
@@ -87,8 +92,9 @@ describe('AppInfo appkey lifecycle', () => {
       },
     );
 
-    if (!state) throw new Error('app state is required');
-    state.previousAppkeyValidUntil = new Date(Date.now() - 1);
+    const stateAfterRotation = getState();
+    if (!stateAfterRotation) throw new Error('app state is required');
+    stateAfterRotation.previousAppkeyValidUntil = new Date(Date.now() - 1);
     await expect(service.validateAppKey(created.appkey)).resolves.toBeNull();
     await expect(service.validateAppKey(rotated.appkey)).resolves.toMatchObject(
       {
@@ -99,8 +105,11 @@ describe('AppInfo appkey lifecycle', () => {
     const rotatedPayload = JSON.parse(
       Buffer.from(rotated.appkey.split('.')[1], 'base64url').toString('utf8'),
     ) as { exp: number };
-    if (!state) throw new Error('app state is required');
-    state.appkeyExpiresAt = new Date((rotatedPayload.exp + 86_400) * 1000);
+    const stateBeforeExpiry = getState();
+    if (!stateBeforeExpiry) throw new Error('app state is required');
+    stateBeforeExpiry.appkeyExpiresAt = new Date(
+      (rotatedPayload.exp + 86_400) * 1000,
+    );
     jest.useFakeTimers().setSystemTime((rotatedPayload.exp + 1) * 1000);
     try {
       await expect(service.validateAppKey(rotated.appkey)).resolves.toBeNull();
