@@ -7,7 +7,15 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { collectTotalTokens, evaluateExpectation, identifyServerTarget, normalizeBaseUrl, percentile, renderPath } from './lib.mjs';
+import {
+  collectTotalTokens,
+  evaluateExpectation,
+  evaluateKnowledgeLifecycleStep,
+  identifyServerTarget,
+  normalizeBaseUrl,
+  percentile,
+  renderPath,
+} from './lib.mjs';
 import { findOperation, operations } from './catalog.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
@@ -50,8 +58,8 @@ const serverTargets = [
 const runtime = {
   baseUrl: normalizeBaseUrl(process.env.AI_SERVER_BASE_URL ?? serverTargets[0].url),
   appkey: process.env.AI_SERVER_APPKEY ?? '',
-  adminKey: process.env.AI_SERVER_ADMIN_API_KEY ?? '',
-  operatorKey: process.env.AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY ?? '',
+  adminKey: process.env.AI_SERVER_ADMIN_API_KEY ?? process.env.ADMIN_API_KEY ?? '',
+  operatorKey: process.env.AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY ?? process.env.KNOWLEDGE_OPERATOR_API_KEY ?? '',
   swaggerPath: (process.env.AI_SERVER_SWAGGER_PATH ?? 'api-docs').replace(/^\/+|\/+$/g, ''),
   corsAllowedOrigin: process.env.AI_SERVER_CORS_ALLOWED_ORIGIN ?? 'http://127.0.0.1:3200',
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
@@ -451,6 +459,154 @@ async function runParserRegressionScenario() {
     results: tests,
   };
   report.reportFile = await saveReport('parser-regression', report);
+  return report;
+}
+
+function lifecycleEvidence(step, body, fileId) {
+  if (!body || typeof body !== 'object') return { bodyType: typeof body };
+  if (step === 'policy') {
+    return {
+      fileId: body.id,
+      accessLevel: body.accessLevel,
+      businessStatus: body.businessStatus,
+      productCodes: body.productCodes,
+    };
+  }
+  if (step === 'search') {
+    return {
+      count: body.count,
+      matchedFileIds: body.matches?.map((match) => match.fileId) ?? [],
+    };
+  }
+  if (step === 'answer') {
+    return {
+      answerable: body.answerable,
+      retrieval: body.retrieval,
+      sourceFileIds: body.sources?.map((source) => source.fileId) ?? [],
+    };
+  }
+  return {
+    fileId: body.id ?? body.fileId ?? fileId,
+    status: body.status,
+    chunkCount: body.chunkCount ?? body._count?.chunks,
+    deletedObject: body.metadata?.deletedObject,
+  };
+}
+
+async function runKnowledgeLifecycleScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  if (!storeA) throw Object.assign(new Error('먼저 STORE_A 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.operatorKey) throw Object.assign(new Error('지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+
+  const marker = `KNW-LIFE-${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
+  const productCode = 'LIFECYCLE';
+  const fileName = `knowledge-lifecycle-${marker.toLowerCase()}.md`;
+  const content = [
+    `검증 표식: ${marker}`,
+    `상품 코드: ${productCode}`,
+    `고객응대 정책: ${marker} 상품은 구매 후 30일 이내 영수증과 함께 서비스 데스크에서 교환할 수 있습니다.`,
+  ].join('\n');
+  const results = [];
+  let fileId = null;
+
+  const runStep = async (id, name, step, execute) => {
+    try {
+      const body = requireUpstream(await execute(), name);
+      const reasons = evaluateKnowledgeLifecycleStep(step, body, { fileId, marker, productCode });
+      results.push({ id, name, passed: reasons.length === 0, skipped: false, reasons, evidence: lifecycleEvidence(step, body, fileId) });
+      return body;
+    } catch (error) {
+      results.push({ id, name, passed: false, skipped: false, reasons: [error.message] });
+      return null;
+    }
+  };
+  const skipStep = (id, name) => {
+    results.push({ id, name, passed: false, skipped: true, reasons: ['업로드 파일 ID가 없어 실행하지 않았습니다.'] });
+  };
+
+  const formData = new FormData();
+  formData.append('file', new Blob([Buffer.from(content)], { type: 'text/markdown' }), fileName);
+  const uploaded = await runStep('LIFE-001', 'multipart 파일 업로드가 uploaded 상태를 반환한다', 'upload', () =>
+    callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`, { method: 'POST', formData }),
+  );
+  fileId = uploaded?.id ?? null;
+
+  if (fileId) {
+    await runStep('LIFE-002', '업로드 파일을 chunk와 embedding으로 인덱싱한다', 'index', () =>
+      callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/index`, { method: 'POST' }),
+    );
+    await runStep('LIFE-003', 'PUBLIC/PUBLISHED/productCode 정책을 적용한다', 'policy', () =>
+      callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/policy`, {
+        method: 'PATCH',
+        body: { accessLevel: 'PUBLIC', businessStatus: 'PUBLISHED', productCodes: [productCode] },
+      }),
+    );
+    await runStep('LIFE-004', '정책 filter 검색에서 업로드 문서와 고유 표식을 찾는다', 'search', () =>
+      callUpstream('/knowledge/search', {
+        method: 'POST',
+        appkey: storeA.appkey,
+        body: {
+          query: marker,
+          limit: 20,
+          scoreThreshold: -1,
+          filters: {
+            accessLevels: ['PUBLIC'],
+            businessStatuses: ['PUBLISHED'],
+            productCodes: [productCode],
+          },
+        },
+      }),
+    );
+    await runStep('LIFE-005', '제품 답변이 업로드 문서를 근거 source로 반환한다', 'answer', () =>
+      callUpstream('/knowledge/answers', {
+        method: 'POST',
+        appkey: storeA.appkey,
+        body: {
+          query: `${marker} 상품의 교환 정책을 알려주세요.`,
+          limit: 20,
+          scoreThreshold: -1,
+          strict: true,
+          includeSources: true,
+          maxTokens: 256,
+          filters: {
+            accessLevels: ['PUBLIC'],
+            businessStatuses: ['PUBLISHED'],
+            productCodes: [productCode],
+          },
+        },
+      }),
+    );
+    await runStep('LIFE-006', '검증 파일의 chunk와 S3 원본을 정리한다', 'cleanup', () =>
+      callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}`, {
+        method: 'DELETE',
+        query: { deleteObject: true },
+      }),
+    );
+  } else {
+    skipStep('LIFE-002', '업로드 파일을 chunk와 embedding으로 인덱싱한다');
+    skipStep('LIFE-003', 'PUBLIC/PUBLISHED/productCode 정책을 적용한다');
+    skipStep('LIFE-004', '정책 filter 검색에서 업로드 문서와 고유 표식을 찾는다');
+    skipStep('LIFE-005', '제품 답변이 업로드 문서를 근거 source로 반환한다');
+    skipStep('LIFE-006', '검증 파일의 chunk와 S3 원본을 정리한다');
+  }
+
+  const report = {
+    type: 'knowledge-lifecycle',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    fixture: { fileName, marker, productCode },
+    summary: {
+      total: results.length,
+      passed: results.filter((item) => item.passed).length,
+      failed: results.filter((item) => !item.passed && !item.skipped).length,
+      skipped: results.filter((item) => item.skipped).length,
+    },
+    results,
+  };
+  report.reportFile = await saveReport('knowledge-lifecycle', report);
   return report;
 }
 
@@ -967,6 +1123,11 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.confirmValidation !== true) throw Object.assign(new Error('parser 회귀 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runParserRegressionScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/knowledge-lifecycle-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('지식 생명주기 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runKnowledgeLifecycleScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);

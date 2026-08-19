@@ -6,7 +6,7 @@
 
 ## 반영 내용
 
-- 두 지식 업로드 route의 Multer 수신 단계에 파일 1개, field 0개, part 1개와 파일 크기 제한을 적용했습니다.
+- 두 지식 업로드 route의 Multer 수신 단계에 파일 1개, field 0개, multipart parser 상한 2개와 파일 크기 제한을 적용했습니다. 실제 단일 파일 multipart가 Busboy의 part-limit 경계에서 거절되지 않는 값입니다.
 - `KNOWLEDGE_MAX_FILE_SIZE_MB` 기본값은 30MB이며 환경 설정 허용 범위는 1~100MB입니다.
 - controller를 우회하는 내부 호출도 동일한 실제 buffer 길이 제한을 적용합니다.
 - 저장 전과 S3 다운로드 후 parser 진입 전에 파일명, 허용 확장자, MIME, binary signature를 교차 검증합니다.

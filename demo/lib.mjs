@@ -63,3 +63,42 @@ export function collectTotalTokens(body) {
   if (body.usage) return collectTotalTokens(body.usage);
   return 0;
 }
+
+export function evaluateKnowledgeLifecycleStep(step, body, context = {}) {
+  const reasons = [];
+  const fileId = context.fileId;
+
+  if (!body || typeof body !== 'object') {
+    return ['response body is not an object'];
+  }
+
+  if (step === 'upload') {
+    if (!body.id) reasons.push('uploaded file id is missing');
+    if (body.status !== 'uploaded') reasons.push(`upload status is ${body.status ?? 'missing'}`);
+  } else if (step === 'index') {
+    if (body.fileId !== fileId) reasons.push('indexed file id does not match upload');
+    if (body.status !== 'indexed') reasons.push(`index status is ${body.status ?? 'missing'}`);
+    if (!Number.isInteger(body.chunkCount) || body.chunkCount < 1) reasons.push('indexed chunk count is missing');
+  } else if (step === 'policy') {
+    if (body.id !== fileId) reasons.push('policy file id does not match upload');
+    if (body.accessLevel !== 'PUBLIC') reasons.push('access level is not PUBLIC');
+    if (body.businessStatus !== 'PUBLISHED') reasons.push('business status is not PUBLISHED');
+    if (!body.productCodes?.includes(context.productCode)) reasons.push('product code is not applied');
+  } else if (step === 'search') {
+    const match = body.matches?.find((candidate) => candidate.fileId === fileId);
+    if (!match) reasons.push('uploaded file is missing from search matches');
+    if (match && context.marker && !match.content?.includes(context.marker)) reasons.push('search match does not contain marker');
+  } else if (step === 'answer') {
+    if (body.answerable !== true) reasons.push('answer is not grounded');
+    if (!body.sources?.some((source) => source.fileId === fileId)) reasons.push('uploaded file is missing from answer sources');
+  } else if (step === 'cleanup') {
+    if (body.id !== fileId) reasons.push('cleanup file id does not match upload');
+    if (body.status !== 'archived') reasons.push(`cleanup status is ${body.status ?? 'missing'}`);
+    if (body._count?.chunks !== 0) reasons.push('chunks remain after cleanup');
+    if (body.metadata?.deletedObject !== true) reasons.push('S3 object deletion is not confirmed');
+  } else {
+    reasons.push(`unknown lifecycle step: ${step}`);
+  }
+
+  return reasons;
+}

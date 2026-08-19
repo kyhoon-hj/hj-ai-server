@@ -81,7 +81,7 @@ export function createKnowledgeUploadOptions(maxFileSizeMbValue?: unknown) {
       fileSize: maxFileSizeMb * 1024 * 1024,
       files: 1,
       fields: 0,
-      parts: 1,
+      parts: 2,
     },
   };
 }

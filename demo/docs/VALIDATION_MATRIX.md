@@ -10,13 +10,13 @@
 | Bedrock | text response | O |  | O | 공통 API 유지 여부 결정 |
 | Bedrock | general answer | O | O | O | 위험 질문 기준 dataset 확장 |
 | Storage | upload·list·detail·download | O |  |  | streaming·용량 제한 시험 |
-| Knowledge | 파일 업로드 | O | PDF/DOCX/XLSX parser·검색 6/6 |  | 손상·위장·대용량 파일 회귀 |
+| Knowledge | 파일 업로드 | O | parser·검색 6/6, 전체 생명주기 6/6 |  | 손상·위장·대용량 HTTP 회귀 |
 | Knowledge | 직접 텍스트·seed | 운영자 API | fixture setup·legacy 404 |  | legacy flag 최종 제거 |
-| Knowledge | index·reindex | O |  |  | 비동기 job·retry·중복 실행 |
-| Knowledge | 정책·보관·S3 삭제 | O | cleanup |  | role 및 감사 로그 검증 |
+| Knowledge | index·reindex | O | 전체 생명주기 6/6 |  | 비동기 job·retry·중복 실행 |
+| Knowledge | 정책·보관·S3 삭제 | O | 전체 생명주기·cleanup |  | role 및 감사 로그 검증 |
 | RAG | 검색 | O | O | O | source 적중률 자동 평가 |
 | RAG | 호환 RAG 응답 | O |  | O | 제거 일정 또는 호환 보장 |
-| RAG | 제품 Answer | O | O | O | `/v1/answers` 확정 |
+| RAG | 제품 Answer | O | 생명주기 source 일치 | O | `/v1/answers` 확정 |
 | 공통 | validation 오류 | O | 일부 |  | DTO boundary 전체 자동화 |
 | 공통 | correlation ID | O | O | O | 로그·trace 연결 검증 |
 | 공통 | 관리자/appkey credential 분리 | O | 수명주기·RBAC |  | 관리자 identity 전환 |

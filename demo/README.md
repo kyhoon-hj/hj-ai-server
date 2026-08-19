@@ -7,6 +7,8 @@ cd demo
 npm start
 ```
 
+로컬 루트 `.env`의 `ADMIN_API_KEY`, `KNOWLEDGE_OPERATOR_API_KEY`를 재사용하려면 demo 디렉터리에서 `node --env-file=../.env server.mjs`로 실행할 수 있습니다. 명시적인 `AI_SERVER_ADMIN_API_KEY`, `AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY`가 있으면 해당 값을 우선합니다.
+
 브라우저에서 `http://127.0.0.1:3200`을 엽니다. 기본 AI Server 주소는 `http://127.0.0.1:11000`입니다. 연결 화면에는 로컬 `http://127.0.0.1:11000`과 운영 `https://ai.hjshub.com`이 표시되며 선택 후 저장할 수 있습니다.
 
 ```powershell
@@ -33,6 +35,7 @@ appkey와 관리자·지식 운영자 credential은 데모 서버 메모리에�
 - 핵심 계약 자동 시나리오와 JSON 리포트
 - STORE_A/STORE_B 자동 구성, tenant 격리·appkey 수명주기 검증, 안전한 정리
 - 실제 PDF/DOCX/XLSX 업로드·인덱싱·metadata·검색 parser 회귀 검증
+- 실제 multipart upload부터 정책 filter 검색·근거 답변·S3 정리까지 생명주기 검증
 - 제한된 부하 시험과 p50/p95/p99, 처리량, 상태 코드, 토큰 집계
 - 재현 가능한 지식 fixture
 

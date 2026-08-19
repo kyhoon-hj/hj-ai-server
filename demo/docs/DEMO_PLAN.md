@@ -57,6 +57,7 @@ demo/
 - CORS·Swagger 및 legacy·개발 endpoint 운영 노출 자동 검증
 - 플랫폼 관리자·지식 운영자·외부 appkey 역할 경계 검증
 - appkey 만료·제한된 grace 회전·이전 키 종료와 감사 이벤트 자동 검증
+- multipart upload → index → policy → search → grounded answer → S3/chunk 정리 생명주기 검증
 
 ### 2단계: AI Server 개선과 함께 확장
 

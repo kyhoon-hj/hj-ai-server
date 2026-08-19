@@ -125,6 +125,7 @@ async function loadDemoState() {
   $('#runInternalExposure').disabled = !state.ready;
   $('#runCredentialLifecycle').disabled = !state.ready;
   $('#runParserRegression').disabled = !state.ready;
+  $('#runKnowledgeLifecycle').disabled = !state.ready;
   return state;
 }
 
@@ -221,6 +222,14 @@ $('#runParserRegression').addEventListener('click', async () => {
     body: JSON.stringify({ confirmValidation: true }),
   }));
   if (report) toast(`parser 회귀: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
+$('#runKnowledgeLifecycle').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runKnowledgeLifecycle'), '검증 중...', () => api('/api/demo/knowledge-lifecycle-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`지식 전체 흐름: ${report.summary.passed}/${report.summary.total} PASS`);
 });
 
 $('#cleanupDemoData').addEventListener('click', async () => {

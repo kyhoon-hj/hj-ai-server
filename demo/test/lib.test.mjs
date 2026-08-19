@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectTotalTokens,
+  evaluateKnowledgeLifecycleStep,
   evaluateExpectation,
   identifyServerTarget,
   normalizeBaseUrl,
@@ -38,4 +39,46 @@ test('계약 기대값을 평가한다', () => {
   const result = { status: 200, body: { ok: true }, headers: { correlationId: 'id' } };
   assert.equal(evaluateExpectation(result, { statuses: [200], bodyIncludes: 'ok', correlationId: true }).passed, true);
   assert.equal(evaluateExpectation(result, { statuses: [400] }).passed, false);
+});
+
+test('지식 생명주기 단계별 응답 계약을 평가한다', () => {
+  const context = { fileId: 'file-1', marker: 'LIFE-MARKER', productCode: 'LIFECYCLE' };
+
+  assert.deepEqual(evaluateKnowledgeLifecycleStep('upload', { id: 'file-1', status: 'uploaded' }), []);
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep('index', { fileId: 'file-1', status: 'indexed', chunkCount: 1 }, context),
+    [],
+  );
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep(
+      'policy',
+      { id: 'file-1', accessLevel: 'PUBLIC', businessStatus: 'PUBLISHED', productCodes: ['LIFECYCLE'] },
+      context,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep(
+      'search',
+      { matches: [{ fileId: 'file-1', content: 'LIFE-MARKER 교환 정책' }] },
+      context,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep('answer', { answerable: true, sources: [{ fileId: 'file-1' }] }, context),
+    [],
+  );
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep(
+      'cleanup',
+      { id: 'file-1', status: 'archived', _count: { chunks: 0 }, metadata: { deletedObject: true } },
+      context,
+    ),
+    [],
+  );
+  assert.match(
+    evaluateKnowledgeLifecycleStep('answer', { answerable: false, sources: [] }, context).join(' '),
+    /not grounded.*missing from answer sources/,
+  );
 });
