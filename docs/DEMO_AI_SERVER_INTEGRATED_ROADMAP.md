@@ -39,7 +39,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | AI Server build       | PASS                                              | 계속 PASS                              |
 | 단위 테스트           | 67/67 PASS                                        | 핵심 서비스 branch 80% 이상            |
 | 검증 데모 자체 테스트 | 6/6 PASS                                          | 시나리오·fixture 변경마다 계속 PASS    |
-| CI 품질 게이트        | 로컬·GitHub PR workflow PASS                      | PR 필수 체크와 결과 artifact           |
+| CI 품질 게이트        | 로컬·GitHub PASS, `main` PR 필수 체크 적용        | 계속 PASS 및 audit artifact 보존       |
 | E2E                   | 환경 의존 시험 수동 실행                          | 외부·관리·지식 생명주기 전체 자동 실행 |
 | line coverage         | 30.34%                                            | 핵심 서비스 80% 이상                   |
 | typecheck             | PASS                                              | 계속 PASS                              |
@@ -90,7 +90,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [x] `ENV-DEM-02` fixture 업로드·인덱싱·게시를 한 번에 실행하는 setup scenario
 - [x] `ENV-DEM-03` 테스트 데이터 정리 scenario와 명시적 파괴 작업 확인
 - [x] `ENV-DEM-04` 실행 환경, 서버 commit, scenario version을 리포트에 기록
-- [~] `QLT-DEM-01` workflow·로컬·GitHub 실행 PASS, PR 필수 체크 지정 대기
+- [x] `QLT-DEM-01` workflow·로컬·GitHub 실행 PASS 및 `main` PR 필수 체크 지정
 
 #### AI Server
 
@@ -467,11 +467,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 ## 10. 바로 시작할 작업
 
 1. `QLT-SRV-01`: Prisma 전이 취약점의 안전한 수정 버전 추적과 XLSX parser 교체·격리
-2. `QLT-DEM-01`: `main` branch protection에 두 CI job을 PR 필수 체크로 지정
-3. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
-4. `KNW-DEM-02~05`와 `KNW-SRV-01~06`: 지식 생명주기와 파일 안전성 완성
-5. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
-6. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
-7. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
+2. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
+3. `KNW-DEM-02~05`와 `KNW-SRV-01~06`: 지식 생명주기와 파일 안전성 완성
+4. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
+5. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
+6. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
 
 다중 형식 정상 fixture 검증은 확보됐습니다. 다음 작업은 품질 게이트를 먼저 정상화한 뒤 지식 생명주기·악성 파일 안전성을 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.

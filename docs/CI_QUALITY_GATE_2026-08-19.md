@@ -75,9 +75,8 @@ Workflow 권한은 repository contents read로 제한하고, 같은 ref의 이�
 - 실제 Bedrock·S3 호출
 - 검증 데모의 전체 HTTP 계약 suite
 - staging smoke와 배포
-- GitHub `main` branch protection의 required checks 지정
 
-## 판정과 남은 작업
+## 원격 검증과 보호 설정
 
 로컬 workflow 구현과 통합 품질 명령은 완료됐습니다.
 
@@ -87,4 +86,16 @@ Workflow 권한은 repository contents read로 제한하고, 같은 ref의 이�
 - `Build, lint, and test`: PASS
 - 전체 workflow conclusion: success
 
-이후 `Build, lint, and test`와 `Dependency audit`를 `main` PR 필수 체크로 지정하면 `QLT-DEM-01`을 완료 처리합니다. Branch protection 변경은 저장소 운영 정책 변경이므로 별도 승인 작업으로 남깁니다.
+`main` branch protection에 다음 설정을 적용하고 GitHub API 재조회로 확인했습니다.
+
+- 최신 `main` 반영 요구: 활성화(`strict=true`)
+- 필수 체크: `Build, lint, and test`, `Dependency audit`
+- 체크 제공 앱: GitHub Actions
+- force push: 비활성화
+- branch 삭제: 비활성화
+- 관리자 강제 적용: 비활성화
+- 필수 리뷰 승인: 미설정
+
+## 판정
+
+로컬과 GitHub-hosted runner 검증, audit artifact, `main` 필수 체크 적용을 모두 완료했습니다. `QLT-DEM-01`은 완료입니다. DB E2E·전체 HTTP 계약·staging smoke는 이후 별도 CI 단계로 확장합니다.
