@@ -8,6 +8,7 @@
 - [기능·품질·성능 검증 전략](TEST_AND_PERFORMANCE_STRATEGY.md)
 - [2026-08-18 품질 기준선 개선 이력](QUALITY_BASELINE_2026-08-18.md)
 - [2026-08-18 의존성 감사 개선 이력](DEPENDENCY_AUDIT_2026-08-18.md)
+- [2026-08-19 CI 품질 게이트 구축 이력](CI_QUALITY_GATE_2026-08-19.md)
 - [관리자 API 보안 계약](ADMIN_API_SECURITY.md)
 - [API 역할·권한 매트릭스](RBAC_ROLE_MATRIX.md)
 
