@@ -163,16 +163,18 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [ ] `KNW-DEM-02` upload → index → policy → search → answer 자동 흐름
 - [ ] `KNW-DEM-03` reindex, archive, S3 삭제와 중복 실행 시나리오
 - [ ] `KNW-DEM-04` 확장자 위장·빈 문서·손상 문서·대용량 문서 시나리오
+  - 서버 단위 회귀 1차 완료. 실제 multipart HTTP 413/400 계약 시나리오는 남음
 - [ ] `KNW-DEM-05` DRAFT/PUBLISHED/RETIRED, 기간, productCode, accessLevel matrix
 
 #### AI Server
 
-- [ ] `KNW-SRV-01` Multer 수신 단계 file/field/part size 제한
-- [ ] `KNW-SRV-02` MIME signature와 확장자 교차 검증
+- [x] `KNW-SRV-01` Multer 수신 단계 file/field/part size 제한
+- [x] `KNW-SRV-02` MIME signature와 확장자 교차 검증
 - [ ] `KNW-SRV-03` S3 업로드·다운로드 streaming 전환
 - [ ] `KNW-SRV-04` upload와 DB record 실패 보상 처리
 - [ ] `KNW-SRV-05` archive·chunk 삭제·S3 삭제 일관성 개선
 - [ ] `KNW-SRV-06` 취약한 XLS/XLSX parser 교체 또는 격리
+  - file/sheet/cell 제한과 불필요한 workbook 기능 비활성화 완료. parser 교체 또는 process 격리는 남음
 
 #### 서비스 데모 — 마트 고객응대 MVP
 
@@ -463,14 +465,16 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 - [`demo/docs/DEMO_PLAN.md`](../demo/docs/DEMO_PLAN.md): 데모 구조와 기능 계획
 - [`demo/docs/VALIDATION_MATRIX.md`](../demo/docs/VALIDATION_MATRIX.md): 기능별 검증 현황
 - [서비스 데모 개발 계획](SERVICE_DEMO_PLAN.md): 고객응대 MVP와 매출 분석 확장의 화면·기능 경계
+- [지식 파일 업로드 안전성 개선 기록](KNOWLEDGE_UPLOAD_SECURITY_2026-08-19.md): 수신 제한, 형식 검증과 잔여 parser 위험
 
 ## 10. 바로 시작할 작업
 
-1. `QLT-SRV-01`: Prisma 전이 취약점의 안전한 수정 버전 추적과 XLSX parser 교체·격리
-2. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
-3. `KNW-DEM-02~05`와 `KNW-SRV-01~06`: 지식 생명주기와 파일 안전성 완성
-4. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
-5. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
-6. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
+1. `KNW-DEM-02`: upload → index → policy → search → answer HTTP 자동 흐름
+2. `KNW-DEM-04`: 실제 multipart 413/400 응답 계약과 대용량 시나리오 완성
+3. `KNW-SRV-03~06`: streaming, 실패 보상, 삭제 일관성과 XLSX parser 교체·격리
+4. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
+5. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
+6. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
+7. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
 
-다중 형식 정상 fixture 검증은 확보됐습니다. 다음 작업은 품질 게이트를 먼저 정상화한 뒤 지식 생명주기·악성 파일 안전성을 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.
+품질 게이트와 다중 형식 정상 fixture, 지식 파일 1차 방어선은 확보됐습니다. 다음 작업은 upload부터 answer까지 HTTP 생명주기를 자동화한 뒤 streaming과 실패 보상을 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.

@@ -141,6 +141,19 @@ export function validateEnvironment(
     errors.push('PORT must be an integer between 1 and 65535');
   }
 
+  const knowledgeMaxFileSizeMb = Number(
+    valueOf(config, 'KNOWLEDGE_MAX_FILE_SIZE_MB') || 30,
+  );
+  if (
+    !Number.isInteger(knowledgeMaxFileSizeMb) ||
+    knowledgeMaxFileSizeMb < 1 ||
+    knowledgeMaxFileSizeMb > 100
+  ) {
+    errors.push(
+      'KNOWLEDGE_MAX_FILE_SIZE_MB must be an integer between 1 and 100',
+    );
+  }
+
   const prefix = valueOf(config, 'API_GLOBAL_PREFIX');
   if (
     prefix &&
@@ -213,5 +226,6 @@ export function validateEnvironment(
     SWAGGER_PATH: swaggerPath,
     APPKEY_TTL_DAYS: String(appkeyTtlDays),
     APPKEY_MAX_ROTATION_GRACE_SECONDS: String(maxRotationGraceSeconds),
+    KNOWLEDGE_MAX_FILE_SIZE_MB: String(knowledgeMaxFileSizeMb),
   };
 }

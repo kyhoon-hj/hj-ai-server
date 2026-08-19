@@ -20,6 +20,7 @@ describe('validateEnvironment', () => {
       API_GLOBAL_PREFIX: '',
       APPKEY_TTL_DAYS: '90',
       APPKEY_MAX_ROTATION_GRACE_SECONDS: '86400',
+      KNOWLEDGE_MAX_FILE_SIZE_MB: '30',
     });
   });
 
@@ -37,6 +38,17 @@ describe('validateEnvironment', () => {
         API_GLOBAL_PREFIX: '/ai',
       }),
     ).toThrow(/PORT must be.*API_GLOBAL_PREFIX must be/);
+  });
+
+  it('지식 파일 크기 제한은 1MB에서 100MB 사이의 정수여야 한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        KNOWLEDGE_MAX_FILE_SIZE_MB: '101',
+      }),
+    ).toThrow(
+      /KNOWLEDGE_MAX_FILE_SIZE_MB must be an integer between 1 and 100/,
+    );
   });
 
   it('관리자 키를 appkey 서명 secret과 분리한다', () => {

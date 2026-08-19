@@ -123,7 +123,7 @@ describe('DocumentParserService', () => {
       .spyOn(PDFParse.prototype, 'destroy')
       .mockResolvedValue(undefined);
     const result = await service.parse({
-      body: Buffer.from('mock-pdf'),
+      body: Buffer.from('%PDF-1.7\nmock-pdf'),
       contentType: 'application/pdf',
       fileName: 'store-a-returns-guide.pdf',
     });
@@ -140,5 +140,39 @@ describe('DocumentParserService', () => {
     expect(result.content).toContain('PDF-CHECK-714');
     expect(getText).toHaveBeenCalledTimes(1);
     expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a DOCX file disguised with an XLSX extension', async () => {
+    const body = await readFile(
+      join(process.cwd(), 'demo', 'fixtures', 'store-a-service-manual.docx'),
+    );
+
+    await expect(
+      service.parse({
+        body,
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileName: 'disguised.xlsx',
+      }),
+    ).rejects.toThrow(/signature와 일치하지 않습니다/);
+  });
+
+  it('rejects empty and corrupt documents before parser execution', async () => {
+    await expect(
+      service.parse({
+        body: Buffer.alloc(0),
+        contentType: 'text/markdown',
+        fileName: 'empty.md',
+      }),
+    ).rejects.toThrow(/빈 파일/);
+
+    await expect(
+      service.parse({
+        body: Buffer.from('PK\u0003\u0004broken archive'),
+        contentType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileName: 'corrupt.docx',
+      }),
+    ).rejects.toThrow(/signature와 일치하지 않습니다/);
   });
 });

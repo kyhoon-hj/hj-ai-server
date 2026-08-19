@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { extname } from 'node:path';
 import {
   BadRequestException,
   Injectable,
@@ -29,6 +28,11 @@ import {
   type KnowledgeSearchFiltersDto,
   type UpdateKnowledgeFilePolicyDto,
 } from './dto/knowledge-policy.dto';
+import {
+  DEFAULT_KNOWLEDGE_ALLOWED_EXTENSIONS,
+  getKnowledgeMaxFileSizeMb,
+  validateKnowledgeFile,
+} from './knowledge-file-security';
 
 const KNOWLEDGE_FILE_STATUS = {
   uploaded: 'uploaded',
@@ -37,17 +41,6 @@ const KNOWLEDGE_FILE_STATUS = {
   failed: 'failed',
   archived: 'archived',
 } as const;
-
-const DEFAULT_ALLOWED_EXTENSIONS = [
-  '.txt',
-  '.md',
-  '.json',
-  '.csv',
-  '.xlsx',
-  '.xls',
-  '.pdf',
-  '.docx',
-] as const;
 
 type KnowledgeAppContext = {
   appcode: string;
@@ -1222,24 +1215,22 @@ ${dto.query}`;
   }
 
   private validateKnowledgeUpload(file: Express.Multer.File) {
-    const extension = extname(file.originalname).toLowerCase();
     const allowedExtensions = this.getAllowedExtensions();
+    const maxFileSizeMb = getKnowledgeMaxFileSizeMb(
+      this.configService.get<string>('KNOWLEDGE_MAX_FILE_SIZE_MB'),
+    );
 
-    if (!allowedExtensions.includes(extension)) {
-      throw new BadRequestException(
-        `지원하지 않는 파일 형식입니다. 허용 확장자: ${allowedExtensions.join(', ')}`,
-      );
-    }
-
-    const maxFileSizeMb =
-      this.configService.get<number>('KNOWLEDGE_MAX_FILE_SIZE_MB') ?? 30;
-    const maxBytes = maxFileSizeMb * 1024 * 1024;
-
-    if (file.size > maxBytes) {
-      throw new BadRequestException(
-        `파일 크기는 ${maxFileSizeMb}MB 이하여야 합니다.`,
-      );
-    }
+    validateKnowledgeFile(
+      {
+        body: file.buffer,
+        contentType: file.mimetype,
+        fileName: file.originalname,
+      },
+      {
+        allowedExtensions,
+        maxBytes: maxFileSizeMb * 1024 * 1024,
+      },
+    );
   }
 
   private async ensureStorageQuota(
@@ -1276,7 +1267,7 @@ ${dto.query}`;
     );
 
     if (!configured) {
-      return [...DEFAULT_ALLOWED_EXTENSIONS];
+      return [...DEFAULT_KNOWLEDGE_ALLOWED_EXTENSIONS];
     }
 
     return configured

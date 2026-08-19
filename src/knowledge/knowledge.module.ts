@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MulterModule } from '@nestjs/platform-express';
 import { AppInfoModule } from '../app-info/app-info.module';
 import { AppkeyGuard } from '../common/guards/appkey.guard';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -11,9 +13,21 @@ import { KnowledgeAdminController } from './knowledge-admin.controller';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { KnowledgeService } from './knowledge.service';
 import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
+import { createKnowledgeUploadOptions } from './knowledge-file-security';
 
 @Module({
-  imports: [AppInfoModule, PrismaModule, StorageModule],
+  imports: [
+    AppInfoModule,
+    PrismaModule,
+    StorageModule,
+    MulterModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) =>
+        createKnowledgeUploadOptions(
+          configService.get<string>('KNOWLEDGE_MAX_FILE_SIZE_MB'),
+        ),
+    }),
+  ],
   controllers: [KnowledgeController, KnowledgeAdminController],
   providers: [
     KnowledgeService,

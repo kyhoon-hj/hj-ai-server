@@ -3,6 +3,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import * as XLSX from 'xlsx';
+import { validateKnowledgeFile } from './knowledge-file-security';
 
 export type ParsedDocumentSection = {
   title?: string;
@@ -24,6 +25,7 @@ export class DocumentParserService {
     contentType: string;
     fileName: string;
   }): Promise<ParsedDocument> {
+    validateKnowledgeFile(input);
     const extension = extname(input.fileName).toLowerCase();
     const normalizedContentType = input.contentType.toLowerCase();
 
@@ -78,9 +80,29 @@ export class DocumentParserService {
     const workbook = XLSX.read(body, {
       type: 'buffer',
       cellDates: true,
+      cellFormula: false,
+      cellHTML: false,
+      cellNF: false,
+      cellStyles: false,
+      bookVBA: false,
     });
+
+    if (workbook.SheetNames.length > 50) {
+      throw new BadRequestException('엑셀 시트는 최대 50개까지 처리합니다.');
+    }
+
+    let totalCells = 0;
     const sections = workbook.SheetNames.flatMap((sheetName) => {
       const sheet = workbook.Sheets[sheetName];
+      if (sheet['!ref']) {
+        const range = XLSX.utils.decode_range(sheet['!ref']);
+        totalCells += (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
+        if (totalCells > 200_000) {
+          throw new BadRequestException(
+            '엑셀 문서는 전체 200,000개 셀까지 처리합니다.',
+          );
+        }
+      }
       const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
         header: 1,
         defval: '',

@@ -25,10 +25,10 @@ AI Server가 실제 PDF, DOCX, XLSX 바이너리를 업로드부터 S3 저장, t
 
 데모의 `다중 형식 parser 검증`은 파일별 metadata/chunk 계약 3건과 실제 검색 3건을 실행합니다. fixture 파일 존재·manifest 일치는 `demo/test/fixture-manifest.test.mjs`에서 별도로 검사합니다.
 
-## 2026-08-06 결과
+## 2026-08-19 결과
 
-- parser 회귀: 6/6 PASS
-- AI Server unit: 66/66 PASS
+- parser 및 파일 안전성 회귀: 정상 fixture와 위장·빈 파일·손상 파일·크기 제한 PASS
+- AI Server unit: 77/77 PASS
 - 기존 계약 회귀: tenant 8/8, RBAC 6/6, credential 4/4, 내부 경계 8/8, HTTP 노출 4/4, 공통 계약 14/14 PASS
 - 로컬 대상: `http://127.0.0.1:11000`, demo: `http://127.0.0.1:3200`
 
@@ -37,5 +37,5 @@ AI Server가 실제 PDF, DOCX, XLSX 바이너리를 업로드부터 S3 저장, t
 - DOCX는 heading/table 의미 구조와 페이지 위치를 별도 metadata로 보존하지 않습니다.
 - PDF 표는 의미 있는 행·열 구조로 복원하지 않고 페이지 text로 처리합니다.
 - XLS/XLSX의 수식, macro, image, 병합 cell 의미는 보장하지 않습니다.
-- 인덱싱은 아직 비동기 job 상태, idempotency, chunk별 retry와 부분 실패 복구 계약이 없습니다. 다음 작업은 `KNW-SRV-01`입니다.
-- 확장자 위장, 빈 문서, 손상 문서, 압축 폭탄과 대용량 문서 거부는 `KNW-DEM-04`와 서버 file 안전성 작업에서 검증합니다.
+- 인덱싱은 아직 비동기 job 상태, idempotency, chunk별 retry와 부분 실패 복구 계약이 없습니다.
+- 확장자 위장, 빈 문서, 손상 문서와 buffer 크기 제한은 서버 회귀로 검증했습니다. 실제 multipart HTTP 응답과 압축 해제 총량 제한은 `KNW-DEM-04`, `KNW-SRV-06`에서 계속 검증합니다.

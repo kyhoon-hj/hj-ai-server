@@ -26,7 +26,6 @@ import {
   ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
-import { memoryStorage } from 'multer';
 import { AppInfoService } from '../app-info/app-info.service';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { AdminRoles } from '../common/guards/admin-roles.decorator';
@@ -51,7 +50,7 @@ export class KnowledgeAdminController {
   ) {}
 
   @Post('files')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

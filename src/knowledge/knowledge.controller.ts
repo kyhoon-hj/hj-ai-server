@@ -28,7 +28,6 @@ import {
   ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
-import { memoryStorage } from 'multer';
 import { AppkeyGuard, type AppkeyRequest } from '../common/guards/appkey.guard';
 import { KnowledgeAnswerEntity } from './entities/knowledge-answer.entity';
 import { KnowledgeRagResponseDto } from './dto/knowledge-rag-response.dto';
@@ -61,11 +60,7 @@ export class KnowledgeController {
   @ApiExcludeEndpoint()
   @ApiExposure('legacyKnowledgeWrite')
   @UseGuards(ApiExposureGuard)
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary: 'RAG 검색에 사용할 파일을 S3에 업로드하고 DB에 등록합니다.',
   })
