@@ -79,4 +79,12 @@ Workflow 권한은 repository contents read로 제한하고, 같은 ref의 이�
 
 ## 판정과 남은 작업
 
-로컬 workflow 구현과 통합 품질 명령은 완료됐습니다. 커밋을 push한 뒤 GitHub Actions의 두 job이 실제 runner에서 PASS하는지 확인해야 합니다. 이후 `Build, lint, and test`와 `Dependency audit`를 `main` PR 필수 체크로 지정하면 `QLT-DEM-01`을 완료 처리합니다.
+로컬 workflow 구현과 통합 품질 명령은 완료됐습니다.
+
+2026-08-19 PR 실행 [Quality Gate run 32204175968](https://github.com/kyhoon-hj/hj-ai-server/actions/runs/32204175968)에서 다음 결과를 확인했습니다.
+
+- `Dependency audit`: PASS, audit JSON artifact 업로드
+- `Build, lint, and test`: PASS
+- 전체 workflow conclusion: success
+
+이후 `Build, lint, and test`와 `Dependency audit`를 `main` PR 필수 체크로 지정하면 `QLT-DEM-01`을 완료 처리합니다. Branch protection 변경은 저장소 운영 정책 변경이므로 별도 승인 작업으로 남깁니다.
