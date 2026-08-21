@@ -23,6 +23,10 @@ For S3 uploads, set `AWS_S3_BUCKET`. `AWS_S3_CDN_URL` is optional and is used to
 
 This project uses PostgreSQL through Prisma 7. Configure `DATABASE_URL` in `.env`, then run `npm run prisma:migrate` to create the test table.
 
+## Standard ports
+
+Local and production origin processes use the same fixed role-based ports: AI Server `11000`, validation demo `11001`, and service demo `11002`. See [application port standard](docs/PORT_STANDARD.md).
+
 ## Docker
 
 Build the production image:

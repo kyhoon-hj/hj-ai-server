@@ -1,3 +1,8 @@
+x-hj-standard-ports:
+  ai-server: 11000
+  validation-demo: 11001
+  service-demo: 11002
+
 services:
   app:
     build:

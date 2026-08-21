@@ -17,13 +17,14 @@ import {
   renderPath,
 } from './lib.mjs';
 import { findOperation, operations } from './catalog.mjs';
+import { requireStandardPort } from '../config/standard-ports.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const publicRoot = join(root, 'public');
 const scenarioPath = join(root, 'scenarios', 'core.json');
 const fixtureManifestPath = join(root, 'fixtures', 'manifest.json');
 const reportRoot = join(root, 'reports');
-const port = Number(process.env.DEMO_PORT ?? 3200);
+const port = requireStandardPort('validationDemo', process.env.DEMO_PORT);
 const host = process.env.DEMO_HOST ?? '127.0.0.1';
 const maxBodyBytes = 40 * 1024 * 1024;
 const demoAppDefinitions = [
@@ -61,7 +62,7 @@ const runtime = {
   adminKey: process.env.AI_SERVER_ADMIN_API_KEY ?? process.env.ADMIN_API_KEY ?? '',
   operatorKey: process.env.AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY ?? process.env.KNOWLEDGE_OPERATOR_API_KEY ?? '',
   swaggerPath: (process.env.AI_SERVER_SWAGGER_PATH ?? 'api-docs').replace(/^\/+|\/+$/g, ''),
-  corsAllowedOrigin: process.env.AI_SERVER_CORS_ALLOWED_ORIGIN ?? 'http://127.0.0.1:3200',
+  corsAllowedOrigin: process.env.AI_SERVER_CORS_ALLOWED_ORIGIN ?? 'http://127.0.0.1:11001',
   timeoutMs: Number(process.env.AI_SERVER_TIMEOUT_MS ?? 30000),
   updatedAt: new Date().toISOString(),
 };

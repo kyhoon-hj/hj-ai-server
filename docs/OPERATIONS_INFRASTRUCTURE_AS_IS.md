@@ -128,6 +128,10 @@ flowchart LR
 
 AppInfo 관리자 인증과 HTTP 노출 정책은 현재 소스와 로컬 Compose에는 적용됐지만 공개 서비스 배포 여부는 미확인입니다. 로컬에서는 `SWAGGER_ENABLED=false`, exact CORS allowlist와 비허용 Origin 차단을 확인했습니다. 남은 차이는 공개 서비스에 live/readiness·최신 인증·CORS/Swagger 계약이 아직 확인되지 않았고, 로컬 image에 immutable commit SHA tag가 없다는 점입니다.
 
+### 4.1 2026-08-21 목표 포트 표준
+
+저장소 설정은 AI Server 11000, 검증 데모 11001, 서비스 데모 11002를 로컬·Docker·운영 origin 공통 포트로 고정합니다. AI Server와 검증 데모는 실행 설정에 반영됐고, 서비스 데모는 `service-demo/` 구현 전 포트 검증 설정만 준비된 상태입니다. 외부 운영 reverse proxy와 데모 컨테이너의 실제 반영 여부는 아직 미확인입니다.
+
 ## 5. 공개 API 배포 상태
 
 공개 OpenAPI에서 확인된 path는 23개입니다.

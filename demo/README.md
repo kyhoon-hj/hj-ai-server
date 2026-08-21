@@ -9,7 +9,7 @@ npm start
 
 로컬 루트 `.env`의 `ADMIN_API_KEY`, `KNOWLEDGE_OPERATOR_API_KEY`를 재사용하려면 demo 디렉터리에서 `node --env-file=../.env server.mjs`로 실행할 수 있습니다. 명시적인 `AI_SERVER_ADMIN_API_KEY`, `AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY`가 있으면 해당 값을 우선합니다.
 
-브라우저에서 `http://127.0.0.1:3200`을 엽니다. 기본 AI Server 주소는 `http://127.0.0.1:11000`입니다. 연결 화면에는 로컬 `http://127.0.0.1:11000`과 운영 `https://ai.hjshub.com`이 표시되며 선택 후 저장할 수 있습니다.
+브라우저에서 `http://127.0.0.1:11001`을 엽니다. 기본 AI Server 주소는 `http://127.0.0.1:11000`입니다. 연결 화면에는 로컬 `http://127.0.0.1:11000`과 운영 `https://ai.hjshub.com`이 표시되며 선택 후 저장할 수 있습니다. 검증 데모 포트는 로컬·운영 모두 11001로 고정됩니다.
 
 ```powershell
 $env:AI_SERVER_BASE_URL='http://127.0.0.1:11000'
@@ -19,7 +19,7 @@ $env:AI_SERVER_COMMIT='<deployed-server-commit>'
 $env:AI_SERVER_APPKEY='<appkey>'
 $env:AI_SERVER_ADMIN_API_KEY='<x-admin-key>'
 $env:AI_SERVER_KNOWLEDGE_OPERATOR_API_KEY='<knowledge-operator-x-admin-key>'
-$env:DEMO_PORT='3200'
+$env:DEMO_PORT='11001'
 npm start
 ```
 

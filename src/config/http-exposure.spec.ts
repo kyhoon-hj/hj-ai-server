@@ -4,9 +4,9 @@ describe('HTTP exposure policy', () => {
   it('CORS allowlist를 공백 제거·중복 제거해 해석한다', () => {
     expect(
       parseCorsAllowedOrigins(
-        'https://app.example.com, http://127.0.0.1:3200,https://app.example.com',
+        'https://app.example.com, http://127.0.0.1:11001,https://app.example.com',
       ),
-    ).toEqual(['https://app.example.com', 'http://127.0.0.1:3200']);
+    ).toEqual(['https://app.example.com', 'http://127.0.0.1:11001']);
   });
 
   it('allowlist가 없으면 CORS를 활성화하지 않는다', () => {

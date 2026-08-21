@@ -3,6 +3,7 @@
 - [운영 인프라 현행 구성(As-Is)](OPERATIONS_INFRASTRUCTURE_AS_IS.md)
 - [AI Server·검증 데모·서비스 데모 통합 로드맵](DEMO_AI_SERVER_INTEGRATED_ROADMAP.md)
 - [서비스 데모 개발 계획](SERVICE_DEMO_PLAN.md)
+- [애플리케이션 포트 표준](PORT_STANDARD.md)
 - [외부 앱 공통 API 명세 초안](COMMON_API_SPEC_DRAFT.md)
 - [AI Server 실서비스 고도화 계획](AI_SERVER_HARDENING_PLAN.md)
 - [기능·품질·성능 검증 전략](TEST_AND_PERFORMANCE_STRATEGY.md)

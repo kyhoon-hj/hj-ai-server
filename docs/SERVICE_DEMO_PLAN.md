@@ -4,6 +4,8 @@
 상태: 구현 착수 기준
 상위 계획: [AI Server·검증 데모·서비스 데모 통합 로드맵](DEMO_AI_SERVER_INTEGRATED_ROADMAP.md)
 
+포트 표준: 서비스 데모는 로컬·Docker·운영 origin에서 11002를 사용하며, AI Server 11000과 검증 데모 11001을 침범하지 않습니다.
+
 ## 1. 목적
 
 `service-demo/`는 AI Server의 내부 검증 화면이 아니라 실제 서비스를 가정한 소비자 애플리케이션입니다. 첫 번째 제품 시나리오는 마트 고객응대이며, 해당 계약과 운영 기준이 안정된 뒤 매출 자료 분석으로 확장합니다.
@@ -68,6 +70,7 @@
 ### S0 — 골격과 공통 UX
 
 - 프로젝트 실행·build·test 구조
+- 로컬·운영 공통 포트 11002와 시작 시 포트 검증
 - 환경별 AI Server URL
 - API client와 correlation ID
 - loading, empty, error, permission denied 공통 상태

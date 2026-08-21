@@ -30,7 +30,7 @@ AI Server가 실제 PDF, DOCX, XLSX 바이너리를 업로드부터 S3 저장, t
 - parser 및 파일 안전성 회귀: 정상 fixture와 위장·빈 파일·손상 파일·크기 제한 PASS
 - AI Server unit: 77/77 PASS
 - 기존 계약 회귀: tenant 8/8, RBAC 6/6, credential 4/4, 내부 경계 8/8, HTTP 노출 4/4, 공통 계약 14/14 PASS
-- 로컬 대상: `http://127.0.0.1:11000`, demo: `http://127.0.0.1:3200`
+- 로컬 대상: `http://127.0.0.1:11000`, 검증 demo: `http://127.0.0.1:11001`
 
 ## 잔여 위험과 다음 작업
 

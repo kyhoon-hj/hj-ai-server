@@ -144,7 +144,8 @@ describe('validateEnvironment', () => {
         ...validEnvironment,
         SWAGGER_ENABLED: 'false',
         SWAGGER_PATH: 'internal/api-docs',
-        CORS_ALLOWED_ORIGINS: 'https://app.example.com,http://127.0.0.1:3200',
+        CORS_ALLOWED_ORIGINS:
+          'https://app.example.com,http://127.0.0.1:11001,http://127.0.0.1:11002',
       }),
     ).toMatchObject({
       SWAGGER_PATH: 'internal/api-docs',
