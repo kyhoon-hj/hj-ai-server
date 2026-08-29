@@ -102,3 +102,19 @@ export function evaluateKnowledgeLifecycleStep(step, body, context = {}) {
 
   return reasons;
 }
+
+export function evaluateKnowledgeUploadRejection(result, expectation) {
+  const reasons = [];
+  const body = result?.body;
+
+  if (result?.status !== expectation.status) reasons.push(`status ${result?.status ?? 'missing'}, expected ${expectation.status}`);
+  if (!body || typeof body !== 'object') return [...reasons, 'response body is not an object'];
+  if (body.statusCode !== expectation.status) reasons.push(`body statusCode ${body.statusCode ?? 'missing'}, expected ${expectation.status}`);
+  if (body.code !== expectation.code) reasons.push(`error code ${body.code ?? 'missing'}, expected ${expectation.code}`);
+  if (!body.requestId) reasons.push('body requestId is missing');
+  if (!result.correlationId) reasons.push('x-correlation-id is missing');
+  if (body.requestId && result.correlationId && body.requestId !== result.correlationId) reasons.push('body requestId does not match x-correlation-id');
+  if (expectation.messageIncludes && !JSON.stringify(body.message).includes(expectation.messageIncludes)) reasons.push(`message does not include ${expectation.messageIncludes}`);
+
+  return reasons;
+}

@@ -6,5 +6,6 @@
 - [전체 기능 검증 매트릭스](VALIDATION_MATRIX.md)
 - [2026-08-05 검증 보고서](VALIDATION_REPORT_2026-08-05.md)
 - [2026-08-19 지식 전체 생명주기 검증 보고서](VALIDATION_REPORT_2026-08-19.md)
+- [2026-08-24 지식 파일 multipart 거절 계약 검증 보고서](VALIDATION_REPORT_2026-08-24.md)
 
 AI Server 자체의 공통 API와 실서비스 고도화 문서는 저장소 루트의 [`docs`](../../docs/)에서 관리합니다.

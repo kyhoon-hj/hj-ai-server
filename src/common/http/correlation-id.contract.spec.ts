@@ -1,4 +1,8 @@
-import { BadRequestException, HttpStatus } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpStatus,
+  PayloadTooLargeException,
+} from '@nestjs/common';
 import { CorrelationIdMiddleware } from './correlation-id.middleware';
 import { StructuredHttpExceptionFilter } from './structured-http-exception.filter';
 
@@ -61,5 +65,29 @@ describe('TS-CON-006 correlation and structured error contract', () => {
       code: 'VALIDATION_ERROR',
       requestId,
     });
+  });
+
+  it('maps an oversized multipart body to a stable error code', () => {
+    const filter = new StructuredHttpExceptionFilter();
+    const status = jest.fn().mockReturnThis();
+    const json = jest.fn();
+    const response = { setHeader: jest.fn(), status, json };
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({ correlationId: requestId }),
+        getResponse: () => response,
+      }),
+    };
+
+    filter.catch(new PayloadTooLargeException('File too large'), host as never);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 413,
+        code: 'PAYLOAD_TOO_LARGE',
+        requestId,
+      }),
+    );
   });
 });

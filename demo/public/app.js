@@ -232,6 +232,14 @@ $('#runKnowledgeLifecycle').addEventListener('click', async () => {
   if (report) toast(`지식 전체 흐름: ${report.summary.passed}/${report.summary.total} PASS`);
 });
 
+$('#runKnowledgeFileRejection').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runKnowledgeFileRejection'), '검증 중...', () => api('/api/demo/knowledge-file-rejection-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`지식 파일 거절: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
 $('#cleanupDemoData').addEventListener('click', async () => {
   if (!$('#confirmCleanup').checked) {
     toast('데모 데이터 정리 확인을 선택해 주세요.');

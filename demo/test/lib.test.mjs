@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   collectTotalTokens,
   evaluateKnowledgeLifecycleStep,
+  evaluateKnowledgeUploadRejection,
   evaluateExpectation,
   identifyServerTarget,
   normalizeBaseUrl,
@@ -80,5 +81,23 @@ test('지식 생명주기 단계별 응답 계약을 평가한다', () => {
   assert.match(
     evaluateKnowledgeLifecycleStep('answer', { answerable: false, sources: [] }, context).join(' '),
     /not grounded.*missing from answer sources/,
+  );
+});
+
+test('지식 파일 거절 응답의 상태·오류 코드·correlation 계약을 평가한다', () => {
+  const correlationId = '86c75f09-2ea5-4ffd-9fa4-84b8887823fb';
+  assert.deepEqual(
+    evaluateKnowledgeUploadRejection(
+      { status: 400, correlationId, body: { statusCode: 400, code: 'VALIDATION_ERROR', message: '빈 파일은 업로드할 수 없습니다.', requestId: correlationId } },
+      { status: 400, code: 'VALIDATION_ERROR', messageIncludes: '빈 파일' },
+    ),
+    [],
+  );
+  assert.match(
+    evaluateKnowledgeUploadRejection(
+      { status: 400, correlationId: null, body: { statusCode: 400, code: 'INTERNAL_ERROR' } },
+      { status: 413, code: 'PAYLOAD_TOO_LARGE' },
+    ).join(' '),
+    /status 400.*statusCode 400.*INTERNAL_ERROR.*requestId.*correlation-id/,
   );
 });

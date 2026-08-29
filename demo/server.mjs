@@ -11,6 +11,7 @@ import {
   collectTotalTokens,
   evaluateExpectation,
   evaluateKnowledgeLifecycleStep,
+  evaluateKnowledgeUploadRejection,
   identifyServerTarget,
   normalizeBaseUrl,
   percentile,
@@ -27,6 +28,7 @@ const reportRoot = join(root, 'reports');
 const port = requireStandardPort('validationDemo', process.env.DEMO_PORT);
 const host = process.env.DEMO_HOST ?? '127.0.0.1';
 const maxBodyBytes = 40 * 1024 * 1024;
+const knowledgeMaxFileSizeMb = Number(process.env.KNOWLEDGE_MAX_FILE_SIZE_MB ?? 30);
 const demoAppDefinitions = [
   {
     appcode: 'hj-ai-demo-store-a',
@@ -611,6 +613,60 @@ async function runKnowledgeLifecycleScenario() {
   return report;
 }
 
+async function runKnowledgeFileRejectionScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  if (!storeA) throw Object.assign(new Error('먼저 STORE_A 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.operatorKey) throw Object.assign(new Error('지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+  if (!Number.isInteger(knowledgeMaxFileSizeMb) || knowledgeMaxFileSizeMb < 1 || knowledgeMaxFileSizeMb > 100) {
+    throw Object.assign(new Error('KNOWLEDGE_MAX_FILE_SIZE_MB는 AI Server와 동일한 1~100 정수여야 합니다.'), { statusCode: 400 });
+  }
+
+  const oversizedBytes = knowledgeMaxFileSizeMb * 1024 * 1024 + 1;
+  const cases = [
+    { id: 'REJECT-001', name: '확장자와 MIME이 불일치한 위장 파일을 거절한다', fileName: 'disguised.txt', contentType: 'application/pdf', body: Buffer.from('%PDF-1.7 disguised'), expectation: { status: 400, code: 'VALIDATION_ERROR', messageIncludes: 'MIME' } },
+    { id: 'REJECT-002', name: 'signature가 손상된 PDF를 거절한다', fileName: 'corrupted.pdf', contentType: 'application/pdf', body: Buffer.from('not a PDF'), expectation: { status: 400, code: 'VALIDATION_ERROR', messageIncludes: 'signature' } },
+    { id: 'REJECT-003', name: 'signature가 손상된 DOCX를 거절한다', fileName: 'corrupted.docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: Buffer.from('not a DOCX'), expectation: { status: 400, code: 'VALIDATION_ERROR', messageIncludes: 'signature' } },
+    { id: 'REJECT-004', name: 'signature가 손상된 XLSX를 거절한다', fileName: 'corrupted.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body: Buffer.from('not an XLSX'), expectation: { status: 400, code: 'VALIDATION_ERROR', messageIncludes: 'signature' } },
+    { id: 'REJECT-005', name: '빈 파일을 거절한다', fileName: 'empty.md', contentType: 'text/markdown', body: Buffer.alloc(0), expectation: { status: 400, code: 'VALIDATION_ERROR', messageIncludes: '빈 파일' } },
+    { id: 'REJECT-006', name: '공백만 있는 문서를 거절한다', fileName: 'blank.md', contentType: 'text/markdown', body: Buffer.from('  \r\n\t'), expectation: { status: 400, code: 'VALIDATION_ERROR', messageIncludes: '빈 파일' } },
+    { id: 'REJECT-007', name: `${knowledgeMaxFileSizeMb}MB 제한을 초과한 파일을 거절한다`, fileName: 'oversized.md', contentType: 'text/markdown', body: Buffer.alloc(oversizedBytes, 0x61), expectation: { status: 413, code: 'PAYLOAD_TOO_LARGE' } },
+  ];
+
+  const results = [];
+  for (const testCase of cases) {
+    try {
+      const formData = new FormData();
+      formData.append('file', new Blob([testCase.body], { type: testCase.contentType }), testCase.fileName);
+      const response = await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`, { method: 'POST', formData });
+      const reasons = evaluateKnowledgeUploadRejection(response, testCase.expectation);
+      results.push({
+        id: testCase.id,
+        name: testCase.name,
+        passed: reasons.length === 0,
+        skipped: false,
+        reasons,
+        evidence: { fileName: testCase.fileName, bytes: testCase.body.length, status: response.status, code: response.body?.code, requestId: response.body?.requestId, correlationId: response.correlationId },
+      });
+    } catch (error) {
+      results.push({ id: testCase.id, name: testCase.name, passed: false, skipped: false, reasons: [error.message] });
+    }
+  }
+
+  const report = {
+    type: 'knowledge-file-rejection',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    fixture: { knowledgeMaxFileSizeMb, oversizedBytes },
+    summary: { total: results.length, passed: results.filter((item) => item.passed).length, failed: results.filter((item) => !item.passed).length, skipped: 0 },
+    results,
+  };
+  report.reportFile = await saveReport('knowledge-file-rejection', report);
+  return report;
+}
+
 async function runTenantIsolationScenario() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
@@ -1129,6 +1185,11 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.confirmValidation !== true) throw Object.assign(new Error('지식 생명주기 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runKnowledgeLifecycleScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/knowledge-file-rejection-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('지식 파일 거절 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runKnowledgeFileRejectionScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/cleanup') {
       const input = await readJson(request);

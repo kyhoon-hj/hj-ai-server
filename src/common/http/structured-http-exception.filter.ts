@@ -64,6 +64,7 @@ export class StructuredHttpExceptionFilter implements ExceptionFilter {
       [HttpStatus.NOT_FOUND]: 'NOT_FOUND',
       [HttpStatus.CONFLICT]: 'CONFLICT',
       [HttpStatus.UNPROCESSABLE_ENTITY]: 'INVALID_STATE',
+      [HttpStatus.PAYLOAD_TOO_LARGE]: 'PAYLOAD_TOO_LARGE',
       [HttpStatus.TOO_MANY_REQUESTS]: 'RATE_LIMITED',
     };
 

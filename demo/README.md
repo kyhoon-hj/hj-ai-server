@@ -36,6 +36,7 @@ appkey와 관리자·지식 운영자 credential은 데모 서버 메모리에�
 - STORE_A/STORE_B 자동 구성, tenant 격리·appkey 수명주기 검증, 안전한 정리
 - 실제 PDF/DOCX/XLSX 업로드·인덱싱·metadata·검색 parser 회귀 검증
 - 실제 multipart upload부터 정책 filter 검색·근거 답변·S3 정리까지 생명주기 검증
+- 위장·빈·손상·대용량 multipart 파일의 400/413 구조화 오류 계약 검증
 - 제한된 부하 시험과 p50/p95/p99, 처리량, 상태 코드, 토큰 집계
 - 재현 가능한 지식 fixture
 
