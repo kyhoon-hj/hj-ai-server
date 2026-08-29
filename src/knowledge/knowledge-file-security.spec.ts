@@ -1,9 +1,23 @@
 import {
   createKnowledgeUploadOptions,
   validateKnowledgeFile,
+  validateKnowledgeStagedFile,
 } from './knowledge-file-security';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('knowledge file security', () => {
+  const tempDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      tempDirectories
+        .splice(0)
+        .map((directory) => rm(directory, { recursive: true, force: true })),
+    );
+  });
+
   it('applies file, field, and multipart limits before buffering an upload', () => {
     expect(createKnowledgeUploadOptions('7').limits).toEqual({
       fileSize: 7 * 1024 * 1024,
@@ -98,5 +112,47 @@ describe('knowledge file security', () => {
         { maxBytes: 1024 * 1024 },
       ),
     ).toThrow(/1MB 이하여야/);
+  });
+
+  it('validates staged UTF-8 JSON without loading the upload into multer memory', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hj-ai-security-test-'));
+    tempDirectories.push(directory);
+    const path = join(directory, 'valid.json');
+    await writeFile(path, '{"store":"HJ"}');
+
+    await expect(
+      validateKnowledgeStagedFile({
+        path,
+        size: 14,
+        contentType: 'application/json',
+        fileName: 'valid.json',
+      }),
+    ).resolves.toMatchObject({ extension: '.json' });
+  });
+
+  it('rejects invalid staged JSON and corrupted binary signatures', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hj-ai-security-test-'));
+    tempDirectories.push(directory);
+    const jsonPath = join(directory, 'broken.json');
+    const pdfPath = join(directory, 'broken.pdf');
+    await writeFile(jsonPath, '{broken');
+    await writeFile(pdfPath, 'not a PDF');
+
+    await expect(
+      validateKnowledgeStagedFile({
+        path: jsonPath,
+        size: 7,
+        contentType: 'application/json',
+        fileName: 'broken.json',
+      }),
+    ).rejects.toThrow(/유효한 JSON/);
+    await expect(
+      validateKnowledgeStagedFile({
+        path: pdfPath,
+        size: 9,
+        contentType: 'application/pdf',
+        fileName: 'broken.pdf',
+      }),
+    ).rejects.toThrow(/signature/);
   });
 });

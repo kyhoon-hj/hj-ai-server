@@ -1,7 +1,11 @@
+import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
+import { Writable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { TextDecoder } from 'node:util';
 import { BadRequestException } from '@nestjs/common';
-import { memoryStorage } from 'multer';
+import parserStream from 'stream-json';
+import { createStagedUploadOptions } from '../storage/staged-upload';
 
 export const DEFAULT_KNOWLEDGE_MAX_FILE_SIZE_MB = 30;
 export const MAX_KNOWLEDGE_MAX_FILE_SIZE_MB = 100;
@@ -74,21 +78,51 @@ export function getKnowledgeMaxFileSizeMb(value?: unknown) {
 
 export function createKnowledgeUploadOptions(maxFileSizeMbValue?: unknown) {
   const maxFileSizeMb = getKnowledgeMaxFileSizeMb(maxFileSizeMbValue);
+  return createStagedUploadOptions(maxFileSizeMb);
+}
 
-  return {
-    storage: memoryStorage(),
-    limits: {
-      fileSize: maxFileSizeMb * 1024 * 1024,
-      files: 1,
-      fields: 0,
-      parts: 2,
+export async function validateKnowledgeStagedFile(
+  input: {
+    path: string;
+    size: number;
+    contentType: string;
+    fileName: string;
+  },
+  policy: KnowledgeFilePolicy = {},
+) {
+  const { extension } = validateKnowledgeFileMetadata(
+    {
+      contentType: input.contentType,
+      fileName: input.fileName,
+      size: input.size,
     },
-  };
+    policy,
+  );
+
+  await validateStagedFileSignature(extension, input.path);
+  return { extension, size: input.size };
 }
 
 export function validateKnowledgeFile(
   input: KnowledgeFileInput,
   policy: KnowledgeFilePolicy = {},
+) {
+  const { extension } = validateKnowledgeFileMetadata(
+    {
+      contentType: input.contentType,
+      fileName: input.fileName,
+      size: input.body.length,
+    },
+    policy,
+  );
+
+  validateFileSignature(extension, input.body);
+  return { extension, size: input.body.length };
+}
+
+function validateKnowledgeFileMetadata(
+  input: { contentType: string; fileName: string; size: number },
+  policy: KnowledgeFilePolicy,
 ) {
   const extension = extname(input.fileName).toLowerCase();
   const allowedExtensions =
@@ -104,20 +138,121 @@ export function validateKnowledgeFile(
     );
   }
 
-  if (input.body.length === 0) {
+  if (input.size === 0) {
     throw new BadRequestException('빈 파일은 업로드할 수 없습니다.');
   }
 
-  if (input.body.length > maxBytes) {
+  if (input.size > maxBytes) {
     throw new BadRequestException(
       `파일 크기는 ${Math.floor(maxBytes / 1024 / 1024)}MB 이하여야 합니다.`,
     );
   }
 
   validateMimeType(extension, input.contentType);
-  validateFileSignature(extension, input.body);
+  return { extension };
+}
 
-  return { extension, size: input.body.length };
+async function validateStagedFileSignature(extension: string, path: string) {
+  if (['.txt', '.md', '.csv', '.json'].includes(extension)) {
+    await validateStagedTextFile(extension, path);
+    return;
+  }
+
+  const markers =
+    extension === '.docx'
+      ? [Buffer.from('[Content_Types].xml'), Buffer.from('word/')]
+      : extension === '.xlsx'
+        ? [Buffer.from('[Content_Types].xml'), Buffer.from('xl/')]
+        : [];
+  const scan = await scanStagedFile(path, markers);
+
+  if (
+    extension === '.pdf' &&
+    !scan.header.subarray(0, 5).equals(Buffer.from('%PDF-'))
+  ) {
+    throw invalidSignature(extension);
+  }
+  if (
+    extension === '.xls' &&
+    !scan.header.subarray(0, 8).equals(OLE_COMPOUND_FILE_HEADER)
+  ) {
+    throw invalidSignature(extension);
+  }
+  if (extension === '.docx' || extension === '.xlsx') {
+    const hasZipHeader = scan.header
+      .subarray(0, 4)
+      .equals(ZIP_LOCAL_FILE_HEADER);
+    if (!hasZipHeader || scan.markers.some((found) => !found)) {
+      throw invalidSignature(extension);
+    }
+  }
+}
+
+async function validateStagedTextFile(extension: string, path: string) {
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let hasContent = false;
+
+  try {
+    for await (const chunk of createReadStream(path)) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (buffer.includes(0)) throw invalidSignature(extension);
+      if (/[^\s\uFEFF]/u.test(decoder.decode(buffer, { stream: true }))) {
+        hasContent = true;
+      }
+    }
+    if (/[^\s\uFEFF]/u.test(decoder.decode())) hasContent = true;
+  } catch (error) {
+    if (error instanceof BadRequestException) throw error;
+    throw new BadRequestException('텍스트 파일은 유효한 UTF-8이어야 합니다.');
+  }
+
+  if (!hasContent) {
+    throw new BadRequestException('빈 파일은 업로드할 수 없습니다.');
+  }
+  if (extension === '.json') await validateStagedJson(path);
+}
+
+async function validateStagedJson(path: string) {
+  try {
+    await pipeline(
+      createReadStream(path),
+      parserStream(),
+      new Writable({
+        objectMode: true,
+        write(_chunk, _encoding, callback) {
+          callback();
+        },
+      }),
+    );
+  } catch {
+    throw new BadRequestException('유효한 JSON 문서가 아닙니다.');
+  }
+}
+
+async function scanStagedFile(path: string, markers: Buffer[]) {
+  const found = markers.map(() => false);
+  const maxMarkerLength = Math.max(
+    1,
+    ...markers.map((marker) => marker.length),
+  );
+  let header = Buffer.alloc(0);
+  let tail = Buffer.alloc(0);
+
+  for await (const chunk of createReadStream(path)) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    if (header.length < 8) {
+      header = Buffer.concat([header, buffer]).subarray(0, 8);
+    }
+    const searchable = Buffer.concat([tail, buffer]);
+    markers.forEach((marker, index) => {
+      if (!found[index] && searchable.includes(marker)) found[index] = true;
+    });
+    tail = searchable.subarray(
+      Math.max(0, searchable.length - maxMarkerLength + 1),
+    );
+  }
+
+  return { header, markers: found };
 }
 
 function validateFileName(fileName: string) {

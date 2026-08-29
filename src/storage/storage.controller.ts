@@ -20,9 +20,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { memoryStorage } from 'multer';
+import { pipeline } from 'node:stream/promises';
 import { AppkeyGuard, type AppkeyRequest } from '../common/guards/appkey.guard';
 import { StorageService } from './storage.service';
+import { createStagedUploadOptions } from './staged-upload';
 
 @ApiTags('storage')
 @UseGuards(AppkeyGuard)
@@ -36,11 +37,7 @@ export class StorageController {
   constructor(private readonly storageService: StorageService) {}
 
   @Post('upload')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', createStagedUploadOptions()))
   @ApiOperation({
     summary: 'appkey의 appcode 경로로 파일을 S3에 업로드합니다.',
   })
@@ -141,8 +138,15 @@ export class StorageController {
     );
 
     response.setHeader('Content-Type', file.contentType);
-    response.setHeader('Content-Length', file.contentLength);
+    if (file.contentLength !== undefined) {
+      response.setHeader('Content-Length', file.contentLength);
+    }
     response.setHeader('Content-Disposition', file.contentDisposition);
-    response.send(file.body);
+    try {
+      await pipeline(file.body, response);
+    } catch (error) {
+      if (!response.headersSent) throw error;
+      response.destroy(error instanceof Error ? error : undefined);
+    }
   }
 }

@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { extname, parse } from 'node:path';
+import { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
-  PutObjectCommand,
-  DeleteObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import {
   BadRequestException,
   ForbiddenException,
@@ -16,6 +19,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { removeStagedFile, requireStagedPath } from './staged-upload';
 
 type ListFilesOptions = {
   prefix?: string;
@@ -37,16 +41,28 @@ export class StorageService {
     const bucket = this.getBucket();
 
     const key = this.createObjectKey(appcode, file.originalname);
+    const body = createReadStream(requireStagedPath(file));
 
-    await this.s3Client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: file.buffer,
-        ContentLength: file.size,
-        ContentType: file.mimetype,
-      }),
-    );
+    try {
+      const upload = new Upload({
+        client: this.s3Client,
+        params: {
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentLength: file.size,
+          ContentType: file.mimetype,
+        },
+        queueSize: 2,
+        partSize: 5 * 1024 * 1024,
+        leavePartsOnError: false,
+      });
+      await upload.done();
+    } finally {
+      body.destroy();
+      await finished(body).catch(() => undefined);
+      await removeStagedFile(file);
+    }
 
     return {
       appcode,
@@ -155,13 +171,41 @@ export class StorageService {
 
       return {
         contentType: response.ContentType ?? 'application/octet-stream',
-        contentLength: response.ContentLength ?? 0,
+        contentLength: response.ContentLength,
         contentDisposition: this.createContentDisposition(normalizedKey),
-        body: Buffer.from(await response.Body.transformToByteArray()),
+        body: this.toReadable(response.Body),
       };
     } catch (error) {
       this.handleS3NotFound(error, normalizedKey);
     }
+  }
+
+  async downloadFileBuffer(key: string, appcode: string, maxBytes: number) {
+    const file = await this.downloadFile(key, appcode);
+    const tooLargeMessage = `S3 파일 크기는 ${Math.floor(maxBytes / 1024 / 1024)}MB 이하여야 합니다.`;
+
+    if (file.contentLength !== undefined && file.contentLength > maxBytes) {
+      file.body.destroy();
+      throw new BadRequestException(tooLargeMessage);
+    }
+
+    const chunks: Buffer[] = [];
+    let size = 0;
+    try {
+      for await (const chunk of file.body) {
+        const buffer = Buffer.isBuffer(chunk)
+          ? chunk
+          : Buffer.from(chunk as Uint8Array);
+        size += buffer.length;
+        if (size > maxBytes) throw new BadRequestException(tooLargeMessage);
+        chunks.push(buffer);
+      }
+    } catch (error) {
+      file.body.destroy();
+      throw error;
+    }
+
+    return { ...file, body: Buffer.concat(chunks, size) };
   }
 
   private createObjectKey(appcode: string, originalName: string) {
@@ -267,6 +311,16 @@ export class StorageService {
     }
 
     throw error;
+  }
+
+  private toReadable(body: unknown) {
+    if (body instanceof Readable) return body;
+    if (body && typeof body === 'object' && Symbol.asyncIterator in body) {
+      return Readable.from(body as AsyncIterable<Uint8Array>);
+    }
+    throw new InternalServerErrorException(
+      'S3 응답 stream을 읽을 수 없습니다.',
+    );
   }
 
   private toSafeFileName(fileName: string) {

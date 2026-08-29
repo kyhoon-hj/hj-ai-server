@@ -171,7 +171,9 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 - [x] `KNW-SRV-01` Multer 수신 단계 file/field/part size 제한
 - [x] `KNW-SRV-02` MIME signature와 확장자 교차 검증
-- [ ] `KNW-SRV-03` S3 업로드·다운로드 streaming 전환
+- [x] `KNW-SRV-03` S3 업로드·다운로드 streaming 전환
+  - multipart 임시 파일 staging, S3 multipart upload, HTTP download pipeline과 parser용 bounded-buffer 경로 분리
+  - 29MiB 실제 S3 smoke에서 upload/download SHA-256 일치, S3·임시 파일 정리, AI Server RSS 증가 0.13MiB 확인
 - [ ] `KNW-SRV-04` upload와 DB record 실패 보상 처리
 - [ ] `KNW-SRV-05` archive·chunk 삭제·S3 삭제 일관성 개선
 - [ ] `KNW-SRV-06` 취약한 XLS/XLSX parser 교체 또는 격리
@@ -470,11 +472,11 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `KNW-SRV-03~06`: streaming, 실패 보상, 삭제 일관성과 XLSX parser 교체·격리
+1. `KNW-SRV-04~06`: 실패 보상, 삭제 일관성과 XLSX parser 교체·격리
 2. `KNW-DEM-03`: reindex, archive, S3 삭제와 중복 실행 시나리오 완성
 3. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
 4. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
 5. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
 6. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
 
-품질 게이트, 다중 형식 fixture, 지식 파일 1차 방어선, 악성·대용량 multipart 거절 계약과 upload부터 answer까지 HTTP 생명주기는 확보됐습니다. 다음 작업은 streaming과 실패 보상을 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.
+품질 게이트, 다중 형식 fixture, 지식 파일 1차 방어선, 악성·대용량 multipart 거절 계약, S3 streaming과 upload부터 answer까지 HTTP 생명주기는 확보됐습니다. 다음 작업은 upload/DB 실패 보상과 삭제 일관성을 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.

@@ -13,6 +13,11 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import {
+  removeStagedFile,
+  requireStagedPath,
+  sha256StagedFile,
+} from '../storage/staged-upload';
 import { ChunkingService } from './chunking.service';
 import { CreateKnowledgeTextDto } from './dto/create-knowledge-text.dto';
 import { DocumentParserService } from './document-parser.service';
@@ -31,7 +36,7 @@ import {
 import {
   DEFAULT_KNOWLEDGE_ALLOWED_EXTENSIONS,
   getKnowledgeMaxFileSizeMb,
-  validateKnowledgeFile,
+  validateKnowledgeStagedFile,
 } from './knowledge-file-security';
 
 const KNOWLEDGE_FILE_STATUS = {
@@ -91,33 +96,37 @@ export class KnowledgeService {
     appInfo: { appcode: string; maxStorageMb: number | null },
   ) {
     const appcode = appInfo.appcode;
-    this.validateKnowledgeUpload(file);
-    await this.ensureStorageQuota(appcode, file.size, appInfo.maxStorageMb);
+    try {
+      await this.validateKnowledgeUpload(file);
+      await this.ensureStorageQuota(appcode, file.size, appInfo.maxStorageMb);
+      const checksum = await sha256StagedFile(file);
+      const uploaded = await this.storageService.uploadFile(file, appcode);
 
-    const uploaded = await this.storageService.uploadFile(file, appcode);
-
-    return this.prisma.knowledgeFile.create({
-      data: {
-        appcode,
-        bucket: uploaded.bucket,
-        key: uploaded.key,
-        url: uploaded.url,
-        originalName: uploaded.originalName,
-        mimetype: uploaded.mimetype,
-        size: uploaded.size,
-        checksum: this.sha256(file.buffer),
-        status: KNOWLEDGE_FILE_STATUS.uploaded,
-        metadata: {
-          source: 's3',
-          uploadMode: 'manual',
+      return this.prisma.knowledgeFile.create({
+        data: {
+          appcode,
+          bucket: uploaded.bucket,
+          key: uploaded.key,
+          url: uploaded.url,
+          originalName: uploaded.originalName,
+          mimetype: uploaded.mimetype,
+          size: uploaded.size,
+          checksum,
+          status: KNOWLEDGE_FILE_STATUS.uploaded,
+          metadata: {
+            source: 's3',
+            uploadMode: 'manual',
+          },
         },
-      },
-      include: {
-        _count: {
-          select: { chunks: true },
+        include: {
+          _count: {
+            select: { chunks: true },
+          },
         },
-      },
-    });
+      });
+    } finally {
+      await removeStagedFile(file);
+    }
   }
 
   listKnowledgeFiles(
@@ -319,9 +328,14 @@ export class KnowledgeService {
     });
 
     try {
-      const downloaded = await this.storageService.downloadFile(
+      const downloaded = await this.storageService.downloadFileBuffer(
         file.key,
         appcode,
+        getKnowledgeMaxFileSizeMb(
+          this.configService.get<string>('KNOWLEDGE_MAX_FILE_SIZE_MB'),
+        ) *
+          1024 *
+          1024,
       );
       const parsedDocument = await this.documentParserService.parse({
         body: downloaded.body,
@@ -1220,9 +1234,10 @@ ${dto.query}`;
       this.configService.get<string>('KNOWLEDGE_MAX_FILE_SIZE_MB'),
     );
 
-    validateKnowledgeFile(
+    return validateKnowledgeStagedFile(
       {
-        body: file.buffer,
+        path: requireStagedPath(file),
+        size: file.size,
         contentType: file.mimetype,
         fileName: file.originalname,
       },
