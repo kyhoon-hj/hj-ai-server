@@ -193,42 +193,142 @@ export class KnowledgeService {
     appcode: string,
     options: { deleteObject?: boolean } = {},
   ) {
-    const file = await this.prisma.knowledgeFile.findFirst({
-      where: { id, appcode },
+    const archive = await this.prisma.$transaction(async (transaction) => {
+      const file = await transaction.knowledgeFile.findFirst({
+        where: { id, appcode },
+      });
+
+      if (!file) {
+        throw new NotFoundException(`Knowledge file ${id} not found`);
+      }
+
+      const archivedAt = new Date().toISOString();
+      const metadata = this.asJsonObject(file.metadata) ?? {};
+      const hasExternalObject = file.bucket !== 'direct-text';
+      const objectAlreadyDeleted = metadata.deletedObject === true;
+      const shouldDeleteObject = Boolean(
+        options.deleteObject && hasExternalObject && !objectAlreadyDeleted,
+      );
+
+      await transaction.knowledgeChunk.deleteMany({
+        where: { fileId: file.id },
+      });
+
+      const archivedFile = await transaction.knowledgeFile.update({
+        where: { id: file.id },
+        data: {
+          status: KNOWLEDGE_FILE_STATUS.archived,
+          errorMessage: null,
+          indexedAt: null,
+          metadata: {
+            ...metadata,
+            archivedAt:
+              typeof metadata.archivedAt === 'string'
+                ? metadata.archivedAt
+                : archivedAt,
+            deleteObjectRequested:
+              metadata.deleteObjectRequested === true || shouldDeleteObject,
+            deletedObject: objectAlreadyDeleted,
+            objectCleanupStatus: objectAlreadyDeleted
+              ? 'completed'
+              : shouldDeleteObject
+                ? 'pending'
+                : hasExternalObject
+                  ? (metadata.objectCleanupStatus ?? 'not_requested')
+                  : 'not_applicable',
+            objectCleanupLastError: shouldDeleteObject
+              ? null
+              : (metadata.objectCleanupLastError ?? null),
+            objectCleanupUpdatedAt: shouldDeleteObject
+              ? archivedAt
+              : (metadata.objectCleanupUpdatedAt ?? archivedAt),
+          },
+        },
+        include: {
+          _count: {
+            select: { chunks: true },
+          },
+        },
+      });
+
+      return { file: archivedFile, shouldDeleteObject };
     });
 
-    if (!file) {
-      throw new NotFoundException(`Knowledge file ${id} not found`);
+    if (!archive.shouldDeleteObject) {
+      return archive.file;
     }
 
-    if (options.deleteObject && file.bucket !== 'direct-text') {
-      await this.storageService.deleteFile(file.key, appcode);
+    try {
+      await this.storageService.deleteFile(archive.file.key, appcode);
+    } catch (cleanupError) {
+      const failedAt = new Date().toISOString();
+      const metadata = this.asJsonObject(archive.file.metadata) ?? {};
+
+      try {
+        await this.prisma.knowledgeFile.update({
+          where: { id: archive.file.id },
+          data: {
+            metadata: {
+              ...metadata,
+              deletedObject: false,
+              objectCleanupStatus: 'failed',
+              objectCleanupLastError:
+                cleanupError instanceof Error
+                  ? cleanupError.name
+                  : 'UnknownError',
+              objectCleanupUpdatedAt: failedAt,
+            },
+          },
+        });
+      } catch (stateError) {
+        this.logger.error(
+          'Knowledge S3 cleanup failure state could not be persisted.',
+          stateError instanceof Error ? stateError.stack : undefined,
+        );
+      }
+
+      this.logger.error(
+        'Knowledge file was archived, but its S3 object cleanup failed.',
+        cleanupError instanceof Error ? cleanupError.stack : undefined,
+      );
+      throw new InternalServerErrorException({
+        message:
+          '지식 파일은 보관 처리됐지만 S3 원본 삭제를 완료하지 못했습니다.',
+        code: 'KNOWLEDGE_OBJECT_CLEANUP_FAILED',
+      });
     }
 
-    await this.prisma.knowledgeChunk.deleteMany({
-      where: { fileId: file.id },
-    });
-
-    return this.prisma.knowledgeFile.update({
-      where: { id: file.id },
-      data: {
-        status: KNOWLEDGE_FILE_STATUS.archived,
-        errorMessage: null,
-        indexedAt: null,
-        metadata: {
-          ...(this.asJsonObject(file.metadata) ?? {}),
-          archivedAt: new Date().toISOString(),
-          deletedObject: Boolean(
-            options.deleteObject && file.bucket !== 'direct-text',
-          ),
+    const completedAt = new Date().toISOString();
+    const metadata = this.asJsonObject(archive.file.metadata) ?? {};
+    try {
+      return await this.prisma.knowledgeFile.update({
+        where: { id: archive.file.id },
+        data: {
+          metadata: {
+            ...metadata,
+            deletedObject: true,
+            objectCleanupStatus: 'completed',
+            objectCleanupLastError: null,
+            objectCleanupUpdatedAt: completedAt,
+          },
         },
-      },
-      include: {
-        _count: {
-          select: { chunks: true },
+        include: {
+          _count: {
+            select: { chunks: true },
+          },
         },
-      },
-    });
+      });
+    } catch (stateError) {
+      this.logger.error(
+        'Knowledge S3 cleanup succeeded, but completion state update failed.',
+        stateError instanceof Error ? stateError.stack : undefined,
+      );
+      throw new InternalServerErrorException({
+        message:
+          'S3 원본은 삭제됐지만 지식 파일 정리 완료 상태를 기록하지 못했습니다.',
+        code: 'KNOWLEDGE_OBJECT_CLEANUP_STATE_FAILED',
+      });
+    }
   }
 
   async createKnowledgeText(
