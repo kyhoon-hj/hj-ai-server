@@ -16,6 +16,7 @@
 - 외부 소비자 API 공통 rate limit·동시성·월 token quota 적용
 - Multer 단계 file size/field 제한 적용
 - [x] S3 업로드·다운로드 streaming 전환
+- [x] S3 upload 성공 후 DB record 실패 시 보상 삭제 및 이중 실패 식별
 - [x] exact-origin CORS allowlist와 운영 Swagger 기본 비활성화
 - high dependency vulnerability 해소
 

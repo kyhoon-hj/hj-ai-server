@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -77,6 +79,7 @@ type KnowledgeMatch = {
 @Injectable()
 export class KnowledgeService {
   private readonly bedrockClient: BedrockRuntimeClient;
+  private readonly logger = new Logger(KnowledgeService.name);
 
   constructor(
     private readonly configService: ConfigService,
@@ -102,28 +105,47 @@ export class KnowledgeService {
       const checksum = await sha256StagedFile(file);
       const uploaded = await this.storageService.uploadFile(file, appcode);
 
-      return this.prisma.knowledgeFile.create({
-        data: {
-          appcode,
-          bucket: uploaded.bucket,
-          key: uploaded.key,
-          url: uploaded.url,
-          originalName: uploaded.originalName,
-          mimetype: uploaded.mimetype,
-          size: uploaded.size,
-          checksum,
-          status: KNOWLEDGE_FILE_STATUS.uploaded,
-          metadata: {
-            source: 's3',
-            uploadMode: 'manual',
+      try {
+        return await this.prisma.knowledgeFile.create({
+          data: {
+            appcode,
+            bucket: uploaded.bucket,
+            key: uploaded.key,
+            url: uploaded.url,
+            originalName: uploaded.originalName,
+            mimetype: uploaded.mimetype,
+            size: uploaded.size,
+            checksum,
+            status: KNOWLEDGE_FILE_STATUS.uploaded,
+            metadata: {
+              source: 's3',
+              uploadMode: 'manual',
+            },
           },
-        },
-        include: {
-          _count: {
-            select: { chunks: true },
+          include: {
+            _count: {
+              select: { chunks: true },
+            },
           },
-        },
-      });
+        });
+      } catch (databaseError) {
+        try {
+          await this.storageService.deleteFile(uploaded.key, appcode);
+        } catch (compensationError) {
+          this.logger.error(
+            'Knowledge upload DB write and S3 compensation delete both failed.',
+            compensationError instanceof Error
+              ? compensationError.stack
+              : undefined,
+          );
+          throw new InternalServerErrorException({
+            message:
+              '지식 파일 등록에 실패했고 S3 보상 삭제도 완료하지 못했습니다.',
+            code: 'KNOWLEDGE_UPLOAD_COMPENSATION_FAILED',
+          });
+        }
+        throw databaseError;
+      }
     } finally {
       await removeStagedFile(file);
     }

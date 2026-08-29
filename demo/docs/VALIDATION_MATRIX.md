@@ -10,7 +10,7 @@
 | Bedrock | text response | O |  | O | 공통 API 유지 여부 결정 |
 | Bedrock | general answer | O | O | O | 위험 질문 기준 dataset 확장 |
 | Storage | upload·list·detail·download | O | 29MiB streaming·checksum·정리 smoke | RSS 측정 | client abort·timeout 확장 |
-| Knowledge | 파일 업로드 | O | parser·검색 6/6, 전체 생명주기 6/6, 손상·위장·대용량 거절 7/7 | streaming RSS | DB 실패 보상 |
+| Knowledge | 파일 업로드 | O | parser·검색 6/6, 전체 생명주기 6/6, 손상·위장·대용량 거절 7/7, DB 실패 보상 4/4 | streaming RSS | 보상 실패 orphan 관측·정리 |
 | Knowledge | 직접 텍스트·seed | 운영자 API | fixture setup·legacy 404 |  | legacy flag 최종 제거 |
 | Knowledge | index·reindex | O | 전체 생명주기 6/6 |  | 비동기 job·retry·중복 실행 |
 | Knowledge | 정책·보관·S3 삭제 | O | 전체 생명주기·cleanup |  | role 및 감사 로그 검증 |
