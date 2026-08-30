@@ -1,7 +1,7 @@
 # Service Demo S0 검증 보고서
 
 - 검증일: 2026-08-30
-- 구현 commit: `e7326a0`
+- 구현 commit: `e9838d9`
 - fixture version: `svc-s0-v1`
 - 서비스 데모: `http://127.0.0.1:11002`
 - AI Server target: `http://127.0.0.1:11000`
@@ -19,7 +19,7 @@
 
 | 명령 | 결과 |
 | --- | --- |
-| `npm test` | 2 files, 6 tests PASS |
+| `npm test` | 3 files, 9 tests PASS |
 | `npm run typecheck` | PASS |
 | `npm run lint` | PASS |
 | `npm run build` | PASS |
