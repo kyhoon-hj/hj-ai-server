@@ -41,7 +41,7 @@ AI Server·검증 데모·서비스 데모의 변경이 동일한 로컬·CI 품
 - High·Moderate를 포함한 전체 JSON 결과 artifact 보존
 - artifact 보존 기간 14일
 
-현재 High 4건은 Prisma CLI 전이 의존성과 XLSX parser로 추적 중이므로 즉시 실패 조건으로 사용하지 않습니다. 잔여 위험이 제거되거나 승인 예외 정책이 확정되면 High를 차단 기준으로 승격합니다.
+2026-08-30 XLSX parser 교체 후 High 3건은 Prisma CLI의 `deepmerge-ts` 전이 의존성으로만 추적 중이므로 즉시 실패 조건으로 사용하지 않습니다. 잔여 위험이 제거되거나 승인 예외 정책이 확정되면 High를 차단 기준으로 승격합니다.
 
 ## 공급망 설정
 

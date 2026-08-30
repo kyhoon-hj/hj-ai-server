@@ -10,9 +10,10 @@
 - `KNOWLEDGE_MAX_FILE_SIZE_MB` 기본값은 30MB이며 환경 설정 허용 범위는 1~100MB입니다.
 - controller를 우회하는 내부 호출도 동일한 실제 buffer 길이 제한을 적용합니다.
 - 저장 전과 S3 다운로드 후 parser 진입 전에 파일명, 허용 확장자, MIME, binary signature를 교차 검증합니다.
-- PDF header, XLS OLE header, DOCX/XLSX ZIP container marker를 검증하고 OOXML의 `word/`와 `xl/` 구조를 구분합니다.
+- PDF header와 DOCX/XLSX ZIP container marker를 검증하고 OOXML의 `word/`와 `xl/` 구조를 구분합니다.
 - text 계열은 NUL, 잘못된 UTF-8, 빈 내용이 거절되며 JSON은 문법까지 검증합니다.
-- XLSX parser는 formula/HTML/style/VBA 읽기를 끄고 최대 50개 sheet, 전체 200,000개 cell로 처리 범위를 제한합니다.
+- XLSX parser는 `read-excel-file` 9.3.10을 사용하며 최대 50개 sheet, sheet당 50,000개 row, row당 512개 column, 전체 200,000개 cell, cell 문자열 32,767자로 처리 범위를 제한합니다.
+- 취약한 `xlsx` 0.18.5와 legacy XLS 업로드 허용을 제거했습니다.
 
 ## 자동 검증
 
@@ -35,6 +36,6 @@
 ## 잔여 위험과 다음 작업
 
 - 현재 OOXML 검증은 ZIP entry 이름과 container marker 기반의 1차 검증입니다. 압축 해제 총량과 처리 시간의 강제 격리는 아직 없습니다.
-- `xlsx` 패키지의 알려진 취약점은 남아 있으므로 `KNW-SRV-06`은 완료 처리하지 않습니다. 안전한 parser 교체 또는 worker 격리가 필요합니다.
+- `KNW-SRV-06` parser 교체는 2026-08-30 완료했습니다. 압축 해제 총량과 처리 시간의 별도 worker 강제 격리는 대용량 운영 부하 시험 후 재평가합니다.
 - S3 업로드와 다운로드는 여전히 전체 buffer 방식입니다. `KNW-SRV-03`에서 streaming으로 전환해야 단계 2의 memory exit gate를 충족합니다.
 - `KNW-DEM-04`의 서버 회귀는 확보했지만 실제 multipart HTTP에서 413/400 응답 계약을 확인하는 validation demo scenario가 남았습니다.

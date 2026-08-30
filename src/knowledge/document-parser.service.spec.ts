@@ -1,8 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PDFParse } from 'pdf-parse';
-import * as XLSX from 'xlsx';
-import { DocumentParserService } from './document-parser.service';
+import {
+  DocumentParserService,
+  validateWorkbookLimits,
+  WORKBOOK_LIMITS,
+} from './document-parser.service';
 
 describe('DocumentParserService', () => {
   let service: DocumentParserService;
@@ -24,39 +27,24 @@ describe('DocumentParserService', () => {
   });
 
   it('parses workbook rows into searchable field blocks', async () => {
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet([
-      {
-        상품명: '멀티탭 3구 2m',
-        위치: '1층 A-04',
-        재고: '18개',
-      },
-      {
-        상품명: '고양이 장난감 낚싯대',
-        위치: '2층 D-05',
-        재고: '14개',
-      },
-    ]);
-    XLSX.utils.book_append_sheet(workbook, worksheet, '상품목록');
-    const body = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: 'xlsx',
-    }) as Buffer;
+    const body = await readFile(
+      join(process.cwd(), 'demo', 'fixtures', 'store-a-inventory.xlsx'),
+    );
 
     const result = await service.parse({
       body,
       contentType:
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      fileName: 'products.xlsx',
+      fileName: 'store-a-inventory.xlsx',
     });
 
-    expect(result.sections).toHaveLength(2);
-    expect(result.sections[0].content).toContain('상품명: 멀티탭 3구 2m');
-    expect(result.sections[0].content).toContain('시트: 상품목록');
+    expect(result.sections).toHaveLength(6);
+    expect(result.sections[0].content).toContain('SKU: XLSX-LAMP-204');
+    expect(result.sections[0].content).toContain('시트: Inventory');
     expect(result.sections[0].metadata).toMatchObject({
       sourceType: 'xlsx',
-      sheetName: '상품목록',
-      rowNumber: 2,
+      sheetName: 'Inventory',
+      rowNumber: 5,
     });
   });
 
@@ -73,7 +61,7 @@ describe('DocumentParserService', () => {
 
     expect(result.sections).toHaveLength(6);
     expect(result.metadata).toMatchObject({
-      parser: 'xlsx',
+      parser: 'read-excel-file',
       sourceType: 'xlsx',
       sheetNames: ['Inventory', 'Support'],
     });
@@ -174,5 +162,89 @@ describe('DocumentParserService', () => {
         fileName: 'corrupt.docx',
       }),
     ).rejects.toThrow(/signature와 일치하지 않습니다/);
+  });
+
+  it('rejects legacy XLS uploads because the vulnerable parser was removed', async () => {
+    await expect(
+      service.parse({
+        body: Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+        contentType: 'application/vnd.ms-excel',
+        fileName: 'legacy.xls',
+      }),
+    ).rejects.toThrow(/지원하지 않는 파일 형식/);
+  });
+
+  it('normalizes parser failures for malformed XLSX containers', async () => {
+    const body = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      Buffer.from('[Content_Types].xml xl/'),
+    ]);
+
+    await expect(
+      service.parse({
+        body,
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileName: 'malformed.xlsx',
+      }),
+    ).rejects.toThrow(/유효한 XLSX 문서/);
+  });
+
+  it('enforces workbook sheet, row, column, cell, and text limits', () => {
+    expect(() =>
+      validateWorkbookLimits(
+        Array.from({ length: WORKBOOK_LIMITS.sheets + 1 }, (_, index) => ({
+          sheet: `Sheet${index + 1}`,
+          data: [],
+        })),
+      ),
+    ).toThrow(/시트는 최대/);
+    expect(() =>
+      validateWorkbookLimits([
+        {
+          sheet: 'Rows',
+          data: Array.from(
+            { length: WORKBOOK_LIMITS.rowsPerSheet + 1 },
+            () => [],
+          ),
+        },
+      ]),
+    ).toThrow(/시트당 최대/);
+    expect(() =>
+      validateWorkbookLimits([
+        {
+          sheet: 'Columns',
+          data: [Array(WORKBOOK_LIMITS.columnsPerRow + 1).fill('value')],
+        },
+      ]),
+    ).toThrow(/행당 최대/);
+    expect(() =>
+      validateWorkbookLimits([
+        {
+          sheet: 'Cells',
+          data: Array.from(
+            {
+              length:
+                Math.floor(
+                  WORKBOOK_LIMITS.totalCells / WORKBOOK_LIMITS.columnsPerRow,
+                ) + 1,
+            },
+            () =>
+              Array.from(
+                { length: WORKBOOK_LIMITS.columnsPerRow },
+                () => 'value',
+              ),
+          ),
+        },
+      ]),
+    ).toThrow(/문서는 전체/);
+    expect(() =>
+      validateWorkbookLimits([
+        {
+          sheet: 'Text',
+          data: [['x'.repeat(WORKBOOK_LIMITS.cellCharacters + 1)]],
+        },
+      ]),
+    ).toThrow(/셀 문자열/);
   });
 });

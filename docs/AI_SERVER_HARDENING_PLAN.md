@@ -18,6 +18,7 @@
 - [x] S3 업로드·다운로드 streaming 전환
 - [x] S3 upload 성공 후 DB record 실패 시 보상 삭제 및 이중 실패 식별
 - [x] archive·chunk 삭제 DB transaction과 재시도 가능한 S3 cleanup 상태 적용
+- [x] 취약한 `xlsx` parser 제거, XLSX 대체 parser와 처리 상한 적용
 - [x] exact-origin CORS allowlist와 운영 Swagger 기본 비활성화
 - high dependency vulnerability 해소
 

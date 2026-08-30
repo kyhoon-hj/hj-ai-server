@@ -98,7 +98,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [~] `ENV-SRV-02` migration 중복 appcode 확인 완료, 중복 데이터 복구 리허설 예정
 - [x] `ENV-SRV-03` startup 필수 환경변수 validation
 - [x] `ENV-SRV-04` live/readiness endpoint 분리
-- [~] `QLT-SRV-01` typecheck·lint 오류 0건, dependency High 9→4 완료; Prisma·XLSX 잔여 위험 처리 예정
+- [~] `QLT-SRV-01` typecheck·lint 오류 0건, dependency High 9→3 완료; Prisma CLI 전이 위험 처리 예정
 
 #### 서비스 데모
 
@@ -183,8 +183,10 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
   - S3 삭제 성공 시 정리 완료를 확정하며, 실패 시 archived 상태와 재시도 가능한 cleanup 실패 정보를 보존
   - 동일 요청 재실행을 안전하게 만들고 DB transaction·S3 삭제·완료 기록 실패 경로를 fault-injection으로 검증
   - fault-injection·멱등 재시도 6/6, 실제 S3 전체 생명주기 6/6과 streaming smoke 재검증 완료
-- [ ] `KNW-SRV-06` 취약한 XLS/XLSX parser 교체 또는 격리
-  - file/sheet/cell 제한과 불필요한 workbook 기능 비활성화 완료. parser 교체 또는 process 격리는 남음
+- [x] `KNW-SRV-06` 취약한 XLS/XLSX parser 교체 또는 격리
+  - 취약한 `xlsx` 0.18.5를 제거하고 유지보수 중인 `read-excel-file` 9.3.10으로 XLSX parser 교체
+  - legacy XLS 허용 제거, 30MB file·50 sheet·sheet당 50,000 row·row당 512 column·전체 200,000 cell·cell 문자열 32,767자 상한 적용
+  - parser 단위 계약 10/10, 실제 PDF·DOCX·XLSX metadata·검색 회귀 6/6과 전체 생명주기 6/6 완료
 
 #### 서비스 데모 — 마트 고객응대 MVP
 
@@ -479,11 +481,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `KNW-SRV-06`: XLSX parser 교체·격리
-2. `KNW-DEM-03`: reindex, archive, S3 삭제와 중복 실행 시나리오 완성
-3. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
-4. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
-5. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
-6. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
+1. `KNW-DEM-03`: reindex, archive, S3 삭제와 중복 실행 시나리오 완성
+2. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
+3. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
+4. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
+5. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
 
-품질 게이트, 다중 형식 fixture, 지식 파일 1차 방어선, 악성·대용량 multipart 거절 계약, S3 streaming, upload/DB 실패 보상, archive·chunk·S3 삭제 일관성과 upload부터 answer까지 HTTP 생명주기는 확보됐습니다. 다음 작업은 XLSX parser 교체·격리를 결정하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.
+품질 게이트, 다중 형식 fixture, 지식 파일 방어선, 악성·대용량 multipart 거절 계약, S3 streaming, upload/DB 실패 보상, archive·chunk·S3 삭제 일관성, XLSX parser 교체와 upload부터 answer까지 HTTP 생명주기는 확보됐습니다. 다음 작업은 reindex·archive·S3 삭제 중복 실행 시나리오를 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.

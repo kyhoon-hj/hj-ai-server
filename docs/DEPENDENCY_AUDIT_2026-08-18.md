@@ -37,11 +37,11 @@
 - 애플리케이션은 Prisma 7 API와 adapter 구성을 사용하므로 자동 강제 수정은 적용하지 않았습니다.
 - 안전한 Prisma 7 수정 버전이 제공되면 `prisma`, `@prisma/client`, `@prisma/adapter-pg`를 같은 버전으로 함께 갱신합니다.
 
-### XLSX parser
+### XLSX parser — 2026-08-30 해소
 
-- `xlsx` 0.18.5는 prototype pollution과 ReDoS 경고가 있으며 npm registry에 자동 수정 버전이 없습니다.
-- 외부 업로드 문서를 처리하므로 단순 위험 수용으로 완료하지 않습니다.
-- `KNW-SRV-06`에서 parser 교체 또는 격리를 수행하고, 그 전까지 파일 크기·MIME·처리 시간 제한을 우선 적용합니다.
+- `xlsx` 0.18.5의 prototype pollution과 ReDoS 경고는 단순 위험 수용하지 않았습니다.
+- `KNW-SRV-06`에서 해당 패키지를 제거하고 `read-excel-file` 9.3.10으로 교체했습니다.
+- legacy XLS 허용을 제거하고 XLSX 처리 상한과 실제 parser 회귀를 적용했습니다.
 
 ## 회귀 검증
 
@@ -55,4 +55,13 @@
 
 ## 판정
 
-자동 수정 가능한 High·Moderate 경로는 해소됐고 기존 기능 회귀는 발견되지 않았습니다. High 4건은 Prisma CLI 전이 경로와 XLSX parser에 한정됩니다. `QLT-SRV-01`은 잔여 두 경로가 제거되거나 승인된 격리·위험 수용 문서가 마련될 때까지 진행 중으로 유지합니다.
+자동 수정 가능한 High·Moderate 경로는 해소됐고 기존 기능 회귀는 발견되지 않았습니다.
+
+## 2026-08-30 후속 처리
+
+- `xlsx` 0.18.5를 제거하고 `read-excel-file` 9.3.10으로 XLSX 읽기 경로를 교체했습니다.
+- 대체 parser가 지원하지 않는 legacy XLS 업로드 허용을 제거했습니다.
+- `npm audit` High는 4건에서 3건으로 감소했으며, 잔여 항목은 Prisma CLI의 `deepmerge-ts` 전이 경로뿐입니다.
+- 실제 PDF·DOCX·XLSX parser metadata·검색 회귀 6/6과 지식 전체 생명주기 6/6이 통과했습니다.
+
+`QLT-SRV-01`은 잔여 Prisma CLI 경로가 제거되거나 승인된 개발 도구 예외 정책이 확정될 때까지 진행 중으로 유지합니다.

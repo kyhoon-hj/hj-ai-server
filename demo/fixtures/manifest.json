@@ -30,7 +30,7 @@
       "name": "store-a-inventory.xlsx",
       "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "sourceType": "xlsx",
-      "parser": "xlsx",
+      "parser": "read-excel-file",
       "searchMarker": "XLSX-SVC-882",
       "minimumChunkCount": 6,
       "sheetNames": ["Inventory", "Support"]

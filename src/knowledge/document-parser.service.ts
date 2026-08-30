@@ -2,7 +2,7 @@ import { extname } from 'node:path';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
-import * as XLSX from 'xlsx';
+import readXlsxFile from 'read-excel-file/node';
 import { validateKnowledgeFile } from './knowledge-file-security';
 
 export type ParsedDocumentSection = {
@@ -17,6 +17,61 @@ export type ParsedDocument = {
   sections: ParsedDocumentSection[];
   metadata: Record<string, unknown>;
 };
+
+type WorkbookSheet = {
+  sheet: string;
+  data: unknown[][];
+};
+
+export const WORKBOOK_LIMITS = {
+  sheets: 50,
+  rowsPerSheet: 50_000,
+  columnsPerRow: 512,
+  totalCells: 200_000,
+  cellCharacters: 32_767,
+} as const;
+
+export function validateWorkbookLimits(workbook: WorkbookSheet[]) {
+  if (workbook.length > WORKBOOK_LIMITS.sheets) {
+    throw new BadRequestException(
+      `엑셀 시트는 최대 ${WORKBOOK_LIMITS.sheets}개까지 처리합니다.`,
+    );
+  }
+
+  let totalCells = 0;
+  for (const worksheet of workbook) {
+    if (worksheet.data.length > WORKBOOK_LIMITS.rowsPerSheet) {
+      throw new BadRequestException(
+        `엑셀 시트당 최대 ${WORKBOOK_LIMITS.rowsPerSheet.toLocaleString()}개 행까지 처리합니다.`,
+      );
+    }
+
+    for (const row of worksheet.data) {
+      if (row.length > WORKBOOK_LIMITS.columnsPerRow) {
+        throw new BadRequestException(
+          `엑셀 행당 최대 ${WORKBOOK_LIMITS.columnsPerRow}개 열까지 처리합니다.`,
+        );
+      }
+      totalCells += row.length;
+      if (totalCells > WORKBOOK_LIMITS.totalCells) {
+        throw new BadRequestException(
+          `엑셀 문서는 전체 ${WORKBOOK_LIMITS.totalCells.toLocaleString()}개 셀까지 처리합니다.`,
+        );
+      }
+      if (
+        row.some(
+          (cell) =>
+            typeof cell === 'string' &&
+            cell.length > WORKBOOK_LIMITS.cellCharacters,
+        )
+      ) {
+        throw new BadRequestException(
+          `엑셀 셀 문자열은 최대 ${WORKBOOK_LIMITS.cellCharacters.toLocaleString()}자까지 처리합니다.`,
+        );
+      }
+    }
+  }
+}
 
 @Injectable()
 export class DocumentParserService {
@@ -33,7 +88,7 @@ export class DocumentParserService {
       return this.parseText(input.body, input.fileName, extension);
     }
 
-    if (extension === '.xlsx' || extension === '.xls') {
+    if (extension === '.xlsx') {
       return this.parseWorkbook(input.body, input.fileName, extension);
     }
 
@@ -46,7 +101,7 @@ export class DocumentParserService {
     }
 
     throw new BadRequestException(
-      '지원하지 않는 파일 형식입니다. txt, md, json, csv, xlsx, xls, pdf, docx 파일을 업로드하세요.',
+      '지원하지 않는 파일 형식입니다. txt, md, json, csv, xlsx, pdf, docx 파일을 업로드하세요.',
     );
   }
 
@@ -76,38 +131,20 @@ export class DocumentParserService {
     };
   }
 
-  private parseWorkbook(body: Buffer, fileName: string, extension: string) {
-    const workbook = XLSX.read(body, {
-      type: 'buffer',
-      cellDates: true,
-      cellFormula: false,
-      cellHTML: false,
-      cellNF: false,
-      cellStyles: false,
-      bookVBA: false,
-    });
-
-    if (workbook.SheetNames.length > 50) {
-      throw new BadRequestException('엑셀 시트는 최대 50개까지 처리합니다.');
+  private async parseWorkbook(
+    body: Buffer,
+    fileName: string,
+    extension: string,
+  ) {
+    let workbook: WorkbookSheet[];
+    try {
+      workbook = await readXlsxFile(body, { trim: false });
+    } catch {
+      throw new BadRequestException('유효한 XLSX 문서가 아닙니다.');
     }
+    validateWorkbookLimits(workbook);
 
-    let totalCells = 0;
-    const sections = workbook.SheetNames.flatMap((sheetName) => {
-      const sheet = workbook.Sheets[sheetName];
-      if (sheet['!ref']) {
-        const range = XLSX.utils.decode_range(sheet['!ref']);
-        totalCells += (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
-        if (totalCells > 200_000) {
-          throw new BadRequestException(
-            '엑셀 문서는 전체 200,000개 셀까지 처리합니다.',
-          );
-        }
-      }
-      const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-        header: 1,
-        defval: '',
-        raw: false,
-      });
+    const sections = workbook.flatMap(({ sheet: sheetName, data: matrix }) => {
       const headerIndex = this.findWorkbookHeaderIndex(matrix);
       if (headerIndex < 0) {
         return [];
@@ -152,9 +189,9 @@ export class DocumentParserService {
     }
 
     return this.fromSections(fileName, sections, {
-      parser: 'xlsx',
+      parser: 'read-excel-file',
       sourceType: this.extensionToSourceType(extension),
-      sheetNames: workbook.SheetNames,
+      sheetNames: workbook.map(({ sheet }) => sheet),
     });
   }
 
