@@ -4,6 +4,7 @@
 - 구현 commit: `e9838d9`
 - fixture version: `svc-s0-v1`
 - 서비스 데모: `http://127.0.0.1:11002`
+- 비공개 배포: `https://hj-mart-assist.kyhoon-hj.chatgpt.site`
 - AI Server target: `http://127.0.0.1:11000`
 
 ## 완료 범위
