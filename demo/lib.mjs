@@ -75,10 +75,13 @@ export function evaluateKnowledgeLifecycleStep(step, body, context = {}) {
   if (step === 'upload') {
     if (!body.id) reasons.push('uploaded file id is missing');
     if (body.status !== 'uploaded') reasons.push(`upload status is ${body.status ?? 'missing'}`);
-  } else if (step === 'index') {
+  } else if (step === 'index' || step === 'reindex') {
     if (body.fileId !== fileId) reasons.push('indexed file id does not match upload');
     if (body.status !== 'indexed') reasons.push(`index status is ${body.status ?? 'missing'}`);
     if (!Number.isInteger(body.chunkCount) || body.chunkCount < 1) reasons.push('indexed chunk count is missing');
+    if (Number.isInteger(context.expectedChunkCount) && body.chunkCount !== context.expectedChunkCount) {
+      reasons.push(`chunk count ${body.chunkCount ?? 'missing'} does not match ${context.expectedChunkCount}`);
+    }
   } else if (step === 'policy') {
     if (body.id !== fileId) reasons.push('policy file id does not match upload');
     if (body.accessLevel !== 'PUBLIC') reasons.push('access level is not PUBLIC');
@@ -91,11 +94,16 @@ export function evaluateKnowledgeLifecycleStep(step, body, context = {}) {
   } else if (step === 'answer') {
     if (body.answerable !== true) reasons.push('answer is not grounded');
     if (!body.sources?.some((source) => source.fileId === fileId)) reasons.push('uploaded file is missing from answer sources');
-  } else if (step === 'cleanup') {
+  } else if (step === 'cleanup' || step === 'cleanup-repeat') {
     if (body.id !== fileId) reasons.push('cleanup file id does not match upload');
     if (body.status !== 'archived') reasons.push(`cleanup status is ${body.status ?? 'missing'}`);
     if (body._count?.chunks !== 0) reasons.push('chunks remain after cleanup');
     if (body.metadata?.deletedObject !== true) reasons.push('S3 object deletion is not confirmed');
+    if (body.metadata?.deleteObjectRequested !== true) reasons.push('S3 object deletion request is not recorded');
+    if (body.metadata?.objectCleanupStatus !== 'completed') reasons.push('S3 cleanup status is not completed');
+    if (context.archivedAt && body.metadata?.archivedAt !== context.archivedAt) {
+      reasons.push('archivedAt changed during duplicate cleanup');
+    }
   } else {
     reasons.push(`unknown lifecycle step: ${step}`);
   }

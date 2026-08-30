@@ -52,6 +52,14 @@ test('지식 생명주기 단계별 응답 계약을 평가한다', () => {
   );
   assert.deepEqual(
     evaluateKnowledgeLifecycleStep(
+      'reindex',
+      { fileId: 'file-1', status: 'indexed', chunkCount: 1 },
+      { ...context, expectedChunkCount: 1 },
+    ),
+    [],
+  );
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep(
       'policy',
       { id: 'file-1', accessLevel: 'PUBLIC', businessStatus: 'PUBLISHED', productCodes: ['LIFECYCLE'] },
       context,
@@ -73,10 +81,46 @@ test('지식 생명주기 단계별 응답 계약을 평가한다', () => {
   assert.deepEqual(
     evaluateKnowledgeLifecycleStep(
       'cleanup',
-      { id: 'file-1', status: 'archived', _count: { chunks: 0 }, metadata: { deletedObject: true } },
+      {
+        id: 'file-1',
+        status: 'archived',
+        _count: { chunks: 0 },
+        metadata: {
+          archivedAt: '2026-08-30T00:00:00.000Z',
+          deleteObjectRequested: true,
+          deletedObject: true,
+          objectCleanupStatus: 'completed',
+        },
+      },
       context,
     ),
     [],
+  );
+  assert.deepEqual(
+    evaluateKnowledgeLifecycleStep(
+      'cleanup-repeat',
+      {
+        id: 'file-1',
+        status: 'archived',
+        _count: { chunks: 0 },
+        metadata: {
+          archivedAt: '2026-08-30T00:00:00.000Z',
+          deleteObjectRequested: true,
+          deletedObject: true,
+          objectCleanupStatus: 'completed',
+        },
+      },
+      { ...context, archivedAt: '2026-08-30T00:00:00.000Z' },
+    ),
+    [],
+  );
+  assert.match(
+    evaluateKnowledgeLifecycleStep(
+      'reindex',
+      { fileId: 'file-1', status: 'indexed', chunkCount: 2 },
+      { ...context, expectedChunkCount: 1 },
+    ).join(' '),
+    /chunk count 2 does not match 1/,
   );
   assert.match(
     evaluateKnowledgeLifecycleStep('answer', { answerable: false, sources: [] }, context).join(' '),

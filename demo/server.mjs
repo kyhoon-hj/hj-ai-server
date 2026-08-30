@@ -492,7 +492,10 @@ function lifecycleEvidence(step, body, fileId) {
     fileId: body.id ?? body.fileId ?? fileId,
     status: body.status,
     chunkCount: body.chunkCount ?? body._count?.chunks,
+    archivedAt: body.metadata?.archivedAt,
+    deleteObjectRequested: body.metadata?.deleteObjectRequested,
     deletedObject: body.metadata?.deletedObject,
+    objectCleanupStatus: body.metadata?.objectCleanupStatus,
   };
 }
 
@@ -513,11 +516,14 @@ async function runKnowledgeLifecycleScenario() {
   ].join('\n');
   const results = [];
   let fileId = null;
+  let indexedChunkCount = null;
+  let reindexedChunkCount = null;
+  let archivedAt = null;
 
-  const runStep = async (id, name, step, execute) => {
+  const runStep = async (id, name, step, execute, context = {}) => {
     try {
       const body = requireUpstream(await execute(), name);
-      const reasons = evaluateKnowledgeLifecycleStep(step, body, { fileId, marker, productCode });
+      const reasons = evaluateKnowledgeLifecycleStep(step, body, { fileId, marker, productCode, ...context });
       results.push({ id, name, passed: reasons.length === 0, skipped: false, reasons, evidence: lifecycleEvidence(step, body, fileId) });
       return body;
     } catch (error) {
@@ -537,9 +543,10 @@ async function runKnowledgeLifecycleScenario() {
   fileId = uploaded?.id ?? null;
 
   if (fileId) {
-    await runStep('LIFE-002', '업로드 파일을 chunk와 embedding으로 인덱싱한다', 'index', () =>
+    const indexed = await runStep('LIFE-002', '업로드 파일을 chunk와 embedding으로 인덱싱한다', 'index', () =>
       callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/index`, { method: 'POST' }),
     );
+    indexedChunkCount = indexed?.chunkCount ?? null;
     await runStep('LIFE-003', 'PUBLIC/PUBLISHED/productCode 정책을 적용한다', 'policy', () =>
       callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/policy`, {
         method: 'PATCH',
@@ -581,23 +588,78 @@ async function runKnowledgeLifecycleScenario() {
         },
       }),
     );
-    await runStep('LIFE-006', '검증 파일의 chunk와 S3 원본을 정리한다', 'cleanup', () =>
+    const reindexed = await runStep(
+      'LIFE-006',
+      '인덱싱된 파일을 같은 chunk 수로 재인덱싱한다',
+      'reindex',
+      () => callOperatorUpstream(
+        `/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/reindex`,
+        { method: 'POST' },
+      ),
+      { expectedChunkCount: indexedChunkCount },
+    );
+    reindexedChunkCount = reindexed?.chunkCount ?? null;
+    await runStep(
+      'LIFE-007',
+      '재인덱싱을 중복 실행해도 chunk 수가 유지된다',
+      'reindex',
+      () => callOperatorUpstream(
+        `/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/reindex`,
+        { method: 'POST' },
+      ),
+      { expectedChunkCount: reindexedChunkCount },
+    );
+    await runStep('LIFE-008', '중복 재인덱싱 후 정책 filter 검색 결과를 유지한다', 'search', () =>
+      callUpstream('/knowledge/search', {
+        method: 'POST',
+        appkey: storeA.appkey,
+        body: {
+          query: marker,
+          limit: 20,
+          scoreThreshold: -1,
+          filters: {
+            accessLevels: ['PUBLIC'],
+            businessStatuses: ['PUBLISHED'],
+            productCodes: [productCode],
+          },
+        },
+      }),
+    );
+    const cleaned = await runStep('LIFE-009', '검증 파일의 chunk와 S3 원본을 정리한다', 'cleanup', () =>
       callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}`, {
         method: 'DELETE',
         query: { deleteObject: true },
       }),
+    );
+    archivedAt = cleaned?.metadata?.archivedAt ?? null;
+    await runStep(
+      'LIFE-010',
+      '정리를 중복 실행해도 archive와 S3 삭제 완료 상태를 유지한다',
+      'cleanup-repeat',
+      () => callOperatorUpstream(
+        `/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}`,
+        {
+          method: 'DELETE',
+          query: { deleteObject: true },
+        },
+      ),
+      { archivedAt },
     );
   } else {
     skipStep('LIFE-002', '업로드 파일을 chunk와 embedding으로 인덱싱한다');
     skipStep('LIFE-003', 'PUBLIC/PUBLISHED/productCode 정책을 적용한다');
     skipStep('LIFE-004', '정책 filter 검색에서 업로드 문서와 고유 표식을 찾는다');
     skipStep('LIFE-005', '제품 답변이 업로드 문서를 근거 source로 반환한다');
-    skipStep('LIFE-006', '검증 파일의 chunk와 S3 원본을 정리한다');
+    skipStep('LIFE-006', '인덱싱된 파일을 같은 chunk 수로 재인덱싱한다');
+    skipStep('LIFE-007', '재인덱싱을 중복 실행해도 chunk 수가 유지된다');
+    skipStep('LIFE-008', '중복 재인덱싱 후 정책 filter 검색 결과를 유지한다');
+    skipStep('LIFE-009', '검증 파일의 chunk와 S3 원본을 정리한다');
+    skipStep('LIFE-010', '정리를 중복 실행해도 archive와 S3 삭제 완료 상태를 유지한다');
   }
 
   const report = {
     type: 'knowledge-lifecycle',
-    ...(await reportContext('1.0.0')),
+    ...(await reportContext('2.0.0')),
     startedAt,
     finishedAt: new Date().toISOString(),
     fixture: { fileName, marker, productCode },

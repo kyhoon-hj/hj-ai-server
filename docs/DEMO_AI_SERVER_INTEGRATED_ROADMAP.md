@@ -162,7 +162,9 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 - [x] `KNW-DEM-01` 현재 지원 형식 MD/CSV/PDF/DOCX/XLSX fixture 구성과 parser 회귀 자동화
 - [x] `KNW-DEM-02` upload → index → policy → search → answer 자동 흐름
-- [ ] `KNW-DEM-03` reindex, archive, S3 삭제와 중복 실행 시나리오
+- [x] `KNW-DEM-03` reindex, archive, S3 삭제와 중복 실행 시나리오
+  - 실제 HTTP 생명주기를 10단계로 확장해 reindex 2회 chunk 수·검색 정책 유지 검증
+  - cleanup 2회에서 동일 `archivedAt`, chunk 0, S3 cleanup `completed` 유지 검증 10/10 완료
 - [x] `KNW-DEM-04` 확장자 위장·빈 문서·손상 문서·대용량 문서 시나리오
   - 실제 multipart HTTP에서 위장·빈·손상 파일 400, 대용량 파일 413 및 구조화 오류·correlation 계약 7/7 검증
 - [ ] `KNW-DEM-05` DRAFT/PUBLISHED/RETIRED, 기간, productCode, accessLevel matrix
@@ -481,10 +483,9 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `KNW-DEM-03`: reindex, archive, S3 삭제와 중복 실행 시나리오 완성
-2. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
-3. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
-4. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
-5. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
+1. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
+2. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
+3. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
+4. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
 
-품질 게이트, 다중 형식 fixture, 지식 파일 방어선, 악성·대용량 multipart 거절 계약, S3 streaming, upload/DB 실패 보상, archive·chunk·S3 삭제 일관성, XLSX parser 교체와 upload부터 answer까지 HTTP 생명주기는 확보됐습니다. 다음 작업은 reindex·archive·S3 삭제 중복 실행 시나리오를 완성하고, 같은 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.
+품질 게이트, 다중 형식 fixture, 지식 파일 방어선, 악성·대용량 multipart 거절 계약, S3 streaming, upload/DB 실패 보상, archive·chunk·S3 삭제 일관성, XLSX parser 교체와 reindex·cleanup 중복 실행을 포함한 HTTP 생명주기는 확보됐습니다. 다음 작업은 독립 서비스 데모의 골격·persona·fixture·공통 API client를 구성하고, 이 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.

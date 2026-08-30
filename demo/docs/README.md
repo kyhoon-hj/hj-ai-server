@@ -11,5 +11,6 @@
 - [2026-08-29 upload/DB 실패 보상 검증 보고서](VALIDATION_REPORT_2026-08-29_COMPENSATION.md)
 - [2026-08-29 archive·chunk·S3 삭제 일관성 검증 보고서](VALIDATION_REPORT_2026-08-29_DELETE_CONSISTENCY.md)
 - [2026-08-30 XLSX parser 교체 검증 보고서](VALIDATION_REPORT_2026-08-30_XLSX_PARSER.md)
+- [2026-08-30 reindex·cleanup 중복 실행 검증 보고서](VALIDATION_REPORT_2026-08-30_IDEMPOTENT_LIFECYCLE.md)
 
 AI Server 자체의 공통 API와 실서비스 고도화 문서는 저장소 루트의 [`docs`](../../docs/)에서 관리합니다.
