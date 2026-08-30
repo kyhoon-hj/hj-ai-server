@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { ArrowRight, BookOpenCheck, Bot, CircleAlert, Clock3, DatabaseZap, ExternalLink, Headphones, RefreshCw, Search, ShieldCheck, ShoppingBasket, Sparkles, Store, UserRound } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -92,7 +93,7 @@ export default function Home() {
           <Card className="border-stone-200 bg-white ring-0">
             <CardHeader className="border-b border-stone-100 pb-4"><div className="mb-2 flex items-center gap-2"><Sparkles className="size-4 text-forest-700" /><span className="eyebrow">질문 미리보기</span></div><CardTitle className="font-display text-xl">{selectedJourney.title}</CardTitle><CardDescription>후속 단계에서 이 입력을 실제 `/v1` 질의 흐름에 연결합니다.</CardDescription></CardHeader>
             <CardContent className="pt-1"><div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-4 text-[15px] leading-6">“{selectedJourney.prompt}”</div></CardContent>
-            <CardFooter className="justify-between border-stone-100 bg-stone-50/70"><span className="flex items-center gap-1.5 text-xs text-stone-500"><Clock3 className="size-3.5" />예상 처리 {selectedJourney.eta}</span><Button disabled className="bg-forest-950">대화 시작 <ArrowRight /></Button></CardFooter>
+            <CardFooter className="justify-between border-stone-100 bg-stone-50/70"><span className="flex items-center gap-1.5 text-xs text-stone-500"><Clock3 className="size-3.5" />예상 처리 {selectedJourney.eta}</span><Link href="/chat" className={buttonVariants({ className: 'bg-forest-950' })}>대화 시작 <ArrowRight /></Link></CardFooter>
           </Card>
 
           <section><div className="mb-3"><p className="eyebrow">화면 상태 계약</p><h2 className="font-display text-xl font-semibold">모든 상태를 숨기지 않습니다</h2></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

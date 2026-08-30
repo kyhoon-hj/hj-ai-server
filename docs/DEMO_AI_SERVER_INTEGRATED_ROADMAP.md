@@ -193,9 +193,12 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 #### 서비스 데모 — 마트 고객응대 MVP
 
-- [ ] `KNW-SVC-01` 고객 채팅, 추천 질문과 대화 상태 화면
-- [ ] `KNW-SVC-02` 답변 근거 문서·페이지·상품·정책 출처 표시
-- [ ] `KNW-SVC-03` strict no-answer와 상담원 연결·검토 요청 흐름
+- [~] `KNW-SVC-01` 고객 채팅, 추천 질문과 대화 상태 화면
+  - 실제 `/v1/knowledge/answers` BFF와 UI 구현·자동 계약 검증 완료, 로컬 AI Server/appkey 연결 E2E 예정
+- [~] `KNW-SVC-02` 답변 근거 문서·페이지·상품·정책 출처 표시
+  - 브라우저용 source allowlist와 내부 S3 key·content·metadata 제거 검증 완료, 실제 fixture source 대조 예정
+- [~] `KNW-SVC-03` strict no-answer와 상담원 연결·검토 요청 흐름
+  - strict 요청·source 없는 답변 차단·세션 검토 요청 구현 완료, 영구 검토함 연동 예정
 - [ ] `KNW-SVC-04` 매장 관리자 문서 업로드·게시 상태·오류 확인 화면
 - [ ] `KNW-SVC-05` 환불·교환·운영시간·상품 문의 end-to-end 대표 시나리오
 
