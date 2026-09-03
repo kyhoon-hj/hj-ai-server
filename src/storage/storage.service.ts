@@ -34,6 +34,8 @@ export class StorageService {
   constructor(private readonly configService: ConfigService) {
     this.s3Client = new S3Client({
       region: this.getRegion(),
+      maxAttempts: 5,
+      retryMode: 'adaptive',
     });
   }
 

@@ -11,6 +11,7 @@ import {
   collectTotalTokens,
   evaluateExpectation,
   evaluateKnowledgeLifecycleStep,
+  evaluatePolicyMatrixSearch,
   evaluateKnowledgeUploadRejection,
   identifyServerTarget,
   normalizeBaseUrl,
@@ -675,6 +676,223 @@ async function runKnowledgeLifecycleScenario() {
   return report;
 }
 
+async function runKnowledgePolicyMatrixScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  if (!storeA) throw Object.assign(new Error('먼저 STORE_A 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.operatorKey) throw Object.assign(new Error('지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+
+  const marker = `KNW-MATRIX-${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
+  const productCode = 'MATRIX_PRODUCT';
+  const mismatchProductCode = 'OTHER_PRODUCT';
+  const now = new Date();
+  const activeAt = now.toISOString();
+  const past = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const future = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const fileName = `knowledge-policy-matrix-${marker.toLowerCase()}.md`;
+  const results = [];
+  let fileId = null;
+
+  const record = (id, name, reasons, evidence = {}) => {
+    results.push({ id, name, passed: reasons.length === 0, skipped: false, reasons, evidence });
+  };
+  const fail = (id, name, error) => record(id, name, [error.message]);
+  const applyPolicy = async (id, name, policy) => {
+    try {
+      const body = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/policy`, { method: 'PATCH', body: policy }), name);
+      const reasons = [];
+      for (const key of ['accessLevel', 'businessStatus']) {
+        if (policy[key] !== undefined && body[key] !== policy[key]) reasons.push(`${key} is ${body[key] ?? 'missing'}, expected ${policy[key]}`);
+      }
+      if (policy.productCodes && JSON.stringify(body.productCodes) !== JSON.stringify(policy.productCodes)) reasons.push('productCodes do not match policy');
+      record(id, name, reasons, { fileId: body.id, accessLevel: body.accessLevel, businessStatus: body.businessStatus, productCodes: body.productCodes, effectiveFrom: body.effectiveFrom, effectiveTo: body.effectiveTo });
+    } catch (error) { fail(id, name, error); }
+  };
+  const searchCase = async (id, name, expectedVisible, filters) => {
+    try {
+      const body = requireUpstream(await callUpstream('/knowledge/search', {
+        method: 'POST',
+        appkey: storeA.appkey,
+        body: { query: marker, limit: 20, scoreThreshold: -1, filters },
+      }), name);
+      const reasons = evaluatePolicyMatrixSearch(body, fileId, expectedVisible);
+      record(id, name, reasons, { expectedVisible, count: body.count, matchedFileIds: body.matches?.map((match) => match.fileId) ?? [], filters });
+    } catch (error) { fail(id, name, error); }
+  };
+
+  try {
+    const content = `검증 표식: ${marker}\n상품 코드: ${productCode}\n정책 matrix 자동 검증 전용 문서입니다.`;
+    const formData = new FormData();
+    formData.append('file', new Blob([Buffer.from(content)], { type: 'text/markdown' }), fileName);
+    try {
+      const uploaded = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`, { method: 'POST', formData }), '정책 matrix 파일 업로드');
+      fileId = uploaded.id ?? null;
+      record('MATRIX-001', '정책 matrix 파일을 DRAFT/INTERNAL 기본값으로 업로드한다', fileId && uploaded.status === 'uploaded' ? [] : ['uploaded file id or status is invalid'], { fileId, status: uploaded.status, accessLevel: uploaded.accessLevel, businessStatus: uploaded.businessStatus });
+    } catch (error) { fail('MATRIX-001', '정책 matrix 파일을 DRAFT/INTERNAL 기본값으로 업로드한다', error); }
+
+    if (!fileId) {
+      for (let index = 2; index <= 16; index += 1) results.push({ id: `MATRIX-${String(index).padStart(3, '0')}`, name: '선행 업로드 실패로 건너뜀', passed: false, skipped: true, reasons: ['업로드 파일 ID가 없습니다.'] });
+    } else {
+      try {
+        const indexed = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/index`, { method: 'POST' }), '정책 matrix 파일 인덱싱');
+        record('MATRIX-002', '정책 matrix 파일을 인덱싱한다', indexed.status === 'indexed' && indexed.chunkCount > 0 ? [] : ['index status or chunk count is invalid'], { fileId, status: indexed.status, chunkCount: indexed.chunkCount });
+      } catch (error) { fail('MATRIX-002', '정책 matrix 파일을 인덱싱한다', error); }
+
+      await applyPolicy('MATRIX-003', 'PUBLIC/DRAFT/productCode 정책을 적용한다', { accessLevel: 'PUBLIC', businessStatus: 'DRAFT', productCodes: [productCode], effectiveFrom: null, effectiveTo: null });
+      await searchCase('MATRIX-004', 'DRAFT filter는 DRAFT 문서를 포함한다', true, { accessLevels: ['PUBLIC'], businessStatuses: ['DRAFT'], productCodes: [productCode], activeAt });
+      await searchCase('MATRIX-005', 'PUBLISHED filter는 DRAFT 문서를 제외한다', false, { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'], productCodes: [productCode], activeAt });
+
+      await applyPolicy('MATRIX-006', '미래 시작일의 PUBLIC/PUBLISHED 정책을 적용한다', { accessLevel: 'PUBLIC', businessStatus: 'PUBLISHED', productCodes: [productCode], effectiveFrom: future, effectiveTo: null });
+      await searchCase('MATRIX-007', '시작일 전에는 PUBLISHED 문서를 제외한다', false, { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'], productCodes: [productCode], activeAt });
+
+      await applyPolicy('MATRIX-008', '현재 유효한 PUBLIC/PUBLISHED 기간 정책을 적용한다', { accessLevel: 'PUBLIC', businessStatus: 'PUBLISHED', productCodes: [productCode], effectiveFrom: past, effectiveTo: future });
+      await searchCase('MATRIX-009', '유효 기간과 productCode가 일치하면 문서를 포함한다', true, { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'], productCodes: [productCode], activeAt });
+      await searchCase('MATRIX-010', 'productCode가 불일치하면 문서를 제외한다', false, { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'], productCodes: [mismatchProductCode], activeAt });
+
+      await applyPolicy('MATRIX-011', '종료된 PUBLIC/PUBLISHED 기간 정책을 적용한다', { accessLevel: 'PUBLIC', businessStatus: 'PUBLISHED', productCodes: [productCode], effectiveFrom: null, effectiveTo: past });
+      await searchCase('MATRIX-012', '종료일 이후에는 문서를 제외한다', false, { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'], productCodes: [productCode], activeAt });
+
+      await applyPolicy('MATRIX-013', '현재 유효한 PUBLIC/RETIRED 정책을 적용한다', { accessLevel: 'PUBLIC', businessStatus: 'RETIRED', productCodes: [productCode], effectiveFrom: past, effectiveTo: future });
+      await searchCase('MATRIX-014', 'RETIRED 문서는 PUBLISHED filter에서 제외된다', false, { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'], productCodes: [productCode], activeAt });
+
+      await applyPolicy('MATRIX-015', 'INTERNAL/PUBLISHED 정책을 적용한다', { accessLevel: 'INTERNAL', businessStatus: 'PUBLISHED', productCodes: [productCode], effectiveFrom: past, effectiveTo: future });
+      await searchCase('MATRIX-016', 'PUBLIC 전용 app은 INTERNAL 문서를 요청해도 제외한다', false, { accessLevels: ['INTERNAL'], businessStatuses: ['PUBLISHED'], productCodes: [productCode], activeAt });
+    }
+  } finally {
+    if (fileId) {
+      try {
+        const cleaned = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}`, { method: 'DELETE', query: { deleteObject: true } }), '정책 matrix 파일 정리');
+        record('MATRIX-CLEANUP', '정책 matrix 파일의 chunk와 S3 원본을 정리한다', cleaned.status === 'archived' && cleaned._count?.chunks === 0 && cleaned.metadata?.objectCleanupStatus === 'completed' ? [] : ['cleanup state is incomplete'], { fileId, status: cleaned.status, chunkCount: cleaned._count?.chunks, objectCleanupStatus: cleaned.metadata?.objectCleanupStatus });
+      } catch (error) { fail('MATRIX-CLEANUP', '정책 matrix 파일의 chunk와 S3 원본을 정리한다', error); }
+    }
+  }
+
+  const report = {
+    type: 'knowledge-policy-matrix',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    fixture: { fileName, marker, productCode, activeAt },
+    summary: {
+      total: results.length,
+      passed: results.filter((item) => item.passed).length,
+      failed: results.filter((item) => !item.passed && !item.skipped).length,
+      skipped: results.filter((item) => item.skipped).length,
+    },
+    results,
+  };
+  report.reportFile = await saveReport('knowledge-policy-matrix', report);
+  return report;
+}
+
+async function runKnowledgeIndexJobScenario() {
+  assertLocalDemoMutation();
+  const startedAt = new Date().toISOString();
+  const storeA = demoProfiles.get('hj-ai-demo-store-a');
+  if (!storeA) throw Object.assign(new Error('먼저 STORE_A 검증 환경을 준비해야 합니다.'), { statusCode: 409 });
+  if (!runtime.operatorKey) throw Object.assign(new Error('지식 운영자 credential 설정이 필요합니다.'), { statusCode: 400 });
+
+  const marker = `INDEX-JOB-${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
+  const fileName = `knowledge-index-job-${marker.toLowerCase()}.md`;
+  const idempotencyKey = `demo-${marker}`;
+  const results = [];
+  const observedStatuses = [];
+  let fileId = null;
+  let jobId = null;
+
+  const record = (id, name, reasons, evidence = {}) => {
+    results.push({ id, name, passed: reasons.length === 0, skipped: false, reasons, evidence });
+  };
+  const fail = (id, name, error) => record(id, name, [error.message]);
+
+  try {
+    const formData = new FormData();
+    formData.append('file', new Blob([Buffer.from(`검증 표식: ${marker}\n비동기 인덱싱 작업 검증 전용 문서입니다.`)], { type: 'text/markdown' }), fileName);
+    try {
+      const uploaded = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files`, { method: 'POST', formData }), '비동기 검증 파일 업로드');
+      fileId = uploaded.id ?? null;
+      record('INDEX-JOB-001', '비동기 검증 파일을 업로드한다', fileId && uploaded.status === 'uploaded' ? [] : ['uploaded file id or status is invalid'], { fileId, status: uploaded.status });
+    } catch (error) { fail('INDEX-JOB-001', '비동기 검증 파일을 업로드한다', error); }
+
+    if (fileId) {
+      try {
+        const submitted = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/index-jobs`, {
+          method: 'POST',
+          headers: { 'idempotency-key': idempotencyKey },
+        }), '비동기 인덱싱 작업 제출');
+        jobId = submitted.id ?? null;
+        if (submitted.status && !observedStatuses.includes(submitted.status)) observedStatuses.push(submitted.status);
+        record('INDEX-JOB-002', '인덱싱 작업을 202 비동기 큐에 제출한다', jobId && ['queued', 'processing', 'completed'].includes(submitted.status) ? [] : ['job id or initial status is invalid'], { jobId, status: submitted.status, attempt: submitted.attempt });
+      } catch (error) { fail('INDEX-JOB-002', '인덱싱 작업을 202 비동기 큐에 제출한다', error); }
+
+      if (jobId) {
+        try {
+          const duplicate = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}/index-jobs`, {
+            method: 'POST',
+            headers: { 'idempotency-key': idempotencyKey },
+          }), '동일 작업 중복 제출');
+          record('INDEX-JOB-003', '동일 idempotency key는 같은 작업을 반환한다', duplicate.id === jobId ? [] : ['duplicate request created a different job'], { jobId, duplicateJobId: duplicate.id, status: duplicate.status });
+        } catch (error) { fail('INDEX-JOB-003', '동일 idempotency key는 같은 작업을 반환한다', error); }
+
+        try {
+          let terminal = null;
+          for (let poll = 0; poll < 120; poll += 1) {
+            const current = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/index-jobs/${jobId}`), '인덱싱 작업 상태 조회');
+            if (current.status && !observedStatuses.includes(current.status)) observedStatuses.push(current.status);
+            if (['completed', 'failed'].includes(current.status)) {
+              terminal = current;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          const reasons = [];
+          if (!terminal) reasons.push('30초 안에 terminal 상태에 도달하지 못했습니다.');
+          else {
+            if (terminal.status !== 'completed') reasons.push(`final status is ${terminal.status}, expected completed`);
+            if (terminal.attempt !== 1) reasons.push(`attempt is ${terminal.attempt}, expected 1`);
+            if (!terminal.completedAt) reasons.push('completedAt is missing');
+          }
+          record('INDEX-JOB-004', '작업 상태를 조회해 완료와 1회 시도를 확인한다', reasons, { jobId, observedStatuses, finalStatus: terminal?.status ?? null, attempt: terminal?.attempt ?? null, completedAt: terminal?.completedAt ?? null });
+        } catch (error) { fail('INDEX-JOB-004', '작업 상태를 조회해 완료와 1회 시도를 확인한다', error); }
+      } else {
+        results.push({ id: 'INDEX-JOB-003', name: '동일 idempotency key는 같은 작업을 반환한다', passed: false, skipped: true, reasons: ['작업 ID가 없습니다.'] });
+        results.push({ id: 'INDEX-JOB-004', name: '작업 상태를 조회해 완료와 1회 시도를 확인한다', passed: false, skipped: true, reasons: ['작업 ID가 없습니다.'] });
+      }
+    } else {
+      for (const [id, name] of [
+        ['INDEX-JOB-002', '인덱싱 작업을 202 비동기 큐에 제출한다'],
+        ['INDEX-JOB-003', '동일 idempotency key는 같은 작업을 반환한다'],
+        ['INDEX-JOB-004', '작업 상태를 조회해 완료와 1회 시도를 확인한다'],
+      ]) results.push({ id, name, passed: false, skipped: true, reasons: ['업로드 파일 ID가 없습니다.'] });
+    }
+  } finally {
+    if (fileId) {
+      try {
+        const cleaned = requireUpstream(await callOperatorUpstream(`/admin/v1/knowledge/apps/${storeA.id}/files/${fileId}`, { method: 'DELETE', query: { deleteObject: true } }), '비동기 검증 파일 정리');
+        record('INDEX-JOB-CLEANUP', '검증 파일과 검색 조각을 정리한다', cleaned.status === 'archived' && cleaned._count?.chunks === 0 ? [] : ['cleanup state is incomplete'], { fileId, status: cleaned.status, chunkCount: cleaned._count?.chunks, objectCleanupStatus: cleaned.metadata?.objectCleanupStatus });
+      } catch (error) { fail('INDEX-JOB-CLEANUP', '검증 파일과 검색 조각을 정리한다', error); }
+    }
+  }
+
+  const report = {
+    type: 'knowledge-index-job',
+    ...(await reportContext('1.0.0')),
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    fixture: { fileName, marker },
+    summary: {
+      total: results.length,
+      passed: results.filter((item) => item.passed).length,
+      failed: results.filter((item) => !item.passed && !item.skipped).length,
+      skipped: results.filter((item) => item.skipped).length,
+    },
+    results,
+  };
+  report.reportFile = await saveReport('knowledge-index-job', report);
+  return report;
+}
+
 async function runKnowledgeFileRejectionScenario() {
   assertLocalDemoMutation();
   const startedAt = new Date().toISOString();
@@ -1247,6 +1465,16 @@ export const server = createServer(async (request, response) => {
       const input = await readJson(request);
       if (input.confirmValidation !== true) throw Object.assign(new Error('지식 생명주기 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
       return sendJson(response, 200, await runKnowledgeLifecycleScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/knowledge-policy-matrix-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('지식 정책 matrix 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runKnowledgePolicyMatrixScenario());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/demo/knowledge-index-job-validation') {
+      const input = await readJson(request);
+      if (input.confirmValidation !== true) throw Object.assign(new Error('비동기 인덱싱 작업 검증은 confirmValidation=true가 필요합니다.'), { statusCode: 400 });
+      return sendJson(response, 200, await runKnowledgeIndexJobScenario());
     }
     if (request.method === 'POST' && url.pathname === '/api/demo/knowledge-file-rejection-validation') {
       const input = await readJson(request);

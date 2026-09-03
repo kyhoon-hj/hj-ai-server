@@ -32,6 +32,18 @@ describe('answers BFF', () => {
     expect(await response.json()).toEqual({ statusCode: 503, code: 'SERVICE_DEMO_NOT_CONFIGURED', message: '현재 AI 상담 연결을 준비 중입니다.', requestId });
   });
 
+  it('blocks personal data before it can reach upstream logs and does not echo it', async () => {
+    process.env.AI_SERVER_APPKEY_STORE_A = 'server-only-appkey';
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const sensitiveQuery = '제 전화번호 010-1234-5678로 연락해주세요';
+    const response = await POST(answerRequest({ tenantId: 'STORE_A', query: sensitiveQuery }));
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'SENSITIVE_DATA_NOT_ALLOWED', requestId });
+    expect(JSON.stringify(body)).not.toContain('010-1234-5678');
+  });
+
   it('keeps the appkey server-side and returns a sanitized grounded answer', async () => {
     process.env.AI_SERVER_APPKEY_STORE_A = 'server-only-appkey';
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
@@ -41,9 +53,13 @@ describe('answers BFF', () => {
 
     const response = await POST(answerRequest({ tenantId: 'STORE_A', query: '운영시간' }));
     const upstreamHeaders = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    const upstreamBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(upstreamHeaders.get('appkey')).toBe('server-only-appkey');
+    expect(upstreamBody).toMatchObject({ scoreThreshold: 0.4, strict: true });
+    expect(upstreamBody.query).toContain('STORE_A 매장의 운영 및 영업 시간');
     const body = await response.json();
     expect(body).toMatchObject({ answerable: true, requestId, sources: [{ id: 'file-1', name: '운영시간 안내.pdf', page: 2 }] });
+    expect((body as { query?: string }).query).toBe('운영시간');
     expect(JSON.stringify(body)).not.toContain('server-only-appkey');
     expect(JSON.stringify(body)).not.toContain('private/s3/key');
     expect(JSON.stringify(body)).not.toContain('never-expose');
@@ -51,8 +67,10 @@ describe('answers BFF', () => {
 
   it('preserves strict no-answer without inventing sources', async () => {
     process.env.AI_SERVER_APPKEY_STORE_B = 'server-only-appkey-b';
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ answer: '등록된 자료에서 확인할 수 없습니다.', answerable: false, sources: [], requestId }), { status: 200, headers: { [CORRELATION_HEADER]: requestId } }));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ answer: '등록된 자료에서 확인할 수 없습니다.', answerable: false, sources: [], requestId }), { status: 200, headers: { [CORRELATION_HEADER]: requestId } }));
     const response = await POST(answerRequest({ tenantId: 'STORE_B', query: '다음 입고일' }));
+    const upstreamBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(upstreamBody).toMatchObject({ query: '다음 입고일', scoreThreshold: 0.35, strict: true });
     expect(await response.json()).toMatchObject({ answerable: false, sources: [], requestId });
   });
 });

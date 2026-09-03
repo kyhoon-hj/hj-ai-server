@@ -5,6 +5,7 @@ import {
   DefaultValuePipe,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -32,6 +33,7 @@ import { AdminRoles } from '../common/guards/admin-roles.decorator';
 import { CreateKnowledgeTextDto } from './dto/create-knowledge-text.dto';
 import { UpdateKnowledgeFilePolicyDto } from './dto/knowledge-policy.dto';
 import { KnowledgeService } from './knowledge.service';
+import { KnowledgeIndexJobService } from './knowledge-index-job.service';
 
 @ApiTags('admin-knowledge')
 @UseGuards(AdminApiKeyGuard)
@@ -47,6 +49,7 @@ export class KnowledgeAdminController {
   constructor(
     private readonly appInfoService: AppInfoService,
     private readonly knowledgeService: KnowledgeService,
+    private readonly knowledgeIndexJobService: KnowledgeIndexJobService,
   ) {}
 
   @Post('files')
@@ -151,5 +154,60 @@ export class KnowledgeAdminController {
   ) {
     const appInfo = await this.appInfoService.findOne(appId);
     return this.knowledgeService.indexKnowledgeFile(id, appInfo);
+  }
+
+  @Post('files/:id/index-jobs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: '대상 파일의 비동기 인덱싱 작업을 제출합니다.' })
+  async submitIndexJob(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('id') id: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const appInfo = await this.appInfoService.findOne(appId);
+    return this.knowledgeIndexJobService.submit(
+      id,
+      appInfo.appcode,
+      'index',
+      idempotencyKey,
+    );
+  }
+
+  @Post('files/:id/reindex-jobs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: '대상 파일의 비동기 재인덱싱 작업을 제출합니다.' })
+  async submitReindexJob(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('id') id: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const appInfo = await this.appInfoService.findOne(appId);
+    return this.knowledgeIndexJobService.submit(
+      id,
+      appInfo.appcode,
+      'reindex',
+      idempotencyKey,
+    );
+  }
+
+  @Get('index-jobs/:jobId')
+  @ApiOperation({ summary: '비동기 인덱싱 작업 상태를 조회합니다.' })
+  async getIndexJob(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    const appInfo = await this.appInfoService.findOne(appId);
+    return this.knowledgeIndexJobService.get(jobId, appInfo.appcode);
+  }
+
+  @Post('index-jobs/:jobId/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: '실패한 비동기 인덱싱 작업을 재시도합니다.' })
+  async retryIndexJob(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    const appInfo = await this.appInfoService.findOne(appId);
+    return this.knowledgeIndexJobService.retry(jobId, appInfo.appcode);
   }
 }

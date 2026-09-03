@@ -15,6 +15,8 @@ import { journeys, personas, storeFixture, type Journey, type PersonaId } from '
 type HealthData = { state: 'ready' | 'degraded' | 'offline'; checkedAt: string; correlationId: string };
 type HealthView = { status: 'loading' } | { status: 'ready'; data: HealthData } | { status: 'error'; error: ApiFailure };
 const personaIcons = { customer: UserRound, agent: Headphones, manager: ShieldCheck };
+const personaDestination = { customer: '/chat', agent: '/agent', manager: '/knowledge' } as const;
+const personaAction = { customer: '대화 시작', agent: '검토함 열기', manager: '지식 관리 시작' } as const;
 
 function HealthBadge({ health, onRetry }: { health: HealthView; onRetry: () => void }) {
   if (health.status === 'loading') return <Skeleton className="h-7 w-28 rounded-full bg-white/15" />;
@@ -91,9 +93,9 @@ export default function Home() {
           </section>
 
           <Card className="border-stone-200 bg-white ring-0">
-            <CardHeader className="border-b border-stone-100 pb-4"><div className="mb-2 flex items-center gap-2"><Sparkles className="size-4 text-forest-700" /><span className="eyebrow">질문 미리보기</span></div><CardTitle className="font-display text-xl">{selectedJourney.title}</CardTitle><CardDescription>후속 단계에서 이 입력을 실제 `/v1` 질의 흐름에 연결합니다.</CardDescription></CardHeader>
+            <CardHeader className="border-b border-stone-100 pb-4"><div className="mb-2 flex items-center gap-2"><Sparkles className="size-4 text-forest-700" /><span className="eyebrow">업무 미리보기</span></div><CardTitle className="font-display text-xl">{selectedJourney.title}</CardTitle><CardDescription>{personaId === 'manager' ? '매장별 지식 문서를 등록하고 검색 상태를 확인합니다.' : personaId === 'agent' ? '상담원 전용 권한으로 검토 대기 문의를 확인합니다.' : '실제 AI Server 지식과 근거를 사용하는 흐름입니다.'}</CardDescription></CardHeader>
             <CardContent className="pt-1"><div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-4 text-[15px] leading-6">“{selectedJourney.prompt}”</div></CardContent>
-            <CardFooter className="justify-between border-stone-100 bg-stone-50/70"><span className="flex items-center gap-1.5 text-xs text-stone-500"><Clock3 className="size-3.5" />예상 처리 {selectedJourney.eta}</span><Link href="/chat" className={buttonVariants({ className: 'bg-forest-950' })}>대화 시작 <ArrowRight /></Link></CardFooter>
+            <CardFooter className="justify-between border-stone-100 bg-stone-50/70"><span className="flex items-center gap-1.5 text-xs text-stone-500"><Clock3 className="size-3.5" />예상 처리 {selectedJourney.eta}</span><Link href={personaDestination[personaId]} className={buttonVariants({ className: 'bg-forest-950' })}>{personaAction[personaId]} <ArrowRight /></Link></CardFooter>
           </Card>
 
           <section><div className="mb-3"><p className="eyebrow">화면 상태 계약</p><h2 className="font-display text-xl font-semibold">모든 상태를 숨기지 않습니다</h2></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

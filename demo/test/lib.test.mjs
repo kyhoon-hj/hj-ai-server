@@ -4,12 +4,19 @@ import {
   collectTotalTokens,
   evaluateKnowledgeLifecycleStep,
   evaluateKnowledgeUploadRejection,
+  evaluatePolicyMatrixSearch,
   evaluateExpectation,
   identifyServerTarget,
   normalizeBaseUrl,
   percentile,
   renderPath,
 } from '../lib.mjs';
+
+test('정책 matrix 검색의 파일 포함·제외를 판정한다', () => {
+  assert.deepEqual(evaluatePolicyMatrixSearch({ matches: [{ fileId: 'file-1' }] }, 'file-1', true), []);
+  assert.deepEqual(evaluatePolicyMatrixSearch({ matches: [] }, 'file-1', false), []);
+  assert.equal(evaluatePolicyMatrixSearch({ matches: [] }, 'file-1', true).length, 1);
+});
 
 test('base URL을 정규화한다', () => {
   assert.equal(normalizeBaseUrl('http://localhost:11000/'), 'http://localhost:11000');

@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "vinext dev",
+    "dev:connected": "node --env-file=../.env scripts/start-local.mjs",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "test": "vitest run --config vitest.config.ts",

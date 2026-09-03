@@ -24,6 +24,7 @@ import { ChunkingService } from './chunking.service';
 import { CreateKnowledgeTextDto } from './dto/create-knowledge-text.dto';
 import { DocumentParserService } from './document-parser.service';
 import { EmbeddingService } from './embedding.service';
+import { mapWithConcurrency } from './bounded-map';
 import {
   KnowledgeRagResponseDto,
   type SupplementalKnowledgeSourceDto,
@@ -91,6 +92,8 @@ export class KnowledgeService {
   ) {
     this.bedrockClient = new BedrockRuntimeClient({
       region: this.configService.get<string>('AWS_REGION') ?? 'us-east-1',
+      maxAttempts: 5,
+      retryMode: 'adaptive',
     });
   }
 
@@ -612,8 +615,10 @@ export class KnowledgeService {
     const embeddingModel =
       data.embeddingModelId ??
       this.embeddingService.getDefaultEmbeddingModelId();
-    const rows = await Promise.all(
-      chunks.map(async (content, index) => {
+    const rows = await mapWithConcurrency(
+      chunks,
+      this.getEmbeddingConcurrency(),
+      async (content, index) => {
         const embedding = await this.embeddingService.createEmbedding(
           content.content,
           embeddingModel,
@@ -630,7 +635,7 @@ export class KnowledgeService {
           embedding,
           embeddingModel,
         };
-      }),
+      },
     );
 
     await this.prisma.$transaction([
@@ -656,6 +661,13 @@ export class KnowledgeService {
       chunkCount: rows.length,
       embeddingModel,
     };
+  }
+
+  private getEmbeddingConcurrency() {
+    const value = Number(
+      this.configService.get<string>('KNOWLEDGE_EMBEDDING_CONCURRENCY') ?? 4,
+    );
+    return Number.isInteger(value) && value >= 1 && value <= 16 ? value : 4;
   }
 
   async search(

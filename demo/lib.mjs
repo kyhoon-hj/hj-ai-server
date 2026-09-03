@@ -126,3 +126,13 @@ export function evaluateKnowledgeUploadRejection(result, expectation) {
 
   return reasons;
 }
+
+export function evaluatePolicyMatrixSearch(body, fileId, expectedVisible) {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.matches)) {
+    return ['search response matches are missing'];
+  }
+  const visible = body.matches.some((match) => match.fileId === fileId);
+  return visible === expectedVisible
+    ? []
+    : [`policy file visibility is ${visible}, expected ${expectedVisible}`];
+}

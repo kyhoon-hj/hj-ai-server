@@ -154,6 +154,45 @@ export function validateEnvironment(
     );
   }
 
+  const knowledgeIndexMaxAttempts = Number(
+    valueOf(config, 'KNOWLEDGE_INDEX_MAX_ATTEMPTS') || 3,
+  );
+  if (
+    !Number.isInteger(knowledgeIndexMaxAttempts) ||
+    knowledgeIndexMaxAttempts < 1 ||
+    knowledgeIndexMaxAttempts > 10
+  ) {
+    errors.push(
+      'KNOWLEDGE_INDEX_MAX_ATTEMPTS must be an integer between 1 and 10',
+    );
+  }
+
+  const knowledgeIndexRetryDelayMs = Number(
+    valueOf(config, 'KNOWLEDGE_INDEX_RETRY_DELAY_MS') || 1000,
+  );
+  if (
+    !Number.isInteger(knowledgeIndexRetryDelayMs) ||
+    knowledgeIndexRetryDelayMs < 100 ||
+    knowledgeIndexRetryDelayMs > 60000
+  ) {
+    errors.push(
+      'KNOWLEDGE_INDEX_RETRY_DELAY_MS must be an integer between 100 and 60000',
+    );
+  }
+
+  const knowledgeEmbeddingConcurrency = Number(
+    valueOf(config, 'KNOWLEDGE_EMBEDDING_CONCURRENCY') || 4,
+  );
+  if (
+    !Number.isInteger(knowledgeEmbeddingConcurrency) ||
+    knowledgeEmbeddingConcurrency < 1 ||
+    knowledgeEmbeddingConcurrency > 16
+  ) {
+    errors.push(
+      'KNOWLEDGE_EMBEDDING_CONCURRENCY must be an integer between 1 and 16',
+    );
+  }
+
   const prefix = valueOf(config, 'API_GLOBAL_PREFIX');
   if (
     prefix &&
@@ -227,5 +266,8 @@ export function validateEnvironment(
     APPKEY_TTL_DAYS: String(appkeyTtlDays),
     APPKEY_MAX_ROTATION_GRACE_SECONDS: String(maxRotationGraceSeconds),
     KNOWLEDGE_MAX_FILE_SIZE_MB: String(knowledgeMaxFileSizeMb),
+    KNOWLEDGE_INDEX_MAX_ATTEMPTS: String(knowledgeIndexMaxAttempts),
+    KNOWLEDGE_INDEX_RETRY_DELAY_MS: String(knowledgeIndexRetryDelayMs),
+    KNOWLEDGE_EMBEDDING_CONCURRENCY: String(knowledgeEmbeddingConcurrency),
   };
 }

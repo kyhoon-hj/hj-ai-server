@@ -12,5 +12,8 @@
 - [2026-08-29 archive·chunk·S3 삭제 일관성 검증 보고서](VALIDATION_REPORT_2026-08-29_DELETE_CONSISTENCY.md)
 - [2026-08-30 XLSX parser 교체 검증 보고서](VALIDATION_REPORT_2026-08-30_XLSX_PARSER.md)
 - [2026-08-30 reindex·cleanup 중복 실행 검증 보고서](VALIDATION_REPORT_2026-08-30_IDEMPOTENT_LIFECYCLE.md)
+- [2026-08-31 지식 정책 matrix 검증 보고서](VALIDATION_REPORT_2026-08-31_POLICY_MATRIX.md)
+- [2026-08-31 비동기 지식 인덱싱 job 검증 보고서](VALIDATION_REPORT_2026-08-31_INDEX_JOB.md)
+- [2026-09-03 비동기 인덱싱 선별 재시도 검증 보고서](VALIDATION_REPORT_2026-09-03_RETRY_POLICY.md)
 
 AI Server 자체의 공통 API와 실서비스 고도화 문서는 저장소 루트의 [`docs`](../../docs/)에서 관리합니다.

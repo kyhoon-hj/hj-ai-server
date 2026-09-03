@@ -21,7 +21,7 @@ const stores: Record<TenantId, { name: string; region: string }> = {
 
 const recommendations = [
   '개봉한 멀티탭도 교환할 수 있나요?',
-  '오늘 매장 운영시간을 알려주세요.',
+  'STORE_A는 매일 몇 시부터 몇 시까지 운영하나요?',
   'USB-C LED 스탠드의 기능을 알려주세요.',
   '품절 상품의 다음 입고일을 알 수 있나요?',
 ];

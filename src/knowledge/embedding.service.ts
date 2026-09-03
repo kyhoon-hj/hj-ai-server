@@ -1,4 +1,3 @@
-import { setTimeout as delay } from 'node:timers/promises';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -18,6 +17,8 @@ export class EmbeddingService {
   constructor(private readonly configService: ConfigService) {
     this.bedrockClient = new BedrockRuntimeClient({
       region: this.configService.get<string>('AWS_REGION') ?? 'us-east-1',
+      maxAttempts: 5,
+      retryMode: 'adaptive',
     });
   }
 
@@ -32,27 +33,7 @@ export class EmbeddingService {
     text: string,
     modelId = this.getDefaultEmbeddingModelId(),
   ) {
-    const maxAttempts =
-      this.configService.get<number>('BEDROCK_EMBEDDING_MAX_ATTEMPTS') ?? 3;
-    let lastError: unknown;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        return await this.invokeEmbedding(text, modelId);
-      } catch (error) {
-        lastError = error;
-
-        if (attempt === maxAttempts) {
-          break;
-        }
-
-        await delay(this.getRetryDelayMs(attempt));
-      }
-    }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('Bedrock embedding 생성에 실패했습니다.');
+    return this.invokeEmbedding(text, modelId);
   }
 
   private async invokeEmbedding(text: string, modelId: string) {
@@ -76,12 +57,5 @@ export class EmbeddingService {
     }
 
     return parsed.embedding;
-  }
-
-  private getRetryDelayMs(attempt: number) {
-    const baseDelayMs =
-      this.configService.get<number>('BEDROCK_EMBEDDING_RETRY_DELAY_MS') ?? 500;
-
-    return baseDelayMs * 2 ** (attempt - 1);
   }
 }

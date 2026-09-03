@@ -14,6 +14,7 @@ import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { KnowledgeService } from './knowledge.service';
 import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 import { createKnowledgeUploadOptions } from './knowledge-file-security';
+import { KnowledgeIndexJobService } from './knowledge-index-job.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { createKnowledgeUploadOptions } from './knowledge-file-security';
   controllers: [KnowledgeController, KnowledgeAdminController],
   providers: [
     KnowledgeService,
+    KnowledgeIndexJobService,
     DocumentParserService,
     ChunkingService,
     EmbeddingService,

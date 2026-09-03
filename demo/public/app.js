@@ -126,6 +126,8 @@ async function loadDemoState() {
   $('#runCredentialLifecycle').disabled = !state.ready;
   $('#runParserRegression').disabled = !state.ready;
   $('#runKnowledgeLifecycle').disabled = !state.ready;
+  $('#runKnowledgePolicyMatrix').disabled = !state.ready;
+  $('#runKnowledgeIndexJob').disabled = !state.ready;
   return state;
 }
 
@@ -230,6 +232,22 @@ $('#runKnowledgeLifecycle').addEventListener('click', async () => {
     body: JSON.stringify({ confirmValidation: true }),
   }));
   if (report) toast(`지식 전체 흐름: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
+$('#runKnowledgePolicyMatrix').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runKnowledgePolicyMatrix'), '검증 중...', () => api('/api/demo/knowledge-policy-matrix-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`지식 정책 matrix: ${report.summary.passed}/${report.summary.total} PASS`);
+});
+
+$('#runKnowledgeIndexJob').addEventListener('click', async () => {
+  const report = await runDemoAction($('#runKnowledgeIndexJob'), '검증 중...', () => api('/api/demo/knowledge-index-job-validation', {
+    method: 'POST',
+    body: JSON.stringify({ confirmValidation: true }),
+  }));
+  if (report) toast(`비동기 인덱싱: ${report.summary.passed}/${report.summary.total} PASS`);
 });
 
 $('#runKnowledgeFileRejection').addEventListener('click', async () => {

@@ -111,7 +111,8 @@ model KnowledgeFile {
   createdAt      DateTime                @default(now()) @map("created_at")
   updatedAt      DateTime                @updatedAt @map("updated_at")
 
-  chunks KnowledgeChunk[]
+  chunks    KnowledgeChunk[]
+  indexJobs KnowledgeIndexJob[]
 
   @@unique([appcode, key])
   @@index([appcode])
@@ -121,6 +122,35 @@ model KnowledgeFile {
   @@index([effectiveTo])
   @@index([createdAt])
   @@map("knowledge_file")
+}
+
+model KnowledgeIndexJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  fileId         String    @map("file_id") @db.Uuid
+  appcode        String
+  operation      String
+  status         String    @default("queued")
+  attempt        Int       @default(0)
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  idempotencyKey String?   @map("idempotency_key")
+  errorCode      String?   @map("error_code")
+  errorMessage   String?   @map("error_message")
+  retryable      Boolean   @default(false)
+  nextAttemptAt  DateTime? @map("next_attempt_at")
+  requestedAt    DateTime  @default(now()) @map("requested_at")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  leaseExpiresAt DateTime? @map("lease_expires_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  file KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([appcode, idempotencyKey])
+  @@index([appcode, status, requestedAt])
+  @@index([fileId, status])
+  @@index([status, leaseExpiresAt])
+  @@index([status, nextAttemptAt, requestedAt])
+  @@map("knowledge_index_job")
 }
 
 model KnowledgeChunk {

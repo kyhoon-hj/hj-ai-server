@@ -2,7 +2,7 @@
 
 - 작성일: 2026-08-30
 - 대상: `KNW-SVC-01~03`
-- 공개 계약: `POST /v1/knowledge/answers`
+- 공개 계약: `POST /knowledge/answers` (`API_GLOBAL_PREFIX` 사용 시 prefix 포함)
 
 ## 구현 결과
 
@@ -17,7 +17,7 @@
 
 ## 자동 검증
 
-- 서비스 데모 단위·BFF 계약: 5 files, 15 tests PASS
+- 서비스 데모 단위·BFF 계약: 7 files, 20 tests PASS
 - typecheck: PASS
 - lint: PASS
 - build: PASS
@@ -25,6 +25,14 @@
 - appkey 미설정 `/api/answers`: 503 `SERVICE_DEMO_NOT_CONFIGURED`, 본문과 헤더 correlation ID 일치
 - 응답에 appkey, S3 key, 허용하지 않은 source metadata가 포함되지 않음을 검증
 
-## 남은 완료 조건
+## 실제 fixture E2E (2026-08-31)
 
-현재 Docker Desktop과 로컬 AI Server가 실행되지 않고 tenant appkey도 설정되지 않아 실제 fixture를 사용한 질의 E2E는 수행하지 못했습니다. 다음 검증에서는 AI Server와 STORE_A/STORE_B fixture를 준비한 뒤 환불·교환·운영시간·상품 문의의 answer/source/no-answer를 실제 응답으로 대조합니다.
+- AI Server readiness와 서비스 데모 `/chat`: HTTP 200
+- STORE_A 운영시간: 오전 10시~오후 10시와 `store-a-policy.md` 확인
+- STORE_A 상품: 1층 A-04, 재고 18개, 5,000원과 `store-a-products.csv` 확인
+- STORE_A 환불: 일반 상품 7일 정책과 정책·반품 가이드 source 확인
+- STORE_A 미등록 재입고 일정: `answerable=false`, source 없음 확인
+- STORE_B 교환: 14일 정책과 `store-b-policy.md` 확인
+- STORE_A 문맥의 STORE_B 질문에서 STORE_B source가 노출되지 않음을 확인
+
+재현 절차와 수동 합격 기준은 [서비스 데모 로컬 테스트 가이드](SERVICE_DEMO_TEST_GUIDE.md)를 따릅니다.

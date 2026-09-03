@@ -21,7 +21,23 @@ describe('validateEnvironment', () => {
       APPKEY_TTL_DAYS: '90',
       APPKEY_MAX_ROTATION_GRACE_SECONDS: '86400',
       KNOWLEDGE_MAX_FILE_SIZE_MB: '30',
+      KNOWLEDGE_INDEX_MAX_ATTEMPTS: '3',
+      KNOWLEDGE_INDEX_RETRY_DELAY_MS: '1000',
+      KNOWLEDGE_EMBEDDING_CONCURRENCY: '4',
     });
+  });
+
+  it('인덱싱 재시도와 embedding 동시성 범위를 검증한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        KNOWLEDGE_INDEX_MAX_ATTEMPTS: '11',
+        KNOWLEDGE_INDEX_RETRY_DELAY_MS: '99',
+        KNOWLEDGE_EMBEDDING_CONCURRENCY: '17',
+      }),
+    ).toThrow(
+      /KNOWLEDGE_INDEX_MAX_ATTEMPTS must be.*KNOWLEDGE_INDEX_RETRY_DELAY_MS must be.*KNOWLEDGE_EMBEDDING_CONCURRENCY must be/,
+    );
   });
 
   it('필수 설정 누락을 한 번에 보고한다', () => {

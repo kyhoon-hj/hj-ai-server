@@ -1,8 +1,8 @@
 # AI Server·검증 데모·서비스 데모 통합 로드맵
 
 최초 작성일: 2026-08-05
-개정일: 2026-08-18
-상태: 실행 기준 문서
+개정일: 2026-09-03
+상태: **단계 3 진행 중 — 비동기 job, 선별 자동 재시도와 동시성 제한 완료, 실제 의존성 장애 주입 예정**
 적용 범위: `src/`, `prisma/`, `demo/`, `service-demo/`, 배포 및 운영 설정
 
 ## 1. 목적
@@ -16,6 +16,37 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | AI Server                   | 인증, tenant, 지식, RAG, 파일, 운영 계약을 제공하는 제품 기반 | 공개 계약과 SLO를 만족하고 운영 가능한 상태                 |
 | 검증 데모 `demo/`           | 계약·보안·품질·성능 회귀를 자동 판정하는 검증 도구            | 변경마다 반복 실행되고 승인 증거를 생성하는 상태            |
 | 서비스 데모 `service-demo/` | 마트 고객응대와 이후 매출 분석의 실제 사용자 경험             | 검증된 API로 대표 업무 여정이 처음부터 끝까지 동작하는 상태 |
+
+## 현재 위치 요약
+
+> **현재: 단계 3 — 비동기 인덱싱과 장애 복원력**
+>
+> DB 기반 job 제출·조회, idempotency와 서비스 화면 상태 추적을 구현했습니다. 429/timeout/5xx와 일시 DB 오류만 지수 백오프로 자동 재시도하며 validation·권한·리소스 없음은 영구 실패로 분류합니다. **다음은 실제 S3/DB/Bedrock 장애 주입 E2E와 timeout·abort 전파 검증**입니다.
+
+| 단계 | 주제 | 현재 판정 | 핵심 상태 |
+| ---: | --- | --- | --- |
+| 0 | 재현 가능한 기준 환경 | 대부분 완료 | fixture, readiness, 서비스 데모 실행 기반 확보; migration 복구 리허설·dependency 잔여 |
+| 1 | 인증·권한·tenant 경계 | 서버·검증 완료, 서비스 일부 진행 | BFF credential 비노출과 STORE_A/B 격리 확인; 역할별 메뉴·권한 분리 남음 |
+| 2 | 지식 생명주기·파일 안전성 | 완료 | 고객·관리자·역할 경계와 정책 matrix 17/17 완료 |
+| **3** | **비동기 인덱싱·장애 복원력** | **진행 중** | queue job·선별 retry·idempotency·동시성·상태 UX 완료; 실제 장애 주입과 abort 전파 남음 |
+| 4 | RAG 품질·안전성 | 예정 | golden question, 품질 기준, 상담원 피드백 |
+| 5 | 쿼터·성능·비용 | 예정 | SLO, 부하, token·quota·metric |
+| 6 | `/v1` 공통 API·배포 게이트 | 일부 기반만 진행 | 관리자 API 일부 완료; 외부 계약·OpenAPI·배포 승인 남음 |
+| 7 | 매출 자료 분석 확장 | 예정 | 고객응대 MVP와 `/v1` 안정 후 착수 |
+
+현재 단계의 작업 흐름은 다음과 같습니다.
+
+```text
+[완료] 고객 질문·근거·no-answer·tenant 전환
+  → [완료] 매장 관리자 업로드·새 버전 등록·기존 버전 보관 화면 승인
+  → [완료] 역할별 메뉴·서버 권한과 개인정보·credential 비노출
+  → [완료] 게시 상태·기간·상품코드·접근등급 정책 matrix 자동화
+  → [완료] 비동기 인덱싱 상태·수동 재시도·중복 방지 기본 계약
+  → [완료] retryable 오류 분류·선별 자동 재시도·embedding 동시성 제한
+  → [현재] 실제 외부 의존성 장애 주입·timeout/abort·부분 실패 복구
+  → [후속] RAG 품질·성능·외부 /v1 계약
+  → [최종 확장] 매출 자료 분석
+```
 
 ## 2. 진행 원칙
 
@@ -37,17 +68,17 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | 항목                  | 현재 상태                                         | 목표                                   |
 | --------------------- | ------------------------------------------------- | -------------------------------------- |
 | AI Server build       | PASS                                              | 계속 PASS                              |
-| 단위 테스트           | 67/67 PASS                                        | 핵심 서비스 branch 80% 이상            |
-| 검증 데모 자체 테스트 | 6/6 PASS                                          | 시나리오·fixture 변경마다 계속 PASS    |
+| 단위 테스트           | 121/121 PASS                                      | 핵심 서비스 branch 80% 이상            |
+| 검증 데모 자체 테스트 | 11/11 PASS                                        | 시나리오·fixture 변경마다 계속 PASS    |
 | CI 품질 게이트        | 로컬·GitHub PASS, `main` PR 필수 체크 적용        | 계속 PASS 및 audit artifact 보존       |
-| E2E                   | 환경 의존 시험 수동 실행                          | 외부·관리·지식 생명주기 전체 자동 실행 |
+| E2E                   | 로컬 고객응대 대표 여정 PASS, 전체 자동화 예정    | 외부·관리·지식 생명주기 전체 자동 실행 |
 | line coverage         | 30.34%                                            | 핵심 서비스 80% 이상                   |
 | typecheck             | PASS                                              | 계속 PASS                              |
 | lint                  | PASS                                              | 계속 PASS                              |
 | dependency audit      | 전체·production High 4, Moderate 0                | High 0 또는 승인 예외                  |
 | DB migration          | 로컬 readiness PASS, 재배포 전 status 재확인 필요 | 배포 환경과 schema 일치                |
 | 검증 데모             | 핵심 계약·보안·parser 검증과 제한 성능 러너       | 전체 자동 검증 및 승인 리포트          |
-| 서비스 데모           | 미구현                                            | 마트 고객응대 MVP 후 매출 분석 확장    |
+| 서비스 데모           | 고객 채팅 MVP E2E PASS, 관리자 업로드 화면 예정   | 마트 고객응대 MVP 후 매출 분석 확장    |
 | 외부 API              | 기존 내부 endpoint 혼재                           | `/v1` 안정 계약 확정                   |
 | 관리자 API            | API key 기반 관리자·지식 운영자 RBAC 적용         | identity 기반 인증과 감사 보존 정책    |
 | 관측성                | correlation ID와 DB log 일부                      | 로그·metric·trace·alert 연결           |
@@ -141,10 +172,15 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 #### 서비스 데모
 
-- [ ] `SEC-SVC-01` 브라우저에 관리자·지식 운영자 credential을 노출하지 않는 BFF 경계
-- [ ] `SEC-SVC-02` STORE_A/STORE_B tenant context 전환과 교차 데이터 비노출 화면 검증
-- [ ] `SEC-SVC-03` 고객·상담원·매장 관리자별 메뉴와 동작 권한 분리
-- [ ] `SEC-SVC-04` 로그·화면·오류 메시지의 credential 및 개인정보 비노출
+- [x] `SEC-SVC-01` 브라우저에 관리자·지식 운영자 credential을 노출하지 않는 BFF 경계
+- [x] `SEC-SVC-02` STORE_A/STORE_B tenant context 전환과 교차 데이터 비노출 화면 검증
+- [x] `SEC-SVC-03` 고객·상담원·매장 관리자별 메뉴와 동작 권한 분리
+  - 고객 채팅, 상담원 검토함, 관리자 지식관리 경로를 분리하고 상담원·관리자별 이메일 allowlist와 별도 HttpOnly 로컬 세션을 서버에서 판정
+  - 영구 상담원 검토 요청 저장과 피드백 처리는 단계 3 `REL-SVC-01` 범위로 연결
+- [x] `SEC-SVC-04` 로그·화면·오류 메시지의 credential 및 개인정보 비노출
+  - appkey·운영자 키·로컬 세션 토큰·내부 source metadata 비노출 자동 검증과 4개 화면 응답 secret 0건 확인
+  - 상담원 권한 응답에서 이메일 비노출, 대표 개인정보의 AI Server 전송 전 차단·원문 비반사 확인
+  - 서비스 데모 자체 영구 저장 0일과 request body·cookie 비기록 정책 문서화
 
 #### Exit Gate
 
@@ -168,7 +204,8 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
   - cleanup 2회에서 동일 `archivedAt`, chunk 0, S3 cleanup `completed` 유지 검증 10/10 완료
 - [x] `KNW-DEM-04` 확장자 위장·빈 문서·손상 문서·대용량 문서 시나리오
   - 실제 multipart HTTP에서 위장·빈·손상 파일 400, 대용량 파일 413 및 구조화 오류·correlation 계약 7/7 검증
-- [ ] `KNW-DEM-05` DRAFT/PUBLISHED/RETIRED, 기간, productCode, accessLevel matrix
+- [x] `KNW-DEM-05` DRAFT/PUBLISHED/RETIRED, 기간, productCode, accessLevel matrix
+  - 실제 HTTP 정책 변경·검색·자동 정리 17/17 PASS, PostgreSQL vector 경로에서 파일 ID 포함·제외 확인
 
 #### AI Server
 
@@ -193,14 +230,16 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 #### 서비스 데모 — 마트 고객응대 MVP
 
-- [~] `KNW-SVC-01` 고객 채팅, 추천 질문과 대화 상태 화면
-  - 실제 `/v1/knowledge/answers` BFF와 UI 구현·자동 계약 검증 완료, 로컬 AI Server/appkey 연결 E2E 예정
-- [~] `KNW-SVC-02` 답변 근거 문서·페이지·상품·정책 출처 표시
-  - 브라우저용 source allowlist와 내부 S3 key·content·metadata 제거 검증 완료, 실제 fixture source 대조 예정
+- [x] `KNW-SVC-01` 고객 채팅, 추천 질문과 대화 상태 화면
+  - 실제 `/knowledge/answers` BFF와 로컬 AI Server/appkey 연결 E2E 완료
+- [x] `KNW-SVC-02` 답변 근거 문서·페이지·상품·정책 출처 표시
+  - source allowlist, 내부 S3 key·content·metadata 비노출과 실제 fixture source 대조 완료
 - [~] `KNW-SVC-03` strict no-answer와 상담원 연결·검토 요청 흐름
   - strict 요청·source 없는 답변 차단·세션 검토 요청 구현 완료, 영구 검토함 연동 예정
-- [ ] `KNW-SVC-04` 매장 관리자 문서 업로드·게시 상태·오류 확인 화면
-- [ ] `KNW-SVC-05` 환불·교환·운영시간·상품 문의 end-to-end 대표 시나리오
+- [x] `KNW-SVC-04` 매장 관리자 문서 업로드·게시 상태·오류 확인 화면
+  - 목록·업로드·고객 공개 정책·인덱싱·재인덱싱·보관 구현, 실제 API E2E와 사용자 화면 승인 완료
+- [x] `KNW-SVC-05` 환불·교환·운영시간·상품 문의 end-to-end 대표 시나리오
+  - STORE_A/STORE_B 실제 fixture, 짧은 정책 질문, strict no-answer와 tenant source 격리 확인
 
 #### Exit Gate
 
@@ -217,27 +256,27 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 #### 데모
 
-- [ ] `REL-DEM-01` 인덱싱 job 제출·조회·완료·실패·재시도 화면과 scenario
-- [ ] `REL-DEM-02` Bedrock 429, timeout, 5xx fault injection
-- [ ] `REL-DEM-03` S3 없음·DB 오류·embedding 부분 실패 시나리오
-- [ ] `REL-DEM-04` 동일 요청 중복 제출과 idempotency 검증
-- [ ] `REL-DEM-05` 오류 code와 retry-after 계약 검증
+- [~] `REL-DEM-01` 인덱싱 job 제출·조회·완료 scenario와 서비스 실패·재시도 화면 완료; 강제 실패·재시도 scenario 남음
+- [~] `REL-DEM-02` Bedrock 429, timeout, 5xx 단위 fault injection 완료; 실제 호출 E2E 남음
+- [~] `REL-DEM-03` S3 없음·DB 일시 오류 분류 단위 검증 완료; 실제 dependency 주입 남음
+- [x] `REL-DEM-04` 동일 요청 중복 제출과 idempotency 검증
+- [x] `REL-DEM-05` 오류 code, retryable과 next attempt 계약 단위·BFF 검증
 
 #### AI Server
 
-- [ ] `REL-SRV-01` 인덱싱을 queue 기반 비동기 job으로 전환
-- [ ] `REL-SRV-02` chunk embedding 동시성 제한
-- [ ] `REL-SRV-03` retryable 오류만 adaptive retry 적용
+- [x] `REL-SRV-01` 인덱싱을 DB queue 기반 비동기 job으로 전환
+- [x] `REL-SRV-02` chunk embedding 동시성 제한
+- [x] `REL-SRV-03` retryable 오류만 SDK adaptive retry와 durable job backoff 적용
 - [ ] `REL-SRV-04` 요청 timeout, abort 전파와 graceful shutdown
-- [ ] `REL-SRV-05` idempotency key와 중복 job 제어
-- [ ] `REL-SRV-06` DLQ 또는 수동 복구 가능한 failed 상태
+- [x] `REL-SRV-05` idempotency key와 중복 active job 제어
+- [x] `REL-SRV-06` 수동 복구 가능한 failed 상태와 최대 재시도 횟수
 
 #### 서비스 데모
 
-- [ ] `REL-SVC-01` 파일 업로드·인덱싱 job 진행·완료·실패 상태 표시
-- [ ] `REL-SVC-02` retry 가능한 오류에만 재시도 동작 제공
-- [ ] `REL-SVC-03` 중복 제출 방지와 사용자 재클릭 안전성
-- [ ] `REL-SVC-04` timeout·일시 장애·영구 실패별 안내와 correlation ID 표시
+- [x] `REL-SVC-01` 파일 업로드·인덱싱 job 진행·완료·실패 상태 표시
+- [x] `REL-SVC-02` 재시도 횟수가 남은 failed job에만 재시도 동작 제공
+- [x] `REL-SVC-03` idempotency key 기반 중복 제출 방지와 사용자 재클릭 안전성
+- [~] `REL-SVC-04` 일시 장애·영구 실패 안내와 correlation ID 표시 완료; 실제 timeout E2E 남음
 
 #### Exit Gate
 
@@ -487,9 +526,10 @@ Bedrock는 요청 시작 시 입력 토큰과 `maxTokens`를 중심으로 TPM을
 
 ## 10. 바로 시작할 작업
 
-1. `ENV-SVC-01~04`: 서비스 데모 골격, persona, fixture와 공통 API client 구성
-2. `KNW-SVC-01~05`: 마트 고객응대 MVP 연결
-3. `API-SRV-01~03`: 외부 `/v1` 답변 계약과 표준 오류 확정
-4. `REL-SRV-01` 및 `REL-DEM-01`: 인덱싱 job 상태 계약 착수
+1. [x] `KNW-SVC-04`: 매장 관리자 지식 목록·업로드·새 버전 등록·기존 버전 보관 화면 승인
+2. [x] `SEC-SVC-03~04`: 역할별 메뉴·서버 권한 분리와 개인정보 로그·보존 정책 완료
+3. [x] `KNW-DEM-05`: 게시 상태·기간·productCode·accessLevel 정책 matrix 자동화 17/17
+4. **`REL-SRV-01`, `REL-DEM-01`, `REL-SVC-01`**: 비동기 인덱싱 job과 진행·완료·실패 상태 계약
+5. `API-SRV-01~03`: 외부 `/v1` 답변 계약, 표준 오류와 OpenAPI 확정
 
-품질 게이트, 다중 형식 fixture, 지식 파일 방어선, 악성·대용량 multipart 거절 계약, S3 streaming, upload/DB 실패 보상, archive·chunk·S3 삭제 일관성, XLSX parser 교체와 reindex·cleanup 중복 실행을 포함한 HTTP 생명주기는 확보됐습니다. 다음 작업은 독립 서비스 데모의 골격·persona·fixture·공통 API client를 구성하고, 이 계약으로 마트 고객응대 MVP를 얇게 연결하는 것입니다. 서비스 데모 화면 확장이 검증되지 않은 내부 endpoint를 앞서가지 않도록 합니다.
+품질 게이트, 다중 형식 fixture, 파일 방어선, S3 streaming과 HTTP 지식 생명주기, 고객 채팅·관리자 문서관리 사용자 여정을 확보했습니다. 다음 작업은 고객·상담원·매장 관리자 역할별 메뉴와 서버 권한을 일치시키고 개인정보·credential 비노출 검사를 마무리하는 것입니다.
