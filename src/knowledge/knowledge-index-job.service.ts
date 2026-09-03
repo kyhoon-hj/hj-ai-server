@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
 import { classifyKnowledgeIndexJobError } from './knowledge-index-job-error';
+import { abortAllAwsRequests } from '../common/aws/aws-request-control';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'processing'];
 const LEASE_MILLISECONDS = 5 * 60 * 1000;
@@ -19,7 +20,7 @@ const LEASE_MILLISECONDS = 5 * 60 * 1000;
 export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KnowledgeIndexJobService.name);
   private timer?: NodeJS.Timeout;
-  private draining = false;
+  private drainPromise?: Promise<void>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -43,8 +44,13 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
     this.scheduleDrain();
   }
 
-  onModuleDestroy() {
+  async onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    abortAllAwsRequests();
+    await this.drainPromise?.catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.error(`Knowledge index worker shutdown failed: ${message}`);
+    });
   }
 
   async submit(
@@ -146,16 +152,21 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
   }
 
   async drain(appcode?: string) {
-    if (this.draining) return;
-    this.draining = true;
+    if (this.drainPromise) return this.drainPromise;
+    const drainPromise = this.drainAvailable(appcode);
+    this.drainPromise = drainPromise;
     try {
-      for (;;) {
-        const job = await this.claimNext(appcode);
-        if (!job) break;
-        await this.process(job);
-      }
+      await drainPromise;
     } finally {
-      this.draining = false;
+      if (this.drainPromise === drainPromise) this.drainPromise = undefined;
+    }
+  }
+
+  private async drainAvailable(appcode?: string) {
+    for (;;) {
+      const job = await this.claimNext(appcode);
+      if (!job) break;
+      await this.process(job);
     }
   }
 

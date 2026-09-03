@@ -41,6 +41,11 @@ import {
   getKnowledgeMaxFileSizeMb,
   validateKnowledgeStagedFile,
 } from './knowledge-file-security';
+import {
+  getAwsRequestHandlerOptions,
+  getAwsRequestTimeoutMs,
+  runAwsRequest,
+} from '../common/aws/aws-request-control';
 
 const KNOWLEDGE_FILE_STATUS = {
   uploaded: 'uploaded',
@@ -81,6 +86,7 @@ type KnowledgeMatch = {
 export class KnowledgeService {
   private readonly bedrockClient: BedrockRuntimeClient;
   private readonly logger = new Logger(KnowledgeService.name);
+  private readonly requestTimeoutMs: number;
 
   constructor(
     private readonly configService: ConfigService,
@@ -90,23 +96,30 @@ export class KnowledgeService {
     private readonly chunkingService: ChunkingService,
     private readonly embeddingService: EmbeddingService,
   ) {
+    this.requestTimeoutMs = getAwsRequestTimeoutMs(this.configService);
     this.bedrockClient = new BedrockRuntimeClient({
       region: this.configService.get<string>('AWS_REGION') ?? 'us-east-1',
       maxAttempts: 5,
       retryMode: 'adaptive',
+      requestHandler: getAwsRequestHandlerOptions(this.configService),
     });
   }
 
   async uploadKnowledgeFile(
     file: Express.Multer.File,
     appInfo: { appcode: string; maxStorageMb: number | null },
+    parentSignal?: AbortSignal,
   ) {
     const appcode = appInfo.appcode;
     try {
       await this.validateKnowledgeUpload(file);
       await this.ensureStorageQuota(appcode, file.size, appInfo.maxStorageMb);
       const checksum = await sha256StagedFile(file);
-      const uploaded = await this.storageService.uploadFile(file, appcode);
+      const uploaded = await this.storageService.uploadFile(
+        file,
+        appcode,
+        parentSignal,
+      );
 
       try {
         return await this.prisma.knowledgeFile.create({
@@ -133,7 +146,11 @@ export class KnowledgeService {
         });
       } catch (databaseError) {
         try {
-          await this.storageService.deleteFile(uploaded.key, appcode);
+          await this.storageService.deleteFile(
+            uploaded.key,
+            appcode,
+            parentSignal,
+          );
         } catch (compensationError) {
           this.logger.error(
             'Knowledge upload DB write and S3 compensation delete both failed.',
@@ -195,6 +212,7 @@ export class KnowledgeService {
     id: string,
     appcode: string,
     options: { deleteObject?: boolean } = {},
+    parentSignal?: AbortSignal,
   ) {
     const archive = await this.prisma.$transaction(async (transaction) => {
       const file = await transaction.knowledgeFile.findFirst({
@@ -262,7 +280,11 @@ export class KnowledgeService {
     }
 
     try {
-      await this.storageService.deleteFile(archive.file.key, appcode);
+      await this.storageService.deleteFile(
+        archive.file.key,
+        appcode,
+        parentSignal,
+      );
     } catch (cleanupError) {
       const failedAt = new Date().toISOString();
       const metadata = this.asJsonObject(archive.file.metadata) ?? {};
@@ -339,6 +361,7 @@ export class KnowledgeService {
     appInfo:
       | string
       | { appcode: string; defaultEmbeddingModelId: string | null },
+    parentSignal?: AbortSignal,
   ) {
     const appcode = typeof appInfo === 'string' ? appInfo : appInfo.appcode;
     return this.createIndexedTextFile({
@@ -352,6 +375,7 @@ export class KnowledgeService {
       policy: dto,
       embeddingModelId:
         typeof appInfo === 'string' ? null : appInfo.defaultEmbeddingModelId,
+      parentSignal,
     });
   }
 
@@ -407,6 +431,7 @@ export class KnowledgeService {
     appInfo:
       | string
       | { appcode: string; defaultEmbeddingModelId: string | null },
+    parentSignal?: AbortSignal,
   ) {
     const appcode = typeof appInfo === 'string' ? appInfo : appInfo.appcode;
     return this.createIndexedTextFile({
@@ -420,6 +445,7 @@ export class KnowledgeService {
       },
       embeddingModelId:
         typeof appInfo === 'string' ? null : appInfo.defaultEmbeddingModelId,
+      parentSignal,
     });
   }
 
@@ -428,6 +454,7 @@ export class KnowledgeService {
     appInfo:
       | string
       | { appcode: string; defaultEmbeddingModelId: string | null },
+    parentSignal?: AbortSignal,
   ) {
     const appcode = typeof appInfo === 'string' ? appInfo : appInfo.appcode;
     const embeddingModelId =
@@ -461,6 +488,7 @@ export class KnowledgeService {
         ) *
           1024 *
           1024,
+        parentSignal,
       );
       const parsedDocument = await this.documentParserService.parse({
         body: downloaded.body,
@@ -473,6 +501,7 @@ export class KnowledgeService {
         appcode,
         sections: parsedDocument.sections,
         embeddingModelId,
+        parentSignal,
       });
 
       await this.prisma.knowledgeFile.update({
@@ -510,6 +539,7 @@ export class KnowledgeService {
     metadata: Prisma.InputJsonObject;
     embeddingModelId?: string | null;
     policy?: UpdateKnowledgeFilePolicyDto;
+    parentSignal?: AbortSignal;
   }) {
     const content = data.content.trim();
 
@@ -578,6 +608,7 @@ export class KnowledgeService {
           },
         ],
         embeddingModelId: data.embeddingModelId,
+        parentSignal: data.parentSignal,
       });
 
       return {
@@ -605,6 +636,7 @@ export class KnowledgeService {
     appcode: string;
     sections: Parameters<ChunkingService['createChunks']>[0];
     embeddingModelId?: string | null;
+    parentSignal?: AbortSignal;
   }) {
     const chunks = this.chunkingService.createChunks(data.sections);
 
@@ -622,6 +654,7 @@ export class KnowledgeService {
         const embedding = await this.embeddingService.createEmbedding(
           content.content,
           embeddingModel,
+          data.parentSignal,
         );
 
         return {
@@ -679,6 +712,7 @@ export class KnowledgeService {
           defaultEmbeddingModelId: string | null;
           allowedAccessLevels?: KnowledgeAccessLevelValue[];
         },
+    parentSignal?: AbortSignal,
   ) {
     const appcode = typeof appInfo === 'string' ? appInfo : appInfo.appcode;
     const embeddingModelId =
@@ -695,6 +729,7 @@ export class KnowledgeService {
       embeddingModelId,
       dto.scoreThreshold,
       filters,
+      parentSignal,
     );
 
     return {
@@ -717,6 +752,7 @@ export class KnowledgeService {
           allowedAccessLevels?: KnowledgeAccessLevelValue[];
         },
     requestId?: string,
+    parentSignal?: AbortSignal,
   ) {
     const appContext = this.toKnowledgeAppContext(appInfo);
     const appcode = appContext.appcode;
@@ -745,6 +781,7 @@ export class KnowledgeService {
       embeddingModel,
       dto.scoreThreshold,
       filters,
+      parentSignal,
     );
     const modelId =
       dto.modelId ??
@@ -790,32 +827,37 @@ export class KnowledgeService {
       };
     }
 
-    const result = await this.bedrockClient.send(
-      new ConverseCommand({
-        modelId,
-        messages: [
-          {
-            role: 'user',
-            content: [
+    const result = await runAwsRequest(
+      (abortSignal) =>
+        this.bedrockClient.send(
+          new ConverseCommand({
+            modelId,
+            messages: [
               {
-                text: this.createRagPrompt(dto, matches),
+                role: 'user',
+                content: [
+                  {
+                    text: this.createRagPrompt(dto, matches),
+                  },
+                ],
               },
             ],
-          },
-        ],
-        system: [
-          {
-            text:
-              dto.system ??
-              appContext.systemPrompt ??
-              '너는 제공된 참고자료에 근거해서만 답변하는 한국어 업무 지원 AI다. 참고자료에 없는 내용은 추측하지 말고 확인할 수 없다고 답한다.',
-          },
-        ],
-        inferenceConfig: {
-          maxTokens: dto.maxTokens ?? 1024,
-          temperature: dto.temperature ?? 0.2,
-        },
-      }),
+            system: [
+              {
+                text:
+                  dto.system ??
+                  appContext.systemPrompt ??
+                  '너는 제공된 참고자료에 근거해서만 답변하는 한국어 업무 지원 AI다. 참고자료에 없는 내용은 추측하지 말고 확인할 수 없다고 답한다.',
+              },
+            ],
+            inferenceConfig: {
+              maxTokens: dto.maxTokens ?? 1024,
+              temperature: dto.temperature ?? 0.2,
+            },
+          }),
+          { abortSignal },
+        ),
+      { timeoutMs: this.requestTimeoutMs, parentSignal },
     );
 
     const response = this.extractConverseText(result);
@@ -873,6 +915,7 @@ export class KnowledgeService {
     embeddingModelId?: string | null,
     scoreThreshold?: number,
     filters: ResolvedKnowledgeFilters = {},
+    parentSignal?: AbortSignal,
   ) {
     if (filters.denyAll) {
       return [];
@@ -883,6 +926,7 @@ export class KnowledgeService {
     const queryEmbedding = await this.embeddingService.createEmbedding(
       query,
       modelId,
+      parentSignal,
     );
     const matches = await this.findMatchesWithPgVector({
       appcode,

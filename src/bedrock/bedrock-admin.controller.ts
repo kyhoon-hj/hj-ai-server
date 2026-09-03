@@ -1,8 +1,9 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { AdminRoles } from '../common/guards/admin-roles.decorator';
 import { BedrockService } from './bedrock.service';
+import type { AbortableRequest } from '../common/http/request-abort.middleware';
 
 @ApiTags('admin-bedrock')
 @UseGuards(AdminApiKeyGuard)
@@ -29,7 +30,7 @@ export class BedrockAdminController {
   @ApiOperation({
     summary: 'AWS 계정과 리전에서 조회 가능한 모델을 확인합니다.',
   })
-  listFoundationModels() {
-    return this.bedrockService.listFoundationModels();
+  listFoundationModels(@Req() request: AbortableRequest) {
+    return this.bedrockService.listFoundationModels(request.abortSignal);
   }
 }

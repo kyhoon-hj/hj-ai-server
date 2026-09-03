@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveContainerDatabaseUrl } from '../../config/start-container.mjs';
+import {
+  resolveChildExitCode,
+  resolveContainerDatabaseUrl,
+} from '../../config/start-container.mjs';
 
 test('Docker 실행에서 localhost DB 호스트만 게이트웨이 주소로 변경한다', () => {
   const result = new URL(
@@ -26,4 +29,10 @@ test('Docker DB 호스트를 명시적으로 재정의할 수 있다', () => {
     ),
   );
   assert.equal(result.hostname, 'database.internal');
+});
+
+test('전달한 종료 신호로 서버가 종료되면 정상 종료 코드로 변환한다', () => {
+  assert.equal(resolveChildExitCode(null, 'SIGTERM', 'SIGTERM'), 0);
+  assert.equal(resolveChildExitCode(null, 'SIGKILL', 'SIGTERM'), 1);
+  assert.equal(resolveChildExitCode(2, null, undefined), 2);
 });

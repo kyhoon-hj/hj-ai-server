@@ -24,7 +24,21 @@ describe('validateEnvironment', () => {
       KNOWLEDGE_INDEX_MAX_ATTEMPTS: '3',
       KNOWLEDGE_INDEX_RETRY_DELAY_MS: '1000',
       KNOWLEDGE_EMBEDDING_CONCURRENCY: '4',
+      AWS_CONNECTION_TIMEOUT_MS: '5000',
+      AWS_REQUEST_TIMEOUT_MS: '30000',
     });
+  });
+
+  it('AWS 연결과 요청 timeout 범위를 검증한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        AWS_CONNECTION_TIMEOUT_MS: '99',
+        AWS_REQUEST_TIMEOUT_MS: '300001',
+      }),
+    ).toThrow(
+      /AWS_CONNECTION_TIMEOUT_MS must be.*AWS_REQUEST_TIMEOUT_MS must be/,
+    );
   });
 
   it('인덱싱 재시도와 embedding 동시성 범위를 검증한다', () => {

@@ -86,7 +86,11 @@ export class KnowledgeController {
       throw new BadRequestException('업로드할 file이 필요합니다.');
     }
 
-    return this.knowledgeService.uploadKnowledgeFile(file, request.appInfo!);
+    return this.knowledgeService.uploadKnowledgeFile(
+      file,
+      request.appInfo!,
+      request.abortSignal,
+    );
   }
 
   @Get('files')
@@ -146,6 +150,7 @@ export class KnowledgeController {
       id,
       request.appInfo!.appcode,
       { deleteObject },
+      request.abortSignal,
     );
   }
 
@@ -160,7 +165,11 @@ export class KnowledgeController {
     @Body() dto: CreateKnowledgeTextDto,
     @Req() request: AppkeyRequest,
   ) {
-    return this.knowledgeService.createKnowledgeText(dto, request.appInfo!);
+    return this.knowledgeService.createKnowledgeText(
+      dto,
+      request.appInfo!,
+      request.abortSignal,
+    );
   }
 
   @Post('demo/store-seed')
@@ -171,7 +180,10 @@ export class KnowledgeController {
     summary: '가상 생활용품 매장 안내 데모 데이터를 RAG 지식으로 적재합니다.',
   })
   seedDemoStoreKnowledge(@Req() request: AppkeyRequest) {
-    return this.knowledgeService.seedDemoStoreKnowledge(request.appInfo!);
+    return this.knowledgeService.seedDemoStoreKnowledge(
+      request.appInfo!,
+      request.abortSignal,
+    );
   }
 
   @Post('files/:id/index')
@@ -182,7 +194,11 @@ export class KnowledgeController {
     summary: 'S3 파일 내용을 추출해 chunk와 embedding을 생성합니다.',
   })
   indexKnowledgeFile(@Param('id') id: string, @Req() request: AppkeyRequest) {
-    return this.knowledgeService.indexKnowledgeFile(id, request.appInfo!);
+    return this.knowledgeService.indexKnowledgeFile(
+      id,
+      request.appInfo!,
+      request.abortSignal,
+    );
   }
 
   @Post('files/:id/reindex')
@@ -193,7 +209,11 @@ export class KnowledgeController {
     summary: '등록된 지식 파일을 다시 인덱싱합니다.',
   })
   reindexKnowledgeFile(@Param('id') id: string, @Req() request: AppkeyRequest) {
-    return this.knowledgeService.indexKnowledgeFile(id, request.appInfo!);
+    return this.knowledgeService.indexKnowledgeFile(
+      id,
+      request.appInfo!,
+      request.abortSignal,
+    );
   }
 
   @Post('search')
@@ -203,7 +223,11 @@ export class KnowledgeController {
     @Body() dto: KnowledgeSearchDto,
     @Req() request: AppkeyRequest,
   ) {
-    return this.knowledgeService.search(dto, request.appInfo!);
+    return this.knowledgeService.search(
+      dto,
+      request.appInfo!,
+      request.abortSignal,
+    );
   }
 
   @Post('rag-response')
@@ -219,6 +243,7 @@ export class KnowledgeController {
       dto,
       request.appInfo!,
       request.correlationId,
+      request.abortSignal,
     );
   }
 
@@ -237,6 +262,7 @@ export class KnowledgeController {
       dto,
       request.appInfo!,
       request.correlationId,
+      request.abortSignal,
     );
   }
 }

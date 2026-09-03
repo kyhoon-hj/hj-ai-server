@@ -85,6 +85,30 @@ describe('StorageService streaming', () => {
     expect(destroy).toHaveBeenCalled();
   });
 
+  it('destroys an in-progress parser stream when the caller aborts', async () => {
+    const body = new Readable({ read() {} });
+    const destroy = jest.spyOn(body, 'destroy');
+    const service = createService(
+      jest.fn().mockResolvedValue({ Body: body, ContentLength: 7 }),
+    );
+    const parent = new AbortController();
+    const download = service.downloadFileBuffer(
+      'store-a/knowledge/file.txt',
+      'store-a',
+      7,
+      parent.signal,
+    );
+    const rejection = expect(download).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+
+    await new Promise((resolve) => setImmediate(resolve));
+    parent.abort();
+
+    await rejection;
+    expect(destroy).toHaveBeenCalled();
+  });
+
   it('removes the staged file when multipart upload fails', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'hj-ai-storage-test-'));
     tempDirectories.push(directory);

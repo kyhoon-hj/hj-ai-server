@@ -155,6 +155,7 @@ describe('knowledge archive and S3 cleanup consistency', () => {
     expect(storageService.deleteFile).toHaveBeenCalledWith(
       baseFile.key,
       'store-a',
+      undefined,
     );
     const pendingMetadata = transaction.knowledgeFile.update.mock.calls[0][0]
       .data.metadata as TestMetadata;

@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { KnowledgeIndexJobService } from './knowledge-index-job.service';
+import { runAwsRequest } from '../common/aws/aws-request-control';
 
 function lastMockArgument(mock: jest.Mock): unknown {
   return (mock.mock.calls as unknown[][]).at(-1)?.[0];
@@ -229,6 +230,57 @@ describe('KnowledgeIndexJobService', () => {
         errorCode: 'INVALID_INDEX_REQUEST',
         retryable: false,
         nextAttemptAt: null,
+      },
+    });
+  });
+
+  it('aborts and persists an in-flight job before shutdown completes', async () => {
+    const { service, prisma, knowledgeService } = createFixture(true);
+    prisma.knowledgeIndexJob.findFirst
+      .mockResolvedValueOnce(queuedJob)
+      .mockResolvedValueOnce(null);
+    prisma.knowledgeIndexJob.updateMany.mockResolvedValue({ count: 1 });
+    prisma.knowledgeIndexJob.findUnique.mockResolvedValue({
+      ...queuedJob,
+      status: 'processing',
+      attempt: 1,
+    });
+    prisma.appInfo.findUnique.mockResolvedValue({
+      appcode: 'STORE_A',
+      defaultEmbeddingModelId: null,
+    });
+    knowledgeService.indexKnowledgeFile.mockImplementation(() =>
+      runAwsRequest(
+        (abortSignal) =>
+          new Promise((_, reject) => {
+            abortSignal.addEventListener(
+              'abort',
+              () =>
+                reject(
+                  Object.assign(new Error('shutdown'), { name: 'AbortError' }),
+                ),
+              { once: true },
+            );
+          }),
+        { timeoutMs: 30_000 },
+      ),
+    );
+    prisma.knowledgeIndexJob.update.mockResolvedValue({
+      ...queuedJob,
+      status: 'queued',
+    });
+
+    const drain = service.drain();
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.onModuleDestroy();
+    await drain;
+
+    const shutdownUpdate = lastMockArgument(prisma.knowledgeIndexJob.update);
+    expect(shutdownUpdate).toMatchObject({
+      data: {
+        status: 'queued',
+        errorCode: 'UPSTREAM_TIMEOUT',
+        retryable: true,
       },
     });
   });

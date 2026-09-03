@@ -14,6 +14,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -34,6 +35,7 @@ import { CreateKnowledgeTextDto } from './dto/create-knowledge-text.dto';
 import { UpdateKnowledgeFilePolicyDto } from './dto/knowledge-policy.dto';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeIndexJobService } from './knowledge-index-job.service';
+import type { AbortableRequest } from '../common/http/request-abort.middleware';
 
 @ApiTags('admin-knowledge')
 @UseGuards(AdminApiKeyGuard)
@@ -66,10 +68,15 @@ export class KnowledgeAdminController {
   async uploadKnowledgeFile(
     @Param('appId', ParseUUIDPipe) appId: string,
     @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() request: AbortableRequest,
   ) {
     if (!file) throw new BadRequestException('업로드할 file이 필요합니다.');
     const appInfo = await this.appInfoService.findOne(appId);
-    return this.knowledgeService.uploadKnowledgeFile(file, appInfo);
+    return this.knowledgeService.uploadKnowledgeFile(
+      file,
+      appInfo,
+      request.abortSignal,
+    );
   }
 
   @Get('files')
@@ -117,11 +124,15 @@ export class KnowledgeAdminController {
     @Param('id') id: string,
     @Query('deleteObject', new DefaultValuePipe(false), ParseBoolPipe)
     deleteObject: boolean,
+    @Req() request: AbortableRequest,
   ) {
     const appInfo = await this.appInfoService.findOne(appId);
-    return this.knowledgeService.deleteKnowledgeFile(id, appInfo.appcode, {
-      deleteObject,
-    });
+    return this.knowledgeService.deleteKnowledgeFile(
+      id,
+      appInfo.appcode,
+      { deleteObject },
+      request.abortSignal,
+    );
   }
 
   @Post('texts')
@@ -129,9 +140,14 @@ export class KnowledgeAdminController {
   async createKnowledgeText(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Body() dto: CreateKnowledgeTextDto,
+    @Req() request: AbortableRequest,
   ) {
     const appInfo = await this.appInfoService.findOne(appId);
-    return this.knowledgeService.createKnowledgeText(dto, appInfo);
+    return this.knowledgeService.createKnowledgeText(
+      dto,
+      appInfo,
+      request.abortSignal,
+    );
   }
 
   @Post('files/:id/index')
@@ -140,9 +156,14 @@ export class KnowledgeAdminController {
   async indexKnowledgeFile(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Param('id') id: string,
+    @Req() request: AbortableRequest,
   ) {
     const appInfo = await this.appInfoService.findOne(appId);
-    return this.knowledgeService.indexKnowledgeFile(id, appInfo);
+    return this.knowledgeService.indexKnowledgeFile(
+      id,
+      appInfo,
+      request.abortSignal,
+    );
   }
 
   @Post('files/:id/reindex')
@@ -151,9 +172,14 @@ export class KnowledgeAdminController {
   async reindexKnowledgeFile(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Param('id') id: string,
+    @Req() request: AbortableRequest,
   ) {
     const appInfo = await this.appInfoService.findOne(appId);
-    return this.knowledgeService.indexKnowledgeFile(id, appInfo);
+    return this.knowledgeService.indexKnowledgeFile(
+      id,
+      appInfo,
+      request.abortSignal,
+    );
   }
 
   @Post('files/:id/index-jobs')

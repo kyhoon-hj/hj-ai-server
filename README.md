@@ -45,6 +45,8 @@ The app listens on container port `11000` and is exposed on `http://localhost:11
 
 Set `DOCKER_DATABASE_HOST` only when the Docker host gateway needs a different name. The startup wrapper runs `prisma migrate deploy` before starting the server, and the Compose healthcheck uses `/health/ready` so a disconnected DB is not reported as healthy. For non-Compose deployments, run `npm run db:init` against the configured `DATABASE_URL`.
 
+AWS SDK clients use adaptive retry with explicit connection and total operation limits. `AWS_CONNECTION_TIMEOUT_MS` defaults to `5000`, and `AWS_REQUEST_TIMEOUT_MS` defaults to `30000`. When an HTTP client disconnects or the process receives a shutdown signal, active Bedrock and S3 operations are aborted. The indexing worker waits for an aborted job to persist its retry state before module shutdown completes.
+
 ### Local dependency fault E2E
 
 Run the durable knowledge-index job fault scenarios against local PostgreSQL:

@@ -65,8 +65,8 @@ export class BedrockController {
     summary:
       '현재 AWS 계정/리전에서 조회 가능한 Bedrock 모델 목록을 확인합니다.',
   })
-  listFoundationModels() {
-    return this.bedrockService.listFoundationModels();
+  listFoundationModels(@Req() request: AppkeyRequest) {
+    return this.bedrockService.listFoundationModels(request.abortSignal);
   }
 
   @Post('converse')
@@ -75,7 +75,11 @@ export class BedrockController {
     summary: 'Amazon Bedrock Converse API로 텍스트 응답을 생성합니다.',
   })
   converse(@Body() dto: ConverseDto, @Req() request: AppkeyRequest) {
-    return this.bedrockService.converse(dto, request.appInfo!.appcode);
+    return this.bedrockService.converse(
+      dto,
+      request.appInfo!.appcode,
+      request.abortSignal,
+    );
   }
 
   @Post('text-response')
@@ -98,6 +102,7 @@ export class BedrockController {
     return this.bedrockService.createTextResponse(
       dto,
       request.appInfo!.appcode,
+      request.abortSignal,
     );
   }
 
@@ -115,6 +120,7 @@ export class BedrockController {
       dto,
       request.appInfo!,
       request.correlationId,
+      request.abortSignal,
     );
   }
 }

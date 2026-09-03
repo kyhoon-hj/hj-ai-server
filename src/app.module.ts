@@ -13,6 +13,8 @@ import { StructuredHttpExceptionFilter } from './common/http/structured-http-exc
 import { validateEnvironment } from './config/environment';
 import { HealthModule } from './health/health.module';
 import { SecurityModule } from './security/security.module';
+import { AwsRequestShutdownService } from './common/aws/aws-request-control';
+import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { SecurityModule } from './security/security.module';
   controllers: [AppController],
   providers: [
     AppService,
+    AwsRequestShutdownService,
     {
       provide: APP_FILTER,
       useClass: StructuredHttpExceptionFilter,
@@ -36,6 +39,8 @@ import { SecurityModule } from './security/security.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+    consumer
+      .apply(RequestAbortMiddleware, CorrelationIdMiddleware)
+      .forRoutes('*');
   }
 }

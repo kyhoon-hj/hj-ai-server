@@ -6,23 +6,25 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { CorrelatedRequest } from '../http/correlation-id.middleware';
+import type { AbortableRequest } from '../http/request-abort.middleware';
 import { AppInfoService } from '../../app-info/app-info.service';
 
-export type AppkeyRequest = CorrelatedRequest & {
-  appInfo?: {
-    id: string;
-    appcode: string;
-    allowedAccessLevels: Array<'PUBLIC' | 'INTERNAL' | 'RESTRICTED'>;
-    status: string;
-    s3Prefix: string | null;
-    defaultModelId: string | null;
-    defaultEmbeddingModelId: string | null;
-    systemPrompt: string | null;
-    maxStorageMb: number | null;
-    monthlyTokenLimit: number | null;
-    metadata: unknown;
+export type AppkeyRequest = CorrelatedRequest &
+  AbortableRequest & {
+    appInfo?: {
+      id: string;
+      appcode: string;
+      allowedAccessLevels: Array<'PUBLIC' | 'INTERNAL' | 'RESTRICTED'>;
+      status: string;
+      s3Prefix: string | null;
+      defaultModelId: string | null;
+      defaultEmbeddingModelId: string | null;
+      systemPrompt: string | null;
+      maxStorageMb: number | null;
+      monthlyTokenLimit: number | null;
+      metadata: unknown;
+    };
   };
-};
 
 @Injectable()
 export class AppkeyGuard implements CanActivate {

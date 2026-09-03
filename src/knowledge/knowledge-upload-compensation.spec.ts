@@ -98,6 +98,7 @@ describe('knowledge upload compensation', () => {
     expect(storageService.deleteFile).toHaveBeenCalledWith(
       'store-a/knowledge/uploaded.md',
       'store-a',
+      undefined,
     );
     await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
   });

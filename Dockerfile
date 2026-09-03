@@ -31,12 +31,12 @@ RUN addgroup -S nodejs && adduser -S nestjs -G nodejs
 
 COPY package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
+RUN npm prune --omit=dev && npm cache clean --force
+
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
 COPY config/start-container.mjs ./config/start-container.mjs
-
-RUN npm prune --omit=dev && npm cache clean --force
 
 USER nestjs
 EXPOSE 11000

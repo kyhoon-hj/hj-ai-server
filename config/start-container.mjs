@@ -15,6 +15,11 @@ export function resolveContainerDatabaseUrl(
   return databaseUrl.toString();
 }
 
+export function resolveChildExitCode(code, signal, forwardedSignal) {
+  if (code !== null) return code;
+  return forwardedSignal && signal === forwardedSignal ? 0 : 1;
+}
+
 function run(command, args, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { env, stdio: 'inherit' });
@@ -43,7 +48,9 @@ async function main() {
     env,
     stdio: 'inherit',
   });
+  let forwardedSignal;
   const forward = (signal) => {
+    forwardedSignal = signal;
     if (!server.killed) server.kill(signal);
   };
   process.once('SIGTERM', () => forward('SIGTERM'));
@@ -52,9 +59,14 @@ async function main() {
     console.error(error);
     process.exit(1);
   });
-  server.once('exit', (code) => process.exit(code ?? 1));
+  server.once('exit', (code, signal) =>
+    process.exit(resolveChildExitCode(code, signal, forwardedSignal)),
+  );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await main();
 }

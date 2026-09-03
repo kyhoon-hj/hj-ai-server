@@ -6,8 +6,11 @@ import { finished } from 'node:stream/promises';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  type GetObjectCommandOutput,
   HeadObjectCommand,
+  type HeadObjectCommandOutput,
   ListObjectsV2Command,
+  type ListObjectsV2CommandOutput,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -20,6 +23,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { removeStagedFile, requireStagedPath } from './staged-upload';
+import {
+  getAwsRequestHandlerOptions,
+  getAwsRequestTimeoutMs,
+  runAwsRequest,
+} from '../common/aws/aws-request-control';
 
 type ListFilesOptions = {
   prefix?: string;
@@ -30,36 +38,54 @@ type ListFilesOptions = {
 @Injectable()
 export class StorageService {
   private readonly s3Client: S3Client;
+  private readonly requestTimeoutMs: number;
 
   constructor(private readonly configService: ConfigService) {
+    this.requestTimeoutMs = getAwsRequestTimeoutMs(this.configService);
     this.s3Client = new S3Client({
       region: this.getRegion(),
       maxAttempts: 5,
       retryMode: 'adaptive',
+      requestHandler: getAwsRequestHandlerOptions(this.configService),
     });
   }
 
-  async uploadFile(file: Express.Multer.File, appcode: string) {
+  async uploadFile(
+    file: Express.Multer.File,
+    appcode: string,
+    parentSignal?: AbortSignal,
+  ) {
     const bucket = this.getBucket();
 
     const key = this.createObjectKey(appcode, file.originalname);
     const body = createReadStream(requireStagedPath(file));
 
     try {
-      const upload = new Upload({
-        client: this.s3Client,
-        params: {
-          Bucket: bucket,
-          Key: key,
-          Body: body,
-          ContentLength: file.size,
-          ContentType: file.mimetype,
+      await runAwsRequest(
+        async (abortSignal) => {
+          const upload = new Upload({
+            client: this.s3Client,
+            params: {
+              Bucket: bucket,
+              Key: key,
+              Body: body,
+              ContentLength: file.size,
+              ContentType: file.mimetype,
+            },
+            queueSize: 2,
+            partSize: 5 * 1024 * 1024,
+            leavePartsOnError: false,
+          });
+          const abortUpload = () => void upload.abort();
+          abortSignal.addEventListener('abort', abortUpload, { once: true });
+          try {
+            await upload.done();
+          } finally {
+            abortSignal.removeEventListener('abort', abortUpload);
+          }
         },
-        queueSize: 2,
-        partSize: 5 * 1024 * 1024,
-        leavePartsOnError: false,
-      });
-      await upload.done();
+        { timeoutMs: this.requestTimeoutMs, parentSignal },
+      );
     } finally {
       body.destroy();
       await finished(body).catch(() => undefined);
@@ -77,15 +103,13 @@ export class StorageService {
     };
   }
 
-  async deleteFile(key: string, appcode: string) {
+  async deleteFile(key: string, appcode: string, parentSignal?: AbortSignal) {
     const bucket = this.getBucket();
     const normalizedKey = this.validateAppKeyPrefix(key, appcode);
 
-    await this.s3Client.send(
-      new DeleteObjectCommand({
-        Bucket: bucket,
-        Key: normalizedKey,
-      }),
+    await this.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: normalizedKey }),
+      parentSignal,
     );
 
     return {
@@ -96,16 +120,21 @@ export class StorageService {
     };
   }
 
-  async listFiles(appcode: string, options: ListFilesOptions) {
+  async listFiles(
+    appcode: string,
+    options: ListFilesOptions,
+    parentSignal?: AbortSignal,
+  ) {
     const bucket = this.getBucket();
     const prefix = this.createListPrefix(appcode, options.prefix);
-    const response = await this.s3Client.send(
+    const response = await this.send<ListObjectsV2CommandOutput>(
       new ListObjectsV2Command({
         Bucket: bucket,
         Prefix: prefix,
         MaxKeys: this.normalizeMaxKeys(options.maxKeys),
         ContinuationToken: options.continuationToken,
       }),
+      parentSignal,
     );
 
     return {
@@ -125,16 +154,17 @@ export class StorageService {
     };
   }
 
-  async getFileInfo(key: string, appcode: string) {
+  async getFileInfo(key: string, appcode: string, parentSignal?: AbortSignal) {
     const bucket = this.getBucket();
     const normalizedKey = this.validateAppKeyPrefix(key, appcode);
 
     try {
-      const response = await this.s3Client.send(
+      const response = await this.send<HeadObjectCommandOutput>(
         new HeadObjectCommand({
           Bucket: bucket,
           Key: normalizedKey,
         }),
+        parentSignal,
       );
 
       return {
@@ -153,16 +183,17 @@ export class StorageService {
     }
   }
 
-  async downloadFile(key: string, appcode: string) {
+  async downloadFile(key: string, appcode: string, parentSignal?: AbortSignal) {
     const bucket = this.getBucket();
     const normalizedKey = this.validateAppKeyPrefix(key, appcode);
 
     try {
-      const response = await this.s3Client.send(
+      const response = await this.send<GetObjectCommandOutput>(
         new GetObjectCommand({
           Bucket: bucket,
           Key: normalizedKey,
         }),
+        parentSignal,
       );
 
       if (!response.Body) {
@@ -182,32 +213,56 @@ export class StorageService {
     }
   }
 
-  async downloadFileBuffer(key: string, appcode: string, maxBytes: number) {
-    const file = await this.downloadFile(key, appcode);
-    const tooLargeMessage = `S3 파일 크기는 ${Math.floor(maxBytes / 1024 / 1024)}MB 이하여야 합니다.`;
+  async downloadFileBuffer(
+    key: string,
+    appcode: string,
+    maxBytes: number,
+    parentSignal?: AbortSignal,
+  ) {
+    return runAwsRequest(
+      async (abortSignal) => {
+        const file = await this.downloadFile(key, appcode, abortSignal);
+        const tooLargeMessage = `S3 파일 크기는 ${Math.floor(maxBytes / 1024 / 1024)}MB 이하여야 합니다.`;
+        const abortStream = () => {
+          const error = Object.assign(new Error('S3 download aborted.'), {
+            name: 'AbortError',
+          });
+          file.body.destroy(error);
+        };
+        abortSignal.addEventListener('abort', abortStream, { once: true });
 
-    if (file.contentLength !== undefined && file.contentLength > maxBytes) {
-      file.body.destroy();
-      throw new BadRequestException(tooLargeMessage);
-    }
+        try {
+          if (
+            file.contentLength !== undefined &&
+            file.contentLength > maxBytes
+          ) {
+            file.body.destroy();
+            throw new BadRequestException(tooLargeMessage);
+          }
 
-    const chunks: Buffer[] = [];
-    let size = 0;
-    try {
-      for await (const chunk of file.body) {
-        const buffer = Buffer.isBuffer(chunk)
-          ? chunk
-          : Buffer.from(chunk as Uint8Array);
-        size += buffer.length;
-        if (size > maxBytes) throw new BadRequestException(tooLargeMessage);
-        chunks.push(buffer);
-      }
-    } catch (error) {
-      file.body.destroy();
-      throw error;
-    }
+          const chunks: Buffer[] = [];
+          let size = 0;
+          for await (const chunk of file.body) {
+            const buffer = Buffer.isBuffer(chunk)
+              ? chunk
+              : Buffer.from(chunk as Uint8Array);
+            size += buffer.length;
+            if (size > maxBytes) {
+              throw new BadRequestException(tooLargeMessage);
+            }
+            chunks.push(buffer);
+          }
 
-    return { ...file, body: Buffer.concat(chunks, size) };
+          return { ...file, body: Buffer.concat(chunks, size) };
+        } catch (error) {
+          file.body.destroy();
+          throw error;
+        } finally {
+          abortSignal.removeEventListener('abort', abortStream);
+        }
+      },
+      { timeoutMs: this.requestTimeoutMs, parentSignal },
+    );
   }
 
   private createObjectKey(appcode: string, originalName: string) {
@@ -219,6 +274,17 @@ export class StorageService {
     const safeFileName = this.toSafeFileName(originalName);
 
     return `${safeAppcode}/knowledge/${year}/${month}/${day}/${randomUUID()}-${safeFileName}`;
+  }
+
+  private send<T>(
+    command: Parameters<S3Client['send']>[0],
+    parentSignal?: AbortSignal,
+  ) {
+    return runAwsRequest(
+      (abortSignal) =>
+        this.s3Client.send(command, { abortSignal }) as Promise<T>,
+      { timeoutMs: this.requestTimeoutMs, parentSignal },
+    );
   }
 
   private createListPrefix(appcode: string, prefix?: string) {

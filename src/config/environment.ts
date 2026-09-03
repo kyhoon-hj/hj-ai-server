@@ -193,6 +193,32 @@ export function validateEnvironment(
     );
   }
 
+  const awsConnectionTimeoutMs = Number(
+    valueOf(config, 'AWS_CONNECTION_TIMEOUT_MS') || 5000,
+  );
+  if (
+    !Number.isInteger(awsConnectionTimeoutMs) ||
+    awsConnectionTimeoutMs < 100 ||
+    awsConnectionTimeoutMs > 60000
+  ) {
+    errors.push(
+      'AWS_CONNECTION_TIMEOUT_MS must be an integer between 100 and 60000',
+    );
+  }
+
+  const awsRequestTimeoutMs = Number(
+    valueOf(config, 'AWS_REQUEST_TIMEOUT_MS') || 30000,
+  );
+  if (
+    !Number.isInteger(awsRequestTimeoutMs) ||
+    awsRequestTimeoutMs < 100 ||
+    awsRequestTimeoutMs > 300000
+  ) {
+    errors.push(
+      'AWS_REQUEST_TIMEOUT_MS must be an integer between 100 and 300000',
+    );
+  }
+
   const prefix = valueOf(config, 'API_GLOBAL_PREFIX');
   if (
     prefix &&
@@ -269,5 +295,7 @@ export function validateEnvironment(
     KNOWLEDGE_INDEX_MAX_ATTEMPTS: String(knowledgeIndexMaxAttempts),
     KNOWLEDGE_INDEX_RETRY_DELAY_MS: String(knowledgeIndexRetryDelayMs),
     KNOWLEDGE_EMBEDDING_CONCURRENCY: String(knowledgeEmbeddingConcurrency),
+    AWS_CONNECTION_TIMEOUT_MS: String(awsConnectionTimeoutMs),
+    AWS_REQUEST_TIMEOUT_MS: String(awsRequestTimeoutMs),
   };
 }

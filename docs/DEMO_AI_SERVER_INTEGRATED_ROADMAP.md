@@ -21,14 +21,14 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 > **현재: 단계 3 — 비동기 인덱싱과 장애 복원력**
 >
-> DB 기반 job 제출·조회, idempotency와 서비스 화면 상태 추적을 구현했습니다. 429/timeout/5xx와 일시 DB 오류만 지수 백오프로 자동 재시도하며 validation·권한·리소스 없음은 영구 실패로 분류합니다. **다음은 실제 S3/DB/Bedrock 장애 주입 E2E와 timeout·abort 전파 검증**입니다.
+> DB 기반 job 제출·조회, idempotency, 선별 재시도와 서비스 화면 상태 추적을 구현했습니다. AWS 연결·요청 timeout, HTTP 연결 종료와 프로세스 shutdown의 abort 전파도 적용했습니다. **다음은 실제 AWS 장애 호출 E2E와 부분 실패 운영 검증**입니다.
 
 | 단계 | 주제 | 현재 판정 | 핵심 상태 |
 | ---: | --- | --- | --- |
 | 0 | 재현 가능한 기준 환경 | 대부분 완료 | fixture, readiness, 서비스 데모 실행 기반 확보; migration 복구 리허설·dependency 잔여 |
 | 1 | 인증·권한·tenant 경계 | 서버·검증 완료, 서비스 일부 진행 | BFF credential 비노출과 STORE_A/B 격리 확인; 역할별 메뉴·권한 분리 남음 |
 | 2 | 지식 생명주기·파일 안전성 | 완료 | 고객·관리자·역할 경계와 정책 matrix 17/17 완료 |
-| **3** | **비동기 인덱싱·장애 복원력** | **진행 중** | queue job·선별 retry·idempotency·동시성·상태 UX 완료; 실제 장애 주입과 abort 전파 남음 |
+| **3** | **비동기 인덱싱·장애 복원력** | **진행 중** | queue job·선별 retry·idempotency·동시성·timeout/abort·상태 UX 완료; 실제 AWS 장애 호출 남음 |
 | 4 | RAG 품질·안전성 | 예정 | golden question, 품질 기준, 상담원 피드백 |
 | 5 | 쿼터·성능·비용 | 예정 | SLO, 부하, token·quota·metric |
 | 6 | `/v1` 공통 API·배포 게이트 | 일부 기반만 진행 | 관리자 API 일부 완료; 외부 계약·OpenAPI·배포 승인 남음 |
@@ -43,7 +43,8 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
   → [완료] 게시 상태·기간·상품코드·접근등급 정책 matrix 자동화
   → [완료] 비동기 인덱싱 상태·수동 재시도·중복 방지 기본 계약
   → [완료] retryable 오류 분류·선별 자동 재시도·embedding 동시성 제한
-  → [현재] 실제 외부 의존성 장애 주입·timeout/abort·부분 실패 복구
+  → [완료] AWS timeout·HTTP disconnect abort·shutdown 중 작업 상태 보존
+  → [현재] 실제 외부 의존성 장애 호출·부분 실패 운영 검증
   → [후속] RAG 품질·성능·외부 /v1 계약
   → [최종 확장] 매출 자료 분석
 ```
@@ -68,8 +69,8 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | 항목                  | 현재 상태                                         | 목표                                   |
 | --------------------- | ------------------------------------------------- | -------------------------------------- |
 | AI Server build       | PASS                                              | 계속 PASS                              |
-| 단위 테스트           | 121/121 PASS                                      | 핵심 서비스 branch 80% 이상            |
-| 검증 데모 자체 테스트 | 11/11 PASS                                        | 시나리오·fixture 변경마다 계속 PASS    |
+| 단위 테스트           | 129/129 PASS                                      | 핵심 서비스 branch 80% 이상            |
+| 검증 데모 자체 테스트 | 15/15 PASS                                        | 시나리오·fixture 변경마다 계속 PASS    |
 | CI 품질 게이트        | 로컬·GitHub PASS, `main` PR 필수 체크 적용        | 계속 PASS 및 audit artifact 보존       |
 | E2E                   | 로컬 고객응대 대표 여정 PASS, 전체 자동화 예정    | 외부·관리·지식 생명주기 전체 자동 실행 |
 | line coverage         | 30.34%                                            | 핵심 서비스 80% 이상                   |
@@ -269,7 +270,10 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [x] `REL-SRV-01` 인덱싱을 DB queue 기반 비동기 job으로 전환
 - [x] `REL-SRV-02` chunk embedding 동시성 제한
 - [x] `REL-SRV-03` retryable 오류만 SDK adaptive retry와 durable job backoff 적용
-- [ ] `REL-SRV-04` 요청 timeout, abort 전파와 graceful shutdown
+- [x] `REL-SRV-04` 요청 timeout, abort 전파와 graceful shutdown
+  - Bedrock control/runtime·embedding·S3 client에 adaptive retry, 연결 5초·전체 작업 30초 기본 timeout 적용
+  - HTTP client disconnect를 AWS SDK abortSignal로 전파하고 S3 parser stream과 multipart upload도 취소
+  - SIGINT/SIGTERM shutdown hook에서 진행 중 AWS 호출을 취소하고 인덱싱 job의 retry 상태 기록 완료까지 대기
 - [x] `REL-SRV-05` idempotency key와 중복 active job 제어
 - [x] `REL-SRV-06` 수동 복구 가능한 failed 상태와 최대 재시도 횟수
 

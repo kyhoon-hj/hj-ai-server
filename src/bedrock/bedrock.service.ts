@@ -14,6 +14,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConverseDto } from './dto/converse.dto';
 import { GeneralAnswerDto } from './dto/general-answer.dto';
 import { TextResponseDto } from './dto/text-response.dto';
+import {
+  getAwsRequestHandlerOptions,
+  getAwsRequestTimeoutMs,
+  runAwsRequest,
+} from '../common/aws/aws-request-control';
 
 export const GENERAL_ANSWER_PROMPT_VERSION = 'general-answer-v1.0.0';
 
@@ -30,6 +35,7 @@ const GENERAL_ANSWER_SYSTEM_PROMPT = `너는 고객지원 시스템의 일반 �
 export class BedrockService {
   private readonly bedrockClient: BedrockClient;
   private readonly client: BedrockRuntimeClient;
+  private readonly requestTimeoutMs: number;
 
   constructor(
     private readonly configService: ConfigService,
@@ -38,10 +44,20 @@ export class BedrockService {
     this.unsetBlankAwsOptionalEnvVars();
 
     const region = this.configService.get<string>('AWS_REGION') ?? 'us-east-1';
+    const requestHandler = getAwsRequestHandlerOptions(this.configService);
+    this.requestTimeoutMs = getAwsRequestTimeoutMs(this.configService);
 
-    this.bedrockClient = new BedrockClient({ region });
+    this.bedrockClient = new BedrockClient({
+      region,
+      maxAttempts: 5,
+      retryMode: 'adaptive',
+      requestHandler,
+    });
     this.client = new BedrockRuntimeClient({
       region,
+      maxAttempts: 5,
+      retryMode: 'adaptive',
+      requestHandler,
     });
   }
 
@@ -65,9 +81,13 @@ export class BedrockService {
     };
   }
 
-  async listFoundationModels() {
-    const result = await this.bedrockClient.send(
-      new ListFoundationModelsCommand({}),
+  async listFoundationModels(parentSignal?: AbortSignal) {
+    const result = await runAwsRequest(
+      (abortSignal) =>
+        this.bedrockClient.send(new ListFoundationModelsCommand({}), {
+          abortSignal,
+        }),
+      { timeoutMs: this.requestTimeoutMs, parentSignal },
     );
 
     return {
@@ -86,7 +106,11 @@ export class BedrockService {
     };
   }
 
-  async converse(dto: ConverseDto, appcode: string) {
+  async converse(
+    dto: ConverseDto,
+    appcode: string,
+    parentSignal?: AbortSignal,
+  ) {
     const modelId =
       dto.modelId ?? this.configService.get<string>('BEDROCK_MODEL_ID');
 
@@ -99,21 +123,26 @@ export class BedrockService {
     const searchAt = new Date();
     const startedAt = Date.now();
 
-    const result = await this.client.send(
-      new ConverseCommand({
-        modelId,
-        messages: [
-          {
-            role: 'user',
-            content: [{ text: dto.message }],
-          },
-        ],
-        system: dto.system ? [{ text: dto.system }] : undefined,
-        inferenceConfig: {
-          maxTokens: dto.maxTokens ?? 1024,
-          temperature: dto.temperature ?? 0.7,
-        },
-      }),
+    const result = await runAwsRequest(
+      (abortSignal) =>
+        this.client.send(
+          new ConverseCommand({
+            modelId,
+            messages: [
+              {
+                role: 'user',
+                content: [{ text: dto.message }],
+              },
+            ],
+            system: dto.system ? [{ text: dto.system }] : undefined,
+            inferenceConfig: {
+              maxTokens: dto.maxTokens ?? 1024,
+              temperature: dto.temperature ?? 0.7,
+            },
+          }),
+          { abortSignal },
+        ),
+      { timeoutMs: this.requestTimeoutMs, parentSignal },
     );
 
     const latencyMs = Date.now() - startedAt;
@@ -138,8 +167,16 @@ export class BedrockService {
     };
   }
 
-  async createTextResponse(dto: TextResponseDto, appcode: string) {
-    const result = await this.converse({ message: dto.message }, appcode);
+  async createTextResponse(
+    dto: TextResponseDto,
+    appcode: string,
+    parentSignal?: AbortSignal,
+  ) {
+    const result = await this.converse(
+      { message: dto.message },
+      appcode,
+      parentSignal,
+    );
 
     return {
       response: result.response,
@@ -150,6 +187,7 @@ export class BedrockService {
     dto: GeneralAnswerDto,
     appInfo: { appcode: string; defaultModelId: string | null },
     requestId?: string,
+    parentSignal?: AbortSignal,
   ) {
     const modelId =
       appInfo.defaultModelId ??
@@ -159,21 +197,26 @@ export class BedrockService {
     }
 
     const startedAt = Date.now();
-    const result = await this.client.send(
-      new ConverseCommand({
-        modelId,
-        messages: [
-          {
-            role: 'user',
-            content: [{ text: dto.query.trim() }],
-          },
-        ],
-        system: [{ text: GENERAL_ANSWER_SYSTEM_PROMPT }],
-        inferenceConfig: {
-          maxTokens: 500,
-          temperature: 0.1,
-        },
-      }),
+    const result = await runAwsRequest(
+      (abortSignal) =>
+        this.client.send(
+          new ConverseCommand({
+            modelId,
+            messages: [
+              {
+                role: 'user',
+                content: [{ text: dto.query.trim() }],
+              },
+            ],
+            system: [{ text: GENERAL_ANSWER_SYSTEM_PROMPT }],
+            inferenceConfig: {
+              maxTokens: 500,
+              temperature: 0.1,
+            },
+          }),
+          { abortSignal },
+        ),
+      { timeoutMs: this.requestTimeoutMs, parentSignal },
     );
     const hasText = Boolean(
       result.output?.message?.content?.some(

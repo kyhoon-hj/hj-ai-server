@@ -62,7 +62,11 @@ export class StorageController {
       throw new BadRequestException('업로드할 file이 필요합니다.');
     }
 
-    return this.storageService.uploadFile(file, request.appInfo!.appcode);
+    return this.storageService.uploadFile(
+      file,
+      request.appInfo!.appcode,
+      request.abortSignal,
+    );
   }
 
   @Get('files')
@@ -90,11 +94,15 @@ export class StorageController {
     @Query('maxKeys') maxKeys?: string,
     @Query('continuationToken') continuationToken?: string,
   ) {
-    return this.storageService.listFiles(request.appInfo!.appcode, {
-      prefix,
-      maxKeys: maxKeys ? Number(maxKeys) : undefined,
-      continuationToken,
-    });
+    return this.storageService.listFiles(
+      request.appInfo!.appcode,
+      {
+        prefix,
+        maxKeys: maxKeys ? Number(maxKeys) : undefined,
+        continuationToken,
+      },
+      request.abortSignal,
+    );
   }
 
   @Get('files/detail')
@@ -111,7 +119,11 @@ export class StorageController {
       throw new BadRequestException('조회할 key가 필요합니다.');
     }
 
-    return this.storageService.getFileInfo(key, request.appInfo!.appcode);
+    return this.storageService.getFileInfo(
+      key,
+      request.appInfo!.appcode,
+      request.abortSignal,
+    );
   }
 
   @Get('download')
@@ -135,6 +147,7 @@ export class StorageController {
     const file = await this.storageService.downloadFile(
       key,
       request.appInfo!.appcode,
+      request.abortSignal,
     );
 
     response.setHeader('Content-Type', file.contentType);
