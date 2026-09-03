@@ -76,7 +76,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | typecheck             | PASS                                              | 계속 PASS                              |
 | lint                  | PASS                                              | 계속 PASS                              |
 | dependency audit      | 전체·production High 4, Moderate 0                | High 0 또는 승인 예외                  |
-| DB migration          | 로컬 readiness PASS, 재배포 전 status 재확인 필요 | 배포 환경과 schema 일치                |
+| DB migration          | 로컬 신규 DB 12개 migration·pgvector 0.8.6·E2E PASS | 배포 환경과 schema 일치                |
 | 검증 데모             | 핵심 계약·보안·parser 검증과 제한 성능 러너       | 전체 자동 검증 및 승인 리포트          |
 | 서비스 데모           | 고객 채팅 MVP E2E PASS, 관리자 업로드 화면 예정   | 마트 고객응대 MVP 후 매출 분석 확장    |
 | 외부 API              | 기존 내부 endpoint 혼재                           | `/v1` 안정 계약 확정                   |

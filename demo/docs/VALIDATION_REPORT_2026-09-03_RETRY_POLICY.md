@@ -25,7 +25,7 @@
 
 ## Migration 상태
 
-`20260903090000_add_knowledge_index_job_retry_policy` migration을 추가했습니다. 현재 설정된 DB가 공인 IP를 사용하므로 자동 적용하지 않았습니다. 대상 환경을 확인한 뒤 `prisma migrate deploy`로 적용해야 합니다.
+PostgreSQL 18.4 기반의 신규 로컬 `hj-ai` DB에 pgvector 0.8.6을 활성화하고 12개 migration을 모두 적용했습니다. `knowledge_index_job.retryable`, `next_attempt_at`과 재시도 조회 인덱스가 생성됐으며 Prisma migration status는 최신입니다. 적용 후 서버 E2E 14/14가 PASS했습니다.
 
 ## 남은 검증
 
