@@ -145,12 +145,12 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
     return queued;
   }
 
-  async drain() {
+  async drain(appcode?: string) {
     if (this.draining) return;
     this.draining = true;
     try {
       for (;;) {
-        const job = await this.claimNext();
+        const job = await this.claimNext(appcode);
         if (!job) break;
         await this.process(job);
       }
@@ -159,11 +159,12 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async claimNext() {
+  private async claimNext(appcode?: string) {
     for (;;) {
       const candidate = await this.prisma.knowledgeIndexJob.findFirst({
         where: {
           status: 'queued',
+          ...(appcode ? { appcode } : {}),
           OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
         },
         orderBy: { requestedAt: 'asc' },

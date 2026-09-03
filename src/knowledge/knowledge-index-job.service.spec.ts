@@ -5,6 +5,10 @@ function lastMockArgument(mock: jest.Mock): unknown {
   return (mock.mock.calls as unknown[][]).at(-1)?.[0];
 }
 
+function firstMockArgument(mock: jest.Mock): unknown {
+  return (mock.mock.calls as unknown[][])[0]?.[0];
+}
+
 function createFixture(workerEnabled = false) {
   const prisma = {
     knowledgeFile: { findFirst: jest.fn() },
@@ -137,8 +141,10 @@ describe('KnowledgeIndexJobService', () => {
       status: 'completed',
     });
 
-    await service.drain();
+    await service.drain('STORE_A');
 
+    const claimQuery = firstMockArgument(prisma.knowledgeIndexJob.findFirst);
+    expect(claimQuery).toMatchObject({ where: { appcode: 'STORE_A' } });
     expect(knowledgeService.indexKnowledgeFile).toHaveBeenCalledWith(
       queuedJob.fileId,
       { appcode: 'STORE_A', defaultEmbeddingModelId: 'embed-model' },

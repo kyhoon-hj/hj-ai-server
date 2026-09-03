@@ -45,6 +45,16 @@ The app listens on container port `11000` and is exposed on `http://localhost:11
 
 Set `DOCKER_DATABASE_HOST` only when the Docker host gateway needs a different name. The startup wrapper runs `prisma migrate deploy` before starting the server, and the Compose healthcheck uses `/health/ready` so a disconnected DB is not reported as healthy. For non-Compose deployments, run `npm run db:init` against the configured `DATABASE_URL`.
 
+### Local dependency fault E2E
+
+Run the durable knowledge-index job fault scenarios against local PostgreSQL:
+
+```bash
+npm run test:fault-e2e
+```
+
+The runner refuses a non-local `DATABASE_URL`. It creates an isolated appcode, injects dependency-shaped Bedrock, S3, and Prisma failures at the service boundary, verifies persisted backoff and terminal state, and removes its files, chunks, jobs, and app record. It does not call or disrupt real AWS resources. Normal `npm run test:e2e` skips these seven opt-in scenarios.
+
 ### Nginx
 
 Use `/ai/` as the reverse proxy prefix and keep the same prefix when forwarding to the Docker service:

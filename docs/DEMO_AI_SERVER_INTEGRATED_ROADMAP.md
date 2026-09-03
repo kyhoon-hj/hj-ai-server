@@ -258,7 +258,9 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 - [~] `REL-DEM-01` 인덱싱 job 제출·조회·완료 scenario와 서비스 실패·재시도 화면 완료; 강제 실패·재시도 scenario 남음
 - [~] `REL-DEM-02` Bedrock 429, timeout, 5xx 단위 fault injection 완료; 실제 호출 E2E 남음
-- [~] `REL-DEM-03` S3 없음·DB 일시 오류 분류 단위 검증 완료; 실제 dependency 주입 남음
+- [~] `REL-DEM-03` S3 없음·DB 일시 오류를 서비스 경계에 주입하고 로컬 PostgreSQL 상태 전이 검증 완료; 실제 AWS 장애 호출 E2E 남음
+  - 로컬 전용 opt-in E2E 7/7 PASS: 429·timeout 복구, 5xx 재시도 소진, Validation·AccessDenied·NoSuchKey 영구 실패, Prisma transaction 일시 오류 복구
+  - 재시도 대기와 영구 실패 중 기존 chunk 보존, 성공 transaction에서만 chunk 교체, fixture 자동 정리 확인
 - [x] `REL-DEM-04` 동일 요청 중복 제출과 idempotency 검증
 - [x] `REL-DEM-05` 오류 code, retryable과 next attempt 계약 단위·BFF 검증
 
