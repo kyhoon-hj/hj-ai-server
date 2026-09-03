@@ -34,10 +34,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
+COPY config/start-container.mjs ./config/start-container.mjs
 
 RUN npm prune --omit=dev && npm cache clean --force
 
 USER nestjs
 EXPOSE 11000
 
-CMD ["npm", "run", "start:prod"]
+CMD ["node", "config/start-container.mjs"]

@@ -28,14 +28,15 @@ services:
       ADMIN_API_KEY_PREVIOUS_VALID_UNTIL: "${ADMIN_API_KEY_PREVIOUS_VALID_UNTIL:-}"
       KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS: "${KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS:-}"
       KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS_VALID_UNTIL: "${KNOWLEDGE_OPERATOR_API_KEY_PREVIOUS_VALID_UNTIL:-}"
-    command: sh -c "npx prisma migrate deploy && npm run start:prod"
+      DOCKER_DATABASE_HOST: "${DOCKER_DATABASE_HOST:-host.docker.internal}"
+    command: node config/start-container.mjs
     ports:
       - "11000:11000"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||11000)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||11000)+'/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
       interval: 30s
       timeout: 5s

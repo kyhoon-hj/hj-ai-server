@@ -41,9 +41,9 @@ Run the API as a single Docker service:
 docker compose up -d --build
 ```
 
-The app listens on container port `11000` and is exposed on `http://localhost:11000`. Process liveness is available at `/health/live`, and DB/config readiness is available at `/health/ready`. Compose reads `DATABASE_URL`, AWS credentials, and Bedrock settings from local `.env`.
+The app listens on container port `11000` and is exposed on `http://localhost:11000`. Process liveness is available at `/health/live`, and DB/config readiness is available at `/health/ready`. Compose reads `DATABASE_URL`, AWS credentials, and Bedrock settings from local `.env`. When the DB host is `localhost` or `127.0.0.1`, the container startup wrapper changes only the hostname to `host.docker.internal`; credentials, port, and database name are preserved.
 
-For Docker-specific local settings, copy `.env.docker.example` values into `.env` or set them in your deployment environment. Compose runs `prisma migrate deploy` before starting the server. For non-Compose deployments, run `npm run db:init` against the configured `DATABASE_URL`.
+Set `DOCKER_DATABASE_HOST` only when the Docker host gateway needs a different name. The startup wrapper runs `prisma migrate deploy` before starting the server, and the Compose healthcheck uses `/health/ready` so a disconnected DB is not reported as healthy. For non-Compose deployments, run `npm run db:init` against the configured `DATABASE_URL`.
 
 ### Nginx
 

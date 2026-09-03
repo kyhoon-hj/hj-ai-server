@@ -1,8 +1,20 @@
 .git
+.github
+.agents
 .idea
 dist
 node_modules
 coverage
+**/dist
+**/node_modules
+**/coverage
+
+demo
+service-demo
+docs
+outputs
+work
+test
 
 .env
 .env.*
@@ -11,4 +23,5 @@ coverage
 
 server.log
 server.err.log
+*.log
 npm-debug.log*
