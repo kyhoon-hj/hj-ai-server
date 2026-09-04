@@ -12,6 +12,7 @@ function firstMockArgument(mock: jest.Mock): unknown {
 
 function createFixture(workerEnabled = false) {
   const prisma = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     knowledgeFile: { findFirst: jest.fn() },
     knowledgeIndexJob: {
       findUnique: jest.fn(),
@@ -48,6 +49,52 @@ const queuedJob = {
 };
 
 describe('KnowledgeIndexJobService', () => {
+  it('rejects new submissions/retries and does not drain after shutdown', async () => {
+    const { service, prisma } = createFixture();
+    await service.onModuleDestroy();
+    await expect(
+      service.submit(queuedJob.fileId, 'STORE_A', 'index'),
+    ).rejects.toMatchObject({ status: 503 });
+    await expect(service.retry(queuedJob.id, 'STORE_A')).rejects.toMatchObject({
+      status: 503,
+    });
+    await service.drain();
+    expect(prisma.knowledgeIndexJob.findFirst).not.toHaveBeenCalled();
+    expect(prisma.knowledgeIndexJob.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a claim acquired during shutdown without consuming an attempt', async () => {
+    const { service, prisma, knowledgeService } = createFixture();
+    prisma.knowledgeIndexJob.findFirst.mockResolvedValueOnce(queuedJob);
+    let release!: (value: { count: number }) => void;
+    prisma.knowledgeIndexJob.updateMany.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    prisma.knowledgeIndexJob.findUnique.mockResolvedValue({
+      ...queuedJob,
+      status: 'processing',
+      attempt: 1,
+    });
+    const drain = service.drain();
+    await new Promise((resolve) => setImmediate(resolve));
+    const shutdown = service.onModuleDestroy();
+    release({ count: 1 });
+    await Promise.all([drain, shutdown]);
+    expect(knowledgeService.indexKnowledgeFile).not.toHaveBeenCalled();
+    expect(lastMockArgument(prisma.knowledgeIndexJob.updateMany)).toMatchObject(
+      {
+        data: {
+          status: 'queued',
+          attempt: { decrement: 1 },
+          leaseExpiresAt: null,
+        },
+      },
+    );
+  });
+
   it('returns the same job for an identical idempotent submission', async () => {
     const { service, prisma } = createFixture();
     prisma.knowledgeFile.findFirst.mockResolvedValue({
@@ -149,8 +196,12 @@ describe('KnowledgeIndexJobService', () => {
     expect(knowledgeService.indexKnowledgeFile).toHaveBeenCalledWith(
       queuedJob.fileId,
       { appcode: 'STORE_A', defaultEmbeddingModelId: 'embed-model' },
+      expect.any(AbortSignal),
+      { id: queuedJob.id, attempt: 1 },
     );
-    const completedUpdate = lastMockArgument(prisma.knowledgeIndexJob.update);
+    const completedUpdate = lastMockArgument(
+      prisma.knowledgeIndexJob.updateMany,
+    );
     expect(completedUpdate).toMatchObject({
       where: { id: queuedJob.id },
       data: { status: 'completed', leaseExpiresAt: null },
@@ -183,7 +234,7 @@ describe('KnowledgeIndexJobService', () => {
     });
 
     await expect(service.drain()).resolves.toBeUndefined();
-    const failedUpdate = lastMockArgument(prisma.knowledgeIndexJob.update);
+    const failedUpdate = lastMockArgument(prisma.knowledgeIndexJob.updateMany);
     expect(failedUpdate).toMatchObject({
       data: {
         status: 'queued',
@@ -223,7 +274,7 @@ describe('KnowledgeIndexJobService', () => {
     });
 
     await expect(service.drain()).resolves.toBeUndefined();
-    const failedUpdate = lastMockArgument(prisma.knowledgeIndexJob.update);
+    const failedUpdate = lastMockArgument(prisma.knowledgeIndexJob.updateMany);
     expect(failedUpdate).toMatchObject({
       data: {
         status: 'failed',
@@ -275,7 +326,9 @@ describe('KnowledgeIndexJobService', () => {
     await service.onModuleDestroy();
     await drain;
 
-    const shutdownUpdate = lastMockArgument(prisma.knowledgeIndexJob.update);
+    const shutdownUpdate = lastMockArgument(
+      prisma.knowledgeIndexJob.updateMany,
+    );
     expect(shutdownUpdate).toMatchObject({
       data: {
         status: 'queued',

@@ -26,6 +26,11 @@ import { DocumentParserService } from './document-parser.service';
 import { EmbeddingService } from './embedding.service';
 import { mapWithConcurrency } from './bounded-map';
 import {
+  assertKnowledgeIndexLease,
+  KnowledgeIndexLeaseLostError,
+  type KnowledgeIndexLease,
+} from './knowledge-index-lease';
+import {
   KnowledgeRagResponseDto,
   type SupplementalKnowledgeSourceDto,
 } from './dto/knowledge-rag-response.dto';
@@ -455,6 +460,7 @@ export class KnowledgeService {
       | string
       | { appcode: string; defaultEmbeddingModelId: string | null },
     parentSignal?: AbortSignal,
+    lease?: KnowledgeIndexLease,
   ) {
     const appcode = typeof appInfo === 'string' ? appInfo : appInfo.appcode;
     const embeddingModelId =
@@ -471,12 +477,18 @@ export class KnowledgeService {
       throw new BadRequestException('보관 처리된 파일은 인덱싱할 수 없습니다.');
     }
 
-    await this.prisma.knowledgeFile.update({
-      where: { id },
-      data: {
-        status: KNOWLEDGE_FILE_STATUS.indexing,
-        errorMessage: null,
-      },
+    await this.prisma.$transaction(async (transaction) => {
+      await assertKnowledgeIndexLease(transaction, lease);
+      return transaction.knowledgeFile.update({
+        where: { id },
+        data: {
+          status:
+            file.status === KNOWLEDGE_FILE_STATUS.indexed
+              ? KNOWLEDGE_FILE_STATUS.indexed
+              : KNOWLEDGE_FILE_STATUS.indexing,
+          errorMessage: null,
+        },
+      });
     });
 
     try {
@@ -502,15 +514,10 @@ export class KnowledgeService {
         sections: parsedDocument.sections,
         embeddingModelId,
         parentSignal,
-      });
-
-      await this.prisma.knowledgeFile.update({
-        where: { id: file.id },
-        data: {
-          metadata: {
-            ...(this.asJsonObject(file.metadata) ?? {}),
-            parsed: parsedDocument.metadata as Prisma.InputJsonObject,
-          },
+        lease,
+        metadata: {
+          ...(this.asJsonObject(file.metadata) ?? {}),
+          parsed: parsedDocument.metadata as Prisma.InputJsonObject,
         },
       });
 
@@ -519,14 +526,28 @@ export class KnowledgeService {
         ...result,
       };
     } catch (error) {
-      await this.prisma.knowledgeFile.update({
-        where: { id: file.id },
-        data: {
-          status: KNOWLEDGE_FILE_STATUS.failed,
-          errorMessage:
-            error instanceof Error ? error.message : 'Unknown indexing error',
-        },
-      });
+      if (error instanceof KnowledgeIndexLeaseLostError) throw error;
+      try {
+        await this.prisma.$transaction(async (transaction) => {
+          await assertKnowledgeIndexLease(transaction, lease);
+          return transaction.knowledgeFile.update({
+            where: { id: file.id },
+            data: {
+              status:
+                file.status === KNOWLEDGE_FILE_STATUS.indexed
+                  ? KNOWLEDGE_FILE_STATUS.indexed
+                  : KNOWLEDGE_FILE_STATUS.failed,
+              errorMessage:
+                error instanceof Error
+                  ? error.message
+                  : 'Unknown indexing error',
+            },
+          });
+        });
+      } catch (stateError) {
+        if (!(stateError instanceof KnowledgeIndexLeaseLostError))
+          throw stateError;
+      }
 
       throw error;
     }
@@ -637,6 +658,8 @@ export class KnowledgeService {
     sections: Parameters<ChunkingService['createChunks']>[0];
     embeddingModelId?: string | null;
     parentSignal?: AbortSignal;
+    metadata?: Prisma.InputJsonObject;
+    lease?: KnowledgeIndexLease;
   }) {
     const chunks = this.chunkingService.createChunks(data.sections);
 
@@ -671,23 +694,26 @@ export class KnowledgeService {
       },
     );
 
-    await this.prisma.$transaction([
-      this.prisma.knowledgeChunk.deleteMany({
+    await this.prisma.$transaction(async (transaction) => {
+      await assertKnowledgeIndexLease(transaction, data.lease);
+      data.parentSignal?.throwIfAborted();
+      await transaction.knowledgeChunk.deleteMany({
         where: { fileId: data.fileId },
-      }),
-      this.prisma.knowledgeChunk.createMany({
+      });
+      await transaction.knowledgeChunk.createMany({
         data: rows,
-      }),
-      this.prisma.knowledgeFile.update({
+      });
+      await this.syncFileEmbeddingVectors(data.fileId, transaction);
+      await transaction.knowledgeFile.update({
         where: { id: data.fileId },
         data: {
           status: KNOWLEDGE_FILE_STATUS.indexed,
           indexedAt: new Date(),
           errorMessage: null,
+          ...(data.metadata ? { metadata: data.metadata } : {}),
         },
-      }),
-    ]);
-    await this.syncFileEmbeddingVectors(data.fileId);
+      });
+    });
 
     return {
       status: 'indexed',
@@ -1119,20 +1145,19 @@ export class KnowledgeService {
       .slice(0, data.limit);
   }
 
-  private async syncFileEmbeddingVectors(fileId: string) {
-    try {
-      await this.prisma.$executeRaw`
+  private syncFileEmbeddingVectors(
+    fileId: string,
+    transaction: Prisma.TransactionClient,
+  ) {
+    // Return the lazy Prisma operation so vector synchronization participates in
+    // the same transaction as chunk replacement. Failure must roll everything back.
+    return transaction.$executeRaw`
         UPDATE "knowledge_chunk"
         SET "embedding_vector" = ('[' || array_to_string("embedding", ',') || ']')::vector
         WHERE "file_id" = ${fileId}::uuid
           AND "embedding_vector" IS NULL
           AND cardinality("embedding") = 1024
       `;
-    } catch (error) {
-      if (!this.isPgVectorUnavailable(error)) {
-        throw error;
-      }
-    }
   }
 
   private toVectorLiteral(values: number[]) {

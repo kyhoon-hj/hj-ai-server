@@ -127,12 +127,19 @@ describeFaultE2e(
       const knowledgePrisma = {
         knowledgeFile: prisma.knowledgeFile,
         knowledgeChunk: prisma.knowledgeChunk,
-        $transaction: jest.fn((operations: Prisma.PrismaPromise<unknown>[]) => {
-          const fault = transactionFaults.shift();
-          if (fault) return Promise.reject(fault);
-          return prisma.$transaction(operations);
-        }),
-        $executeRaw: jest.fn(() => Promise.resolve(1)),
+        $transaction: jest.fn(
+          (
+            operation: (
+              transaction: Prisma.TransactionClient,
+            ) => Promise<unknown>,
+          ) => {
+            const fault = transactionFaults.shift();
+            if (fault) return Promise.reject(fault);
+            return prisma.$transaction(operation);
+          },
+        ),
+        $executeRaw: (strings: TemplateStringsArray, ...values: unknown[]) =>
+          prisma.$executeRaw(strings, ...values),
       };
       const knowledgeService = new KnowledgeService(
         config,

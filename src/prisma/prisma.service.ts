@@ -1,11 +1,15 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  OnApplicationShutdown,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService
   extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit, OnApplicationShutdown
 {
   constructor() {
     const databaseUrl = process.env.DATABASE_URL;
@@ -25,7 +29,9 @@ export class PrismaService
     await this.$connect();
   }
 
-  async onModuleDestroy() {
+  // Workers persist cancellation in onModuleDestroy. Keep the pool alive until
+  // all module destroy hooks and HTTP disposal have completed.
+  async onApplicationShutdown() {
     await this.$disconnect();
   }
 }

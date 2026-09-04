@@ -6,12 +6,14 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
 import { classifyKnowledgeIndexJobError } from './knowledge-index-job-error';
 import { abortAllAwsRequests } from '../common/aws/aws-request-control';
+import { KnowledgeIndexLeaseLostError } from './knowledge-index-lease';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'processing'];
 const LEASE_MILLISECONDS = 5 * 60 * 1000;
@@ -21,6 +23,9 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KnowledgeIndexJobService.name);
   private timer?: NodeJS.Timeout;
   private drainPromise?: Promise<void>;
+  private stopping = false;
+  private maintenancePromise?: Promise<void>;
+  private activeController?: AbortController;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -30,23 +35,22 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     if (!this.workerEnabled()) return;
-    await this.prisma.knowledgeIndexJob.updateMany({
-      where: { status: 'processing', leaseExpiresAt: { lt: new Date() } },
-      data: {
-        status: 'queued',
-        leaseExpiresAt: null,
-        startedAt: null,
-        nextAttemptAt: null,
-      },
-    });
+    await this.recoverExpired();
     this.timer = setInterval(() => this.scheduleDrain(), 500);
     this.timer.unref();
     this.scheduleDrain();
   }
 
   async onModuleDestroy() {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
+    this.activeController?.abort(
+      Object.assign(new Error('Worker is shutting down.'), {
+        name: 'AbortError',
+      }),
+    );
     abortAllAwsRequests();
+    await this.maintenancePromise?.catch(() => undefined);
     await this.drainPromise?.catch((error: unknown) => {
       const message = error instanceof Error ? error.message : 'unknown error';
       this.logger.error(`Knowledge index worker shutdown failed: ${message}`);
@@ -59,6 +63,8 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
     operation: 'index' | 'reindex',
     idempotencyKey?: string,
   ) {
+    if (this.stopping)
+      throw new ServiceUnavailableException('인덱싱 워커가 종료 중입니다.');
     const normalizedKey = idempotencyKey?.trim() || null;
     if (normalizedKey && normalizedKey.length > 128) {
       throw new BadRequestException('Idempotency-Key는 128자 이하여야 합니다.');
@@ -118,6 +124,8 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
   }
 
   async retry(jobId: string, appcode: string) {
+    if (this.stopping)
+      throw new ServiceUnavailableException('인덱싱 워커가 종료 중입니다.');
     const job = await this.get(jobId, appcode);
     if (job.status !== 'failed') {
       throw new BadRequestException(
@@ -152,6 +160,7 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
   }
 
   async drain(appcode?: string) {
+    if (this.stopping) return;
     if (this.drainPromise) return this.drainPromise;
     const drainPromise = this.drainAvailable(appcode);
     this.drainPromise = drainPromise;
@@ -163,9 +172,23 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async drainAvailable(appcode?: string) {
-    for (;;) {
+    await this.recoverExpired(appcode);
+    while (!this.stopping) {
       const job = await this.claimNext(appcode);
       if (!job) break;
+      if (this.stopping) {
+        // Shutdown may begin while the database claim is in flight.
+        await this.prisma.knowledgeIndexJob.updateMany({
+          where: { id: job.id, status: 'processing', attempt: job.attempt },
+          data: {
+            status: 'queued',
+            attempt: { decrement: 1 },
+            startedAt: null,
+            leaseExpiresAt: null,
+          },
+        });
+        break;
+      }
       await this.process(job);
     }
   }
@@ -180,22 +203,47 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
         },
         orderBy: { requestedAt: 'asc' },
       });
-      if (!candidate) return null;
+      if (!candidate || this.stopping) return null;
+      if (candidate.attempt >= candidate.maxAttempts) {
+        await this.prisma.knowledgeIndexJob.updateMany({
+          where: {
+            id: candidate.id,
+            status: 'queued',
+            attempt: candidate.attempt,
+          },
+          data: {
+            status: 'failed',
+            completedAt: new Date(),
+            errorCode: 'INDEX_ATTEMPTS_EXHAUSTED',
+            errorMessage: '인덱싱 최대 시도 횟수를 초과했습니다.',
+            nextAttemptAt: null,
+          },
+        });
+        continue;
+      }
       const startedAt = new Date();
       const claimed = await this.prisma.knowledgeIndexJob.updateMany({
-        where: { id: candidate.id, status: 'queued' },
+        where: {
+          id: candidate.id,
+          status: 'queued',
+          attempt: candidate.attempt,
+        },
         data: {
           status: 'processing',
           attempt: { increment: 1 },
           startedAt,
-          leaseExpiresAt: new Date(startedAt.getTime() + LEASE_MILLISECONDS),
+          leaseExpiresAt: new Date(
+            startedAt.getTime() + this.leaseMilliseconds(),
+          ),
           nextAttemptAt: null,
         },
       });
       if (claimed.count === 1) {
-        return this.prisma.knowledgeIndexJob.findUnique({
-          where: { id: candidate.id },
-        });
+        return {
+          ...candidate,
+          status: 'processing',
+          attempt: candidate.attempt + 1,
+        };
       }
     }
   }
@@ -207,15 +255,51 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
     attempt: number;
     maxAttempts: number;
   }) {
+    const controller = new AbortController();
+    this.activeController = controller;
+    let renewal: Promise<void> | undefined;
+    const owned = () => ({
+      id: job.id,
+      attempt: job.attempt,
+      status: 'processing',
+      leaseExpiresAt: { gt: new Date() },
+    });
+    const heartbeat = setInterval(
+      () => {
+        if (renewal || controller.signal.aborted) return;
+        renewal = this.prisma.knowledgeIndexJob
+          .updateMany({
+            where: owned(),
+            data: {
+              leaseExpiresAt: new Date(Date.now() + this.leaseMilliseconds()),
+            },
+          })
+          .then((result) => {
+            if (result.count !== 1)
+              controller.abort(new KnowledgeIndexLeaseLostError());
+          })
+          .catch(() => controller.abort(new KnowledgeIndexLeaseLostError()))
+          .finally(() => {
+            renewal = undefined;
+          });
+      },
+      Math.floor(this.leaseMilliseconds() / 3),
+    );
+    heartbeat.unref();
     try {
       const app = await this.prisma.appInfo.findUnique({
         where: { appcode: job.appcode },
         select: { appcode: true, defaultEmbeddingModelId: true },
       });
       if (!app) throw new Error(`AppInfo ${job.appcode} not found`);
-      await this.knowledgeService.indexKnowledgeFile(job.fileId, app);
-      await this.prisma.knowledgeIndexJob.update({
-        where: { id: job.id },
+      await this.knowledgeService.indexKnowledgeFile(
+        job.fileId,
+        app,
+        controller.signal,
+        { id: job.id, attempt: job.attempt },
+      );
+      await this.prisma.knowledgeIndexJob.updateMany({
+        where: owned(),
         data: {
           status: 'completed',
           completedAt: new Date(),
@@ -227,14 +311,19 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
         },
       });
     } catch (error) {
+      if (
+        error instanceof KnowledgeIndexLeaseLostError ||
+        controller.signal.reason instanceof KnowledgeIndexLeaseLostError
+      )
+        return;
       const failure = classifyKnowledgeIndexJobError(
         error,
         job.attempt,
         this.retryDelayMs(),
       );
       const willRetry = failure.retryable && job.attempt < job.maxAttempts;
-      await this.prisma.knowledgeIndexJob.update({
-        where: { id: job.id },
+      await this.prisma.knowledgeIndexJob.updateMany({
+        where: owned(),
         data: {
           status: willRetry ? 'queued' : 'failed',
           completedAt: willRetry ? null : new Date(),
@@ -247,10 +336,44 @@ export class KnowledgeIndexJobService implements OnModuleInit, OnModuleDestroy {
             : null,
         },
       });
+    } finally {
+      clearInterval(heartbeat);
+      await renewal;
+      if (this.activeController === controller)
+        this.activeController = undefined;
     }
   }
 
+  private async recoverExpired(appcode?: string) {
+    if (this.stopping) return;
+    await this.prisma.$executeRaw`
+      UPDATE knowledge_index_job SET
+        status = CASE WHEN attempt >= max_attempts THEN 'failed' ELSE 'queued' END,
+        completed_at = CASE WHEN attempt >= max_attempts THEN (clock_timestamp() AT TIME ZONE 'UTC') ELSE NULL END,
+        error_code = 'INDEX_LEASE_EXPIRED',
+        error_message = '인덱싱 작업 임대가 만료되었습니다.',
+        retryable = (attempt < max_attempts), lease_expires_at = NULL,
+        started_at = NULL, next_attempt_at = NULL, updated_at = (clock_timestamp() AT TIME ZONE 'UTC')
+      WHERE status = 'processing' AND lease_expires_at <= (clock_timestamp() AT TIME ZONE 'UTC')
+        AND (${appcode ?? null}::text IS NULL OR appcode = ${appcode ?? null})
+    `;
+  }
+
+  protected leaseMilliseconds() {
+    return LEASE_MILLISECONDS;
+  }
+
   private scheduleDrain() {
+    if (this.stopping) return;
+    if (!this.maintenancePromise) {
+      this.maintenancePromise = this.recoverExpired()
+        .catch(() => {
+          this.logger.error('Knowledge index lease recovery failed.');
+        })
+        .finally(() => {
+          this.maintenancePromise = undefined;
+        });
+    }
     void this.drain().catch((error: unknown) => {
       const message = error instanceof Error ? error.message : 'unknown error';
       this.logger.error(`Knowledge index worker drain failed: ${message}`);
