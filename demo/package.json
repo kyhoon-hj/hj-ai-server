@@ -8,6 +8,7 @@
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
     "smoke:streaming": "node scripts/streaming-smoke.mjs",
+    "quality:rag": "node scripts/rag-quality.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "engines": {

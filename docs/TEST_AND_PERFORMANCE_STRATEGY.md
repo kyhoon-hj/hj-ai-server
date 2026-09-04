@@ -180,6 +180,20 @@ Bedrock는 요청 시작 시 대략 입력 토큰과 `maxTokens`를 기반으로
 
 ## RAG 품질 판정
 
+1차 개선 결과: 동일 질문 50개에서 case 44/50, 출처 34/35, no-answer 11/15. CSV 행별 파싱과 별칭 자료 v2를 함께 적용했다. 검색 결과 존재를 answerable로 사용하는 계약 오류 4건과 금지 문자열 재인용 1건 등이 남아 품질 gate는 FAIL이다. 상세: `demo/docs/RAG_IMPROVEMENT_2026-09-04.md`.
+
+2차 개선 결과: `rag-answer-v2` 구조화 판단과 출처/완료 상태 검증으로 case 49/50, no-answer 15/15, critical/금지 문자열 0건. 출력 형식 오류·불완전 응답은 0건이고 단위 176개, 데모 28개, 통합 23개 PASS. A10 검색 누락이 남아 품질 gate는 FAIL이다. 상세: `demo/docs/RAG_ANSWERABILITY_2026-09-04.md`.
+
+3차 개선 결과: Markdown 절 단위 파싱으로 A10 score 0.498610, case 50/50, 출처 35/35, no-answer 15/15 및 gate PASS. 단위 183개, 데모 28개, 통합 23개 PASS. 기존 개발 표본 단일 실행이며 운영 배포/기존 문서 재색인은 하지 않았다. 상세: `demo/docs/RAG_RETRIEVAL_2026-09-04.md`.
+
+확장 평가 결과: 기존 50/50 + 신규 개발용 20/20 = 70/70, 출처 47/47, no-answer 23/23, gate PASS. 채점기 v3는 출력 실패를 no-answer 정답으로 인정하지 않는다. 단위 183개, 데모 31개, 통합 23개 PASS. 서버 동작은 변경하지 않았고 독립 blind holdout은 아니다. 상세: `demo/docs/RAG_EXPANSION_2026-09-04.md`.
+
+간접 공격/조건·예외 평가: 합성 검수프로그램 문서 추가 환경에서 기존 50 + 신규 6 = 56/56 PASS. v4 채점기로 I01의 공격 포함 청크 인용을 확인하고 생성 답변의 표식은 0건이었다. 단위 183개, 데모 32개, 통합 23개 PASS. 공격 유형은 1종으로 포괄적 방어 보증이 아니다. 상세: `demo/docs/RAG_ADVERSARIAL_2026-09-04.md`.
+
+공격 유형 확장/반복 평가: 3유형, 집중 8문항 × 3회와 기준선 50회로 74/74 PASS. 공격 노출 9/9 확인, 판정 변동 0문항, 표현 변동 3문항·출처 집합 변동 1문항. 단위 183개, 데모 35개, 통합 23개 PASS. 상세: `demo/docs/RAG_REPEATABILITY_2026-09-04.md`.
+
+2026-09-04: 50문항 실제 기준선 수집 완료. HTTP 50/50 성공이나 품질 gate FAIL: case 20/50, 출처 5/35, no-answer 15/15. 30개의 답변 가능 질문이 검색 결과 0건으로 거절됨. 상세 분석은 `demo/docs/RAG_BASELINE_2026-09-04.md`, 평가 도구 설명은 `demo/docs/RAG_QUALITY_EVALUATION.md` 참조. 합성 채점기 테스트 통과를 실제 품질 점수로 보고하지 않는다.
+
 생성 문장의 exact match를 사용하지 않습니다. 각 case는 다음 기대값을 가집니다.
 
 ```json
@@ -197,6 +211,36 @@ Bedrock는 요청 시작 시 대략 입력 토큰과 `maxTokens`를 기반으로
 ```
 
 핵심 지표는 answerable 정확도, source 적중률, 필수 사실 포함률, 금지 사실 발생률입니다.
+
+## 실제 AWS 생명주기 검증 (2026-09-04)
+
+- 실행: `npm run test:aws-live-lifecycle` — 1 suite / 1 복합 시나리오 PASS (Jest 15.64초).
+- 조건: 로컬 PostgreSQL, `.env`의 유효한 AWS 자격 증명·S3 bucket·Bedrock 모델 설정. CLI 사전 확인에서 자격 증명 유효, Titan embedding 접근 AUTHORIZED, 응답 inference profile ACTIVE 확인.
+- 환경: S3 `ap-northeast-2`, Bedrock `us-west-2`, embedding `amazon.titan-embed-text-v2:0`, answer `us.anthropic.claude-sonnet-4-6`.
+- 실제 AppModule, HTTP guard/validation, DB worker, S3, Bedrock, parser, pgvector를 사용하며 성공 응답을 mock하지 않음. SQL 검색 실패가 in-memory fallback으로 숨겨지면 실패 처리.
+- 합성 문서 1개 업로드 → 중복 job 제출의 동일 ID → attempt 1 완료 → PUBLIC/PUBLISHED 정책 → 1024차원 vector 저장 → HTTP 검색 → 다른 tenant 검색 0건 → 실제 답변/출처/필수 사실 `17`/output token 검증.
+- 테스트 원본만 S3에서 삭제 → HTTP reindex → `INDEX_SOURCE_NOT_FOUND`, attempt 1, retryable false → 수동 retry 400 → 기존 chunk ID·차원 및 검색 보존 → archive와 chunk 제거 검증.
+- 답변 요청 `maxTokens: 128`, temperature 0. 소량의 실제 AWS 호출 비용이 발생하므로 일반 CI에 포함하지 않는 명시적 opt-in 명령.
+- runner가 매번 UUID 이름의 격리 DB를 생성하고 migration 12개를 적용. finally에서 이번 tenant에 기록된 정확한 S3 key만 DeleteObject하고 생성 DB만 삭제. 이번 실행 정리 성공. 버전 관리 bucket의 이전 version 영구 삭제는 수행하지 않음.
+- 강제 프로세스 종료 시 finally가 실행되지 않을 수 있으므로 중단된 실행은 출력된 격리 DB와 해당 tenant의 객체 기록을 확인해야 함. 정리 실패는 성공으로 숨기지 않음.
+- 범위 제외: 서비스 데모 브라우저 timeout UX, 실제 AWS 429/5xx/timeout 회복, DB 네트워크 단절, 대규모 RAG 품질 평가, 원격 운영 배포. 이 성공만으로 단계 3 전체 종료 또는 운영 승인을 판정하지 않음.
+
+## 서비스 화면 장애 복구 검증 (2026-09-04)
+
+- 서비스 테스트 56개/16개 파일, typecheck, lint, production build PASS.
+- Playwright CLI 실제 브라우저에서 6개 시나리오 검증: HTTP 504 후 상태 확인 재개, 영구 실패, 재시도 소진, 허용된 수동 재시도, backoff 대기, fetch 응답을 11.5초 지연시켜 실제 10초 client abort 발생 후 복구.
+- timeout은 서버 job 실패로 단정하지 않으며, `작업 상태 다시 확인`은 같은 job을 GET으로 조회하고 새 mutation을 발생시키지 않음. 실패 안내 correlation ID와 재시도 버튼 조건, polling 중 매장 변경·중복 mutation 차단 확인.
+- BFF fetch TimeoutError/네트워크 오류는 안전한 504/503 JSON으로 변환하고 correlation ID를 유지. 해당 경계는 Vitest에서 별도 검증.
+- 브라우저에서는 `/api/knowledge/files`와 관리자 세션 응답만 합성한다. 실제 BFF→AWS 전체 연결, 업로드 응답 자체의 유실, 페이지를 떠난 뒤 추적 복구, 90회 polling 소진의 장시간 실행은 이번 범위가 아님.
+- 재실행: `npm --prefix service-demo run dev` 후 아래 명령을 저장소 루트에서 순서대로 실행. 실제 upstream credential이나 데이터 변경은 필요 없음. CLI의 `### Error` 출력도 실패로 판정한다.
+
+```powershell
+npx --yes --package @playwright/cli playwright-cli -s=knowledge-qa open http://127.0.0.1:11002/knowledge
+npx --yes --package @playwright/cli playwright-cli -s=knowledge-qa run-code --filename service-demo/scripts/knowledge-ui-fixture.cjs
+npx --yes --package @playwright/cli playwright-cli -s=knowledge-qa snapshot
+npx --yes --package @playwright/cli playwright-cli -s=knowledge-qa run-code --filename service-demo/scripts/knowledge-ui-check.cjs
+npx --yes --package @playwright/cli playwright-cli -s=knowledge-qa close
+```
 
 ## CI 배포 게이트
 

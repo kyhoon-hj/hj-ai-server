@@ -134,7 +134,7 @@ export class KnowledgeRagResponseDto extends KnowledgeFiltersContainerDto {
   @ApiPropertyOptional({
     example: true,
     description:
-      'true면 검색 근거가 없을 때 모델을 호출하지 않고 noAnswerMessage를 반환합니다.',
+      'true면 검색 근거가 없을 때 모델을 호출하지 않고 noAnswerMessage를 반환합니다. false도 근거 없는 답변을 허용하지 않으며 출력 계약 검증은 항상 적용됩니다.',
   })
   @Type(() => Boolean)
   @IsBoolean()

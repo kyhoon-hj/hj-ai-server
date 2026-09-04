@@ -40,6 +40,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ApiFailure, apiRequest } from '@/lib/api-client';
+import { failedIndexJobNotice } from '@/lib/index-job-notice';
 import type {
   KnowledgeFileItem,
   KnowledgeIndexJobItem,
@@ -107,6 +108,12 @@ export default function KnowledgeManagementPage() {
   const [operation, setOperation] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [failedJob, setFailedJob] = useState<FailedJob | null>(null);
+  const [pausedJob, setPausedJob] = useState<{
+    job: KnowledgeIndexJobItem;
+    fileName: string;
+    tenantId: TenantId;
+    requestId: string;
+  } | null>(null);
 
   const loadFiles = useCallback(async (targetTenant: TenantId) => {
     setView({ status: 'loading' });
@@ -142,8 +149,11 @@ export default function KnowledgeManagementPage() {
     initialJob: KnowledgeIndexJobItem,
     fileName: string,
     targetTenant: TenantId,
+    initialRequestId: string,
   ) {
     let job = initialJob;
+    let requestId = initialRequestId;
+    setPausedJob(null);
     for (let poll = 0; poll < 90; poll += 1) {
       if (job.status === 'completed') {
         setNotice(`${fileName} 인덱싱을 완료했습니다.`);
@@ -152,11 +162,7 @@ export default function KnowledgeManagementPage() {
         return;
       }
       if (job.status === 'failed') {
-        setNotice(
-          job.retryable
-            ? `${fileName} 인덱싱이 일시 장애 후 중단됐습니다. 다시 시도할 수 있습니다.`
-            : `${fileName} 인덱싱이 영구 실패로 분류됐습니다. 파일·권한·설정을 확인해주세요.`,
-        );
+        setNotice(`${failedIndexJobNotice(job, fileName)} · ID ${requestId}`);
         setFailedJob({ id: job.id, fileName, canRetry: job.canRetry });
         return;
       }
@@ -168,15 +174,44 @@ export default function KnowledgeManagementPage() {
             : `${fileName} 인덱싱 작업이 대기 중입니다.`,
       );
       await new Promise((resolve) => setTimeout(resolve, 1_000));
-      const result = await apiRequest<JobStatusResponse>(
-        `/api/knowledge/files?tenantId=${targetTenant}&jobId=${encodeURIComponent(job.id)}`,
-        { timeoutMs: 10_000 },
-      );
+      let result: JobStatusResponse;
+      try {
+        result = await apiRequest<JobStatusResponse>(
+          `/api/knowledge/files?tenantId=${targetTenant}&jobId=${encodeURIComponent(job.id)}`,
+          { timeoutMs: 10_000 },
+        );
+      } catch (error) {
+        const id =
+          error instanceof ApiFailure ? error.correlationId : requestId;
+        setNotice(
+          `${fileName} 작업 상태를 확인하지 못했습니다. 작업 실패를 의미하지 않습니다. 상태를 다시 확인해주세요. · ID ${id}`,
+        );
+        setPausedJob({ job, fileName, tenantId: targetTenant, requestId: id });
+        return;
+      }
       job = result.job;
+      requestId = result.requestId;
     }
     setNotice(
-      `${fileName} 처리가 계속 진행 중입니다. 잠시 후 새로고침해주세요.`,
+      `${fileName} 상태 확인 대기 시간이 끝났습니다. 서버 작업은 계속될 수 있습니다. · ID ${requestId}`,
     );
+    setPausedJob({ job, fileName, tenantId: targetTenant, requestId });
+  }
+
+  async function resumeJobStatus() {
+    if (!pausedJob || operation !== null) return;
+    const target = pausedJob;
+    setOperation(`status:${target.job.id}`);
+    try {
+      await waitForJob(
+        target.job,
+        target.fileName,
+        target.tenantId,
+        target.requestId,
+      );
+    } finally {
+      setOperation(null);
+    }
   }
 
   useEffect(() => {
@@ -196,6 +231,7 @@ export default function KnowledgeManagementPage() {
     event.preventDefault();
     if (!selectedFile) return;
     setOperation('upload');
+    setPausedJob(null);
     setNotice(null);
     setFailedJob(null);
     const form = new FormData();
@@ -209,7 +245,7 @@ export default function KnowledgeManagementPage() {
       const fileName = result.file?.name ?? selectedFile.name;
       setSelectedFile(null);
       setInputKey((value) => value + 1);
-      await waitForJob(result.job, fileName, tenantId);
+      await waitForJob(result.job, fileName, tenantId, result.requestId);
     } catch (error) {
       setView((current) =>
         current.status === 'ready'
@@ -228,6 +264,7 @@ export default function KnowledgeManagementPage() {
 
   async function reindex(file: KnowledgeFileItem) {
     setOperation(`reindex:${file.id}`);
+    setPausedJob(null);
     setNotice(null);
     setFailedJob(null);
     try {
@@ -244,7 +281,7 @@ export default function KnowledgeManagementPage() {
           timeoutMs: 20_000,
         },
       );
-      await waitForJob(result.job, file.name, tenantId);
+      await waitForJob(result.job, file.name, tenantId, result.requestId);
     } catch (error) {
       setNotice(
         error instanceof ApiFailure
@@ -260,6 +297,7 @@ export default function KnowledgeManagementPage() {
     if (!failedJob?.canRetry) return;
     const target = failedJob;
     setOperation(`retry:${target.id}`);
+    setPausedJob(null);
     setNotice(null);
     setFailedJob(null);
     try {
@@ -276,7 +314,7 @@ export default function KnowledgeManagementPage() {
           timeoutMs: 20_000,
         },
       );
-      await waitForJob(result.job, target.fileName, tenantId);
+      await waitForJob(result.job, target.fileName, tenantId, result.requestId);
     } catch (error) {
       setNotice(
         error instanceof ApiFailure
@@ -290,6 +328,7 @@ export default function KnowledgeManagementPage() {
 
   async function archive(file: KnowledgeFileItem) {
     setOperation(`archive:${file.id}`);
+    setPausedJob(null);
     setNotice(null);
     try {
       await apiRequest<FileMutationResponse>('/api/knowledge/files', {
@@ -360,11 +399,13 @@ export default function KnowledgeManagementPage() {
             </label>
             <Select
               value={tenantId}
+              disabled={operation !== null}
               onValueChange={(value) => {
                 setTenantId(value as TenantId);
                 setSelectedFile(null);
                 setNotice(null);
                 setFailedJob(null);
+                setPausedJob(null);
               }}
             >
               <SelectTrigger id="store-select" className="w-56 bg-white">
@@ -441,6 +482,17 @@ export default function KnowledgeManagementPage() {
                 </AlertTitle>
                 <AlertDescription>
                   <span>{notice}</span>
+                  {pausedJob && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full"
+                      disabled={operation !== null}
+                      onClick={() => void resumeJobStatus()}
+                    >
+                      <RefreshCw /> 작업 상태 다시 확인
+                    </Button>
+                  )}
                   {failedJob?.canRetry && (
                     <Button
                       variant="outline"

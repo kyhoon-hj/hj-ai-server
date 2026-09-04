@@ -52,6 +52,17 @@ afterEach(() => {
 });
 
 describe('knowledge files BFF', () => {
+  it.each([['TimeoutError', 504, 'UPSTREAM_TIMEOUT'], ['TypeError', 503, 'KNOWLEDGE_ADMIN_REQUEST_FAILED']] as const)(
+    'normalizes %s without exposing upstream details', async (name, status, code) => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(Object.assign(new Error('PRIVATE_OPERATOR_KEY_OR_URL'), { name }));
+      const response = await GET(new Request('http://service.test/api/knowledge/files?tenantId=STORE_A&jobId=job-1', { headers: { [CORRELATION_HEADER]: requestId, 'oai-authenticated-user-email': 'manager@example.test' } }));
+      expect(response.status).toBe(status);
+      expect(response.headers.get(CORRELATION_HEADER)).toBe(requestId);
+      const body = await response.json();
+      expect(body).toMatchObject({ code, requestId });
+      expect(JSON.stringify(body)).not.toContain('PRIVATE_OPERATOR');
+    },
+  );
   it('lists sanitized tenant files without exposing the operator key or storage path', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

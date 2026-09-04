@@ -4,6 +4,8 @@ import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import readXlsxFile from 'read-excel-file/node';
 import { validateKnowledgeFile } from './knowledge-file-security';
+import { parseCsvRows } from './csv-rows';
+import { parseMarkdownSections } from './markdown-sections';
 
 export type ParsedDocumentSection = {
   title?: string;
@@ -84,6 +86,7 @@ export class DocumentParserService {
     const extension = extname(input.fileName).toLowerCase();
     const normalizedContentType = input.contentType.toLowerCase();
 
+    if (extension === '.csv') return this.parseCsv(input.body, input.fileName);
     if (this.isTextLike(extension, normalizedContentType)) {
       return this.parseText(input.body, input.fileName, extension);
     }
@@ -112,6 +115,15 @@ export class DocumentParserService {
       throw new BadRequestException('인덱싱할 텍스트를 찾을 수 없습니다.');
     }
 
+    if (extension === '.md') {
+      return {
+        title: fileName,
+        content,
+        sections: parseMarkdownSections(content),
+        metadata: { parser: 'markdown-headings-v1', sourceType: 'md' },
+      };
+    }
+
     return {
       title: fileName,
       content,
@@ -129,6 +141,24 @@ export class DocumentParserService {
         sourceType: this.extensionToSourceType(extension),
       },
     };
+  }
+
+  private parseCsv(body: Buffer, fileName: string) {
+    const [headers, ...rows] = parseCsvRows(body.toString('utf8'));
+    const sections = rows.map((row, index) => ({
+      title: `${fileName} record ${index + 1}`,
+      content: this.rowToText(
+        Object.fromEntries(
+          headers.map((header, column) => [header.trim(), row[column]]),
+        ),
+      ),
+      metadata: { sourceType: 'csv-row', recordNumber: index + 1 },
+    }));
+    return this.fromSections(fileName, sections, {
+      parser: 'csv-fields-v1',
+      sourceType: 'csv',
+      recordCount: rows.length,
+    });
   }
 
   private async parseWorkbook(

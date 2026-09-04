@@ -13,6 +13,7 @@ function errorResponse(status: number, code: string, message: string, correlatio
 }
 
 function upstreamError(result: NonNullable<Awaited<ReturnType<typeof callKnowledgeAdmin>>>) {
+  if (result.response.status === 504) return errorResponse(504, 'UPSTREAM_TIMEOUT', 'AI 서버 응답 시간이 초과되었습니다. 작업 상태를 다시 확인해주세요.', result.correlationId);
   const status = result.response.status === 401 || result.response.status === 403 ? 502 : result.response.status;
   const code = result.response.status === 401 || result.response.status === 403 ? 'UPSTREAM_ADMIN_AUTHENTICATION_FAILED' : 'KNOWLEDGE_ADMIN_REQUEST_FAILED';
   const message = status === 413 ? '파일은 최대 30MB까지 업로드할 수 있습니다.' : '지식 문서 요청을 처리하지 못했습니다.';

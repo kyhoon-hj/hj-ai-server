@@ -1,8 +1,8 @@
 # AI Server·검증 데모·서비스 데모 통합 로드맵
 
 최초 작성일: 2026-08-05
-개정일: 2026-09-03
-상태: **단계 3 진행 중 — 비동기 job, 선별 자동 재시도와 동시성 제한 완료, 실제 의존성 장애 주입 예정**
+개정일: 2026-09-04
+상태: **단계 3 잔여 장애 검증 + 단계 4 RAG 개발 평가 진행 — 반복 74/74회 통과, 운영 배포 승인과 독립 검수는 별도**
 적용 범위: `src/`, `prisma/`, `demo/`, `service-demo/`, 배포 및 운영 설정
 
 ## 1. 목적
@@ -19,9 +19,9 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 ## 현재 위치 요약
 
-> **현재: 단계 3 — 비동기 인덱싱과 장애 복원력**
+> **현재: 단계 3 잔여 검증과 단계 4 RAG 품질·안전성 병행**
 >
-> DB 기반 job 제출·조회, idempotency, 선별 재시도와 서비스 화면 상태 추적을 구현했습니다. AWS 연결·요청 timeout, HTTP 연결 종료와 프로세스 shutdown의 abort 전파도 적용했습니다. **다음은 실제 AWS 장애 호출 E2E와 부분 실패 운영 검증**입니다.
+> DB 기반 job·retry·lease·종료 복구와 실제 AWS 생명주기 기반을 검증했습니다. CSV/Markdown 파싱 및 RAG 답변 계약을 개선하고 golden 50, 확장 70, 간접 공격 56, 반복 74회 평가를 수행했습니다. **실제 AWS 일시 장애 복구·독립 검수·운영 승인은 남아 있습니다.** 로컬 검증/소스 푸시는 원격 운영 배포 완료를 의미하지 않습니다. [구현·검증 인수인계](IMPLEMENTATION_AND_VALIDATION_2026-09-04.md) 참조.
 
 | 단계 | 주제 | 현재 판정 | 핵심 상태 |
 | ---: | --- | --- | --- |
@@ -29,7 +29,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | 1 | 인증·권한·tenant 경계 | 서버·검증 완료, 서비스 일부 진행 | BFF credential 비노출과 STORE_A/B 격리 확인; 역할별 메뉴·권한 분리 남음 |
 | 2 | 지식 생명주기·파일 안전성 | 완료 | 고객·관리자·역할 경계와 정책 matrix 17/17 완료 |
 | **3** | **비동기 인덱싱·장애 복원력** | **진행 중** | queue job·선별 retry·idempotency·동시성·timeout/abort·상태 UX 완료; 실제 AWS 장애 호출 남음 |
-| 4 | RAG 품질·안전성 | 예정 | golden question, 품질 기준, 상담원 피드백 |
+| 4 | RAG 품질·안전성 | 개발 평가 진행 | 파서·응답 계약 및 3유형 반복 검증 완료; 독립 자료·검수·운영 피드백 남음 |
 | 5 | 쿼터·성능·비용 | 예정 | SLO, 부하, token·quota·metric |
 | 6 | `/v1` 공통 API·배포 게이트 | 일부 기반만 진행 | 관리자 API 일부 완료; 외부 계약·OpenAPI·배포 승인 남음 |
 | 7 | 매출 자료 분석 확장 | 예정 | 고객응대 MVP와 `/v1` 안정 후 착수 |
@@ -260,6 +260,7 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [~] `REL-DEM-01` 인덱싱 job 제출·조회·완료 scenario와 서비스 실패·재시도 화면 완료; 강제 실패·재시도 scenario 남음
 - [~] `REL-DEM-02` Bedrock 429, timeout, 5xx 단위 fault injection 완료; 실제 호출 E2E 남음
 - [~] `REL-DEM-03` S3 없음·DB 일시 오류를 서비스 경계에 주입하고 로컬 PostgreSQL 상태 전이 검증 완료; 실제 AWS 장애 호출 E2E 남음
+  - 2026-09-04 추가: `npm run test:aws-live-lifecycle` PASS. 실제 S3 원본 삭제 후 HTTP reindex job이 `INDEX_SOURCE_NOT_FOUND`, attempt 1, retryable false로 종료하고 기존 vector·검색을 보존함. 실제 AWS 일시 장애 복구/DB 네트워크 장애는 여전히 미검증.
   - 로컬 전용 opt-in E2E 7/7 PASS: 429·timeout 복구, 5xx 재시도 소진, Validation·AccessDenied·NoSuchKey 영구 실패, Prisma transaction 일시 오류 복구
   - 재시도 대기와 영구 실패 중 기존 chunk 보존, 성공 transaction에서만 chunk 교체, fixture 자동 정리 확인
 - [x] `REL-DEM-04` 동일 요청 중복 제출과 idempotency 검증
@@ -282,7 +283,8 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 - [x] `REL-SVC-01` 파일 업로드·인덱싱 job 진행·완료·실패 상태 표시
 - [x] `REL-SVC-02` 재시도 횟수가 남은 failed job에만 재시도 동작 제공
 - [x] `REL-SVC-03` idempotency key 기반 중복 제출 방지와 사용자 재클릭 안전성
-- [~] `REL-SVC-04` 일시 장애·영구 실패 안내와 correlation ID 표시 완료; 실제 timeout E2E 남음
+- [x] `REL-SVC-04` 일시 장애·영구 실패·재시도 소진 안내와 correlation ID 표시, 조회 timeout 후 동일 job 상태 확인 재개 검증 완료
+  - 2026-09-04 Playwright 브라우저 6개 시나리오 통과: 504 복구, 영구 실패, 재시도 소진, 허용된 재시도, backoff 대기, 실제 브라우저 10초 조회 deadline. 합성 BFF 응답을 사용하며 AWS 장애 재현이나 배포 검증을 의미하지 않음.
 
 #### Exit Gate
 
@@ -299,18 +301,24 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 #### 데모
 
-- [ ] `RAG-DEM-01` 최소 50개 golden question dataset
-- [ ] `RAG-DEM-02` expectedAnswerable, expectedSource, requiredFacts, forbiddenFacts 평가
-- [ ] `RAG-DEM-03` strict no-answer와 supplemental source 평가
-- [ ] `RAG-DEM-04` prompt injection·내부정보·개인정보 요청 dataset
-- [ ] `RAG-DEM-05` 모델·prompt·chunk 설정별 결과 비교 리포트
+- [x] `RAG-DEM-01` 최소 50개 golden question dataset
+  - 2026-09-04 `demo/fixtures/rag-golden.json` v1.0.0: 정책/상품 30, 미등록 정보 10, 공격/개인정보/격리 10. 답변 가능 35, 불가 15. 텍스트 fixture 3개와 근거 문장/행 검증 완료.
+- [~] `RAG-DEM-02` 채점기·회귀 테스트와 실제 50문항 기준선 수집 완료; 2026-09-04 출처 5/35, no-answer 15/15, case 20/50으로 gate FAIL. 검색 누락·매장 별칭·채점 오탐 개선 필요 (`demo/docs/RAG_BASELINE_2026-09-04.md`)
+  - 1차 개선 비교: CSV 행별 파싱 + 별칭 corpus v2 + 채점기 v2. case 44/50, 출처 34/35로 개선. no-answer 11/15 및 금지 문자열 재인용 1건으로 gate는 여전히 FAIL. `demo/docs/RAG_IMPROVEMENT_2026-09-04.md` 참조.
+  - 2차 개선 비교: 구조화된 답변 가능 판단 + 출처/완료 상태 검증. case 49/50, no-answer 15/15, critical/금지 문자열 0건. A10 검색 누락으로 gate FAIL 유지. `demo/docs/RAG_ANSWERABILITY_2026-09-04.md` 참조.
+  - 3차 개선: Markdown 절 단위 파싱으로 A10 검색 누락 해결. case 50/50, 출처 35/35, no-answer 15/15, gate PASS(개발 표본 단일 실행). 미관측 질문·반복 평가·사람 검토는 남음. `demo/docs/RAG_RETRIEVAL_2026-09-04.md` 참조.
+  - 확장 평가: 신규 개발용 20문항 + 기존 50문항을 고정해 70/70, 출처 47/47, no-answer 23/23, gate PASS. 출력 실패를 거절하는 채점기 v3 적용. 독립 holdout·간접 injection·반복/사람 검수는 남음. `demo/docs/RAG_EXPANSION_2026-09-04.md` 참조.
+- [~] `RAG-DEM-03` strict no-answer 실제 15/15 측정 완료; supplemental source 확장 남음
+- [~] `RAG-DEM-04` 직접 공격 10문항 및 별도 문서 내부 지시/조건·예외 6문항 실제 검증. 기존 50 + 신규 6 = 56/56 PASS, 인용 청크 공격 노출 확인 및 생성 표식 0건. 공격 유형 확장·반복 검증은 남음 (`demo/docs/RAG_ADVERSARIAL_2026-09-04.md`)
+  - 3유형(권한 사칭/JSON 훼손/작업 전환) 및 집중 8문항 3회 반복 완료. 기준선 50 + 반복 24 = 74/74 PASS, 판정 변동 0, 문구 변동 3문항·출처 집합 변동 1문항. 드문 실패/독립 환경·검수는 남음 (`demo/docs/RAG_REPEATABILITY_2026-09-04.md`).
+- [~] `RAG-DEM-05` 1~3차 parser/prompt 비교 보고서 및 baseline 50 / expansion 20 분리 집계 구현. 모델별·반복 실험은 남음
 
 #### AI Server
 
-- [ ] `RAG-SRV-01` prompt version과 model configuration 고정·기록
+- [~] `RAG-SRV-01` 응답에 promptVersion `rag-answer-v2` 추가, 평가 설정/모델 기록. 로그 영속화 및 전체 설정 버전 관리는 남음
 - [ ] `RAG-SRV-02` source를 지시문이 아닌 불신 데이터로 구분하는 prompt 구조
-- [ ] `RAG-SRV-03` 검색 score와 answerable 판정 기준 보정
-- [ ] `RAG-SRV-04` chunk 크기·overlap·structured row 전략 보정
+- [~] `RAG-SRV-03` 모델의 구조화된 답변 가능 판단과 출처 검증으로 answerable 분리. 검색 score 보정은 남음
+- [~] `RAG-SRV-04` CSV 행별 파싱 및 Markdown 제목별 절/상위 제목 보존 적용. 긴 절 문맥·chunk 크기/overlap 비교는 남음
 - [ ] `RAG-SRV-05` 필요 시 Bedrock Guardrail 적용 방식 별도 결정
 - [ ] `RAG-SRV-06` PII log 마스킹·암호화·보존기간 적용
 

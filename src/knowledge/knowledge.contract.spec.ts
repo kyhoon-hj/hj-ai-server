@@ -59,8 +59,19 @@ describe('KnowledgeService provider contract', () => {
     );
     const bedrockSend = jest.fn().mockResolvedValue({
       output: {
-        message: { content: [{ text: '게시판 승인 답변을 참고하세요.' }] },
+        message: {
+          content: [
+            {
+              text: JSON.stringify({
+                answerable: true,
+                answer: '게시판 승인 답변을 참고하세요.',
+                sourceIndexes: [1],
+              }),
+            },
+          ],
+        },
       },
+      stopReason: 'end_turn',
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
     });
     Object.defineProperty(service, 'bedrockClient', {
@@ -235,6 +246,133 @@ describe('KnowledgeService provider contract', () => {
         },
       ],
     });
+  });
+
+  it.each([
+    [
+      'insufficient_evidence',
+      JSON.stringify({
+        answerable: false,
+        answer: '자료 없음',
+        sourceIndexes: [],
+      }),
+      'end_turn',
+    ],
+    ['invalid_model_response', 'not JSON', 'end_turn'],
+    [
+      'incomplete_model_response',
+      JSON.stringify({
+        answerable: true,
+        answer: 'partial',
+        sourceIndexes: [1],
+      }),
+      'max_tokens',
+    ],
+  ])(
+    'returns safe text and no sources for %s despite retrieved evidence',
+    async (answerStatus, text, stopReason) => {
+      const { service, bedrockSend, queryLogCreate } = createService();
+      bedrockSend.mockResolvedValueOnce({
+        output: { message: { content: [{ text }] } },
+        stopReason,
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      });
+      const result = await service.createRagResponse(
+        {
+          query: '자료에 없는 질문',
+          noAnswerMessage: '담당자 확인이 필요합니다.',
+          supplementalSources: [
+            {
+              sourceType: 'SUPPORT_BOARD_APPROVED_ANSWER',
+              sourceId: '10000000-0000-4000-8000-000000000001',
+              title: '설치',
+              content: '전원을 연결하세요.',
+              publishedAt: '2026-07-20T00:00:00.000Z',
+              relevanceScore: 0.8,
+            },
+          ],
+        },
+        'APP_A',
+      );
+      expect(result).toMatchObject({
+        answerable: false,
+        answerStatus,
+        promptVersion: 'rag-answer-v2',
+        stopReason,
+        answer: '담당자 확인이 필요합니다.',
+        response: '담당자 확인이 필요합니다.',
+        sources: [],
+        retrieval: { supplementalCount: 1 },
+        usage: { totalTokens: 15 },
+      });
+      expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
+        response: '담당자 확인이 필요합니다.',
+        totaltokens: 15,
+      });
+    },
+  );
+
+  it('keeps source suppression and no-evidence safety when strict is false', async () => {
+    const { service, bedrockSend } = createService();
+    const result = await service.createRagResponse(
+      { query: '없는 자료', strict: false, includeSources: false },
+      'APP_A',
+    );
+    expect(bedrockSend).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      answerable: false,
+      sources: undefined,
+      answerStatus: 'invalid_model_response',
+    });
+  });
+
+  it('returns only cited sources while preserving retrieval counts and indexes', async () => {
+    const { service, bedrockSend } = createService();
+    bedrockSend.mockResolvedValueOnce({
+      output: {
+        message: {
+          content: [
+            {
+              text: JSON.stringify({
+                answerable: true,
+                answer: '전원을 연결하세요.',
+                sourceIndexes: [2],
+              }),
+            },
+          ],
+        },
+      },
+      stopReason: 'end_turn',
+    });
+    const result = await service.createRagResponse(
+      {
+        query: '설치 방법',
+        system: '한국어로 답하세요.',
+        includeSourceContent: true,
+        supplementalSources: [1, 2].map((index) => ({
+          sourceType: 'SUPPORT_BOARD_APPROVED_ANSWER' as const,
+          sourceId: `source-${index}`,
+          title: '설치',
+          content: '전원을 연결하세요.',
+          publishedAt: '2026-07-20T00:00:00.000Z',
+          relevanceScore: 0.8,
+        })),
+      },
+      'APP_A',
+    );
+    expect(result.retrieval.supplementalCount).toBe(2);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources?.[0]).toMatchObject({
+      index: 2,
+      fileId: 'source-2',
+      content: '전원을 연결하세요.',
+    });
+    const calls = bedrockSend.mock.calls as unknown as [
+      { input: { system: { text: string }[] } },
+    ][];
+    const command = calls[0][0];
+    expect(command.input.system).toHaveLength(2);
+    expect(command.input.system[1].text).toContain('출력 계약');
   });
 
   it('TS-CON-004 keeps the unfiltered legacy search path unchanged', async () => {

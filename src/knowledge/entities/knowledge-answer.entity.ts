@@ -57,9 +57,25 @@ export class KnowledgeAnswerEntity {
 
   @ApiProperty({
     description:
-      '검색 source 존재 여부입니다. 답변의 사실 정확도나 신뢰도 점수가 아닙니다.',
+      '모델의 근거 기반 답변 가능 판단과 출력/출처 검증 결과입니다. 사실 정확도를 보증하거나 신뢰도 점수를 의미하지 않습니다.',
   })
   answerable!: boolean;
+
+  @ApiProperty({
+    enum: [
+      'answered',
+      'insufficient_evidence',
+      'invalid_model_response',
+      'incomplete_model_response',
+    ],
+  })
+  answerStatus!: string;
+
+  @ApiProperty()
+  promptVersion!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  stopReason!: string | null;
 
   @ApiProperty()
   modelId!: string;
@@ -81,6 +97,10 @@ export class KnowledgeAnswerEntity {
   })
   requestId?: string;
 
-  @ApiPropertyOptional({ type: [KnowledgeSourceEntity] })
+  @ApiPropertyOptional({
+    type: [KnowledgeSourceEntity],
+    description:
+      '실제 답변에 사용한 출처만 반환합니다. 답변 불가 시 빈 배열입니다. index는 검색 시 부여된 번호를 유지합니다.',
+  })
   sources?: KnowledgeSourceEntity[];
 }

@@ -5,6 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const source = new URL(process.env.DATABASE_URL ?? '');
+const liveAws = process.argv.includes('--live-aws');
+const extendedRag = process.argv.includes('--rag-quality-extended');
+const adversarialRag = process.argv.includes('--rag-quality-adversarial');
+const repeatRag = process.argv.includes('--rag-quality-repeatability');
+const ragQuality = repeatRag || adversarialRag || extendedRag || process.argv.includes('--rag-quality') || process.argv.includes('--rag-quality-v2');
 if (!['localhost', '127.0.0.1', '[::1]'].includes(source.hostname)) {
   throw new Error('Queue HTTP E2E requires a local PostgreSQL host.');
 }
@@ -29,9 +34,13 @@ function run(relativePath, args) {
         KNOWLEDGE_INDEX_WORKER_ENABLED: 'true',
         KNOWLEDGE_INDEX_RETRY_DELAY_MS: '100',
         ADMIN_API_KEY: randomUUID(),
+        RUN_AWS_LIFECYCLE_E2E: liveAws ? 'true' : 'false',
+        RUN_RAG_QUALITY_E2E: ragQuality ? 'true' : 'false',
+        RAG_EVAL_CORPUS: repeatRag || adversarialRag || extendedRag || process.argv.includes('--rag-quality-v2') ? 'quality-v2' : 'original',
+        RAG_EVAL_DATASET: repeatRag ? 'repeatability' : adversarialRag ? 'adversarial' : extendedRag ? 'extended' : 'golden',
       },
       stdio: 'inherit',
-      timeout: 120000,
+      timeout: ragQuality ? 660000 : liveAws ? 300000 : 120000,
     },
   );
   if (result.error || result.status !== 0)
@@ -56,7 +65,21 @@ try {
   }
   console.log(`Created isolated database: ${database}`);
   run('../node_modules/prisma/build/index.js', ['migrate', 'deploy']);
-  if (process.argv.includes('--docker')) {
+  if (ragQuality) {
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'rag-quality-live.e2e-spec.ts',
+    ]);
+  } else if (liveAws) {
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'knowledge-aws-live.e2e-spec.ts',
+    ]);
+  } else if (process.argv.includes('--docker')) {
     run('./run-docker-shutdown.mjs', []);
   } else
     run('../node_modules/jest/bin/jest.js', [

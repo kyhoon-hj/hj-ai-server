@@ -11,5 +11,6 @@ server.err.log
 
 /outputs/
 /work/
+/output/playwright/
 
 *.log
