@@ -107,6 +107,7 @@ try {
       '--runInBand',
       'knowledge-(queue-http|vector|worker-restart|app-shutdown|lease|network).e2e-spec.ts',
       'knowledge-index-job.fault-e2e-spec.ts',
+      'family-knowledge.e2e-spec.ts',
     ]);
 } finally {
   // Drop only the exact random database created by this invocation, never the source DB.

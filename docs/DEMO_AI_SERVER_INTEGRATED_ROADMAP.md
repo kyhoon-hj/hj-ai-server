@@ -19,6 +19,13 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 ## 현재 위치 요약
 
+> **2026-09-10 Family RAG 후속:** Family 지식 이벤트 수신, durable 색인,
+> tenant 범위 pgvector 검색과 `frame-family-rag-v1` 대화 결합을 구현했다. 빈 격리
+> PostgreSQL에 migration 16개를 적용하고 이벤트 → 색인 → 검색 → 대화, retry 및
+> 대화 중 삭제 시 근거 재검증을 통과했다. 실제 Bedrock provider, 운영 migration과
+> ZINFrame 교차 프로젝트 수용 시험은 남아 있다.
+> [통합 검증 기록](FAMILY_RAG_INTEGRATION_VALIDATION_2026-09-10.md).
+
 > **2026-09-06 운영 배포 완료:** AI 서버·검증 데모는 EC2 11000/11001, 서비스 데모는 기존 비공개 Sites에 배포했습니다. migration 13개 적용, 실제 서비스 답변·출처·근거 부족 및 업로드·비동기 색인·매장 격리·보관 검증 PASS. [운영 배포 기록](PRODUCTION_DEPLOYMENT_2026-09-06.md). 아래 9월 5일 수치는 과거 이력이며 장기 부하·독립 검수·정식 운영 승인은 별도입니다.
 
 > **현재: 단계 3 잔여 검증과 단계 4 RAG 품질·안전성 병행**

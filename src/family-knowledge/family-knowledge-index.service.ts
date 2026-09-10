@@ -185,9 +185,9 @@ export class FamilyKnowledgeIndexService {
     appcode: string,
     sourceId: string,
   ) {
-    const lockKey = `${appcode}\u0000${sourceId}`;
+    const lockKey = JSON.stringify([appcode, sourceId]);
     await transaction.$queryRaw`
-      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text AS "locked"
     `;
   }
 }
