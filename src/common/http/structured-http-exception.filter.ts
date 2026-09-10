@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readAwsAttempts } from '../aws/aws-attempts';
+import {
+  summarizeAwsMetrics,
+  type AwsMetrics,
+} from '../aws/aws-request-metrics';
 import {
   ArgumentsHost,
   Catch,
@@ -16,7 +21,9 @@ import {
 export class StructuredHttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
-    const request = http.getRequest<CorrelatedRequest>();
+    const request = http.getRequest<
+      CorrelatedRequest & { awsMetrics?: AwsMetrics }
+    >();
     const response = http.getResponse<Response>();
     const status =
       exception instanceof HttpException
@@ -53,6 +60,12 @@ export class StructuredHttpExceptionFilter implements ExceptionFilter {
       error,
       code,
       requestId,
+      ...(request.awsMetrics
+        ? { awsRequest: summarizeAwsMetrics(request.awsMetrics) }
+        : {}),
+      ...(readAwsAttempts(exception).attempts !== null
+        ? { sdk: { scope: 'failed-call', ...readAwsAttempts(exception) } }
+        : {}),
     });
   }
 

@@ -11,6 +11,7 @@ type ErrorRecord = {
   name?: unknown;
   code?: unknown;
   message?: unknown;
+  cause?: unknown;
   $metadata?: { httpStatusCode?: unknown };
   $response?: { headers?: Record<string, string | string[] | undefined> };
 };
@@ -44,6 +45,39 @@ const PERMANENT_ERROR_NAMES = new Set([
   'NoSuchKeyException',
   'NotFound',
 ]);
+
+const RETRYABLE_TRANSPORT_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'EAI_AGAIN',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'ERR_HTTP2_GOAWAY_SESSION',
+  'ERR_HTTP2_STREAM_CANCEL',
+  'ERR_HTTP2_INVALID_SESSION',
+]);
+
+function isTransientTransportFailure(record: ErrorRecord) {
+  // Smithy can wrap native errors. Inspect only a bounded cause chain and known codes.
+  let current = record;
+  for (let depth = 0; depth < 4; depth++) {
+    if (
+      typeof current.code === 'string' &&
+      RETRYABLE_TRANSPORT_CODES.has(current.code)
+    )
+      return true;
+    // NodeHttp2Handler emits this exact uncoded error when the peer closes before headers.
+    if (
+      current.message ===
+      'Unexpected error: http2 request did not get a response'
+    )
+      return true;
+    if (!current.cause || current.cause === current) break;
+    current = asErrorRecord(current.cause);
+  }
+  return false;
+}
 
 function asErrorRecord(error: unknown): ErrorRecord {
   return typeof error === 'object' && error !== null ? error : {};
@@ -98,6 +132,19 @@ export function classifyKnowledgeIndexJobError(
     return {
       errorCode: 'UPSTREAM_THROTTLED',
       errorMessage: '외부 AI 서비스 요청이 일시적으로 제한되었습니다.',
+      retryable: true,
+      retryAfterMs,
+    };
+  }
+
+  if (
+    status === undefined &&
+    !PERMANENT_ERROR_NAMES.has(name) &&
+    isTransientTransportFailure(record)
+  ) {
+    return {
+      errorCode: 'UPSTREAM_TEMPORARILY_UNAVAILABLE',
+      errorMessage: '외부 서비스 연결이 일시적으로 중단되었습니다.',
       retryable: true,
       retryAfterMs,
     };

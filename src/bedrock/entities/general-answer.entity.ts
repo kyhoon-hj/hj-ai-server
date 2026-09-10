@@ -1,6 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GeneralAnswerEntity {
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description: '생성 호출의 SDK 시도 횟수와 재시도 지연',
+  })
+  sdk?: {
+    scope: string;
+    attempts: number | null;
+    retryCount: number | null;
+    totalRetryDelayMs: number | null;
+  };
+
   @ApiProperty()
   query!: string;
 

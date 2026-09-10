@@ -1,12 +1,11 @@
 import { CORRELATION_HEADER, createCorrelationId } from '@/lib/api-client';
 import { toAnswerResult, type AnswerRequest, type UpstreamAnswer } from '@/lib/knowledge-contract';
 import { expandKnowledgeQuery } from '@/lib/server/query-expansion';
+import { answerQualityOptions } from '@/lib/server/answer-quality';
 import { containsSensitiveCustomerData } from '@/lib/server/sensitive-query';
-import { getAnswerEndpoint, getTenantAppkey, isTenantId } from '@/lib/server/tenant-config';
+import { AI_SERVER_USER_AGENT, getAnswerEndpoint, getTenantAppkey, isTenantId } from '@/lib/server/tenant-config';
 
 const NO_ANSWER_MESSAGE = '등록된 자료에서 확인할 수 없습니다. 상담원 검토를 요청해주세요.';
-const DEFAULT_SCORE_THRESHOLD = 0.35;
-const EXPANDED_QUERY_SCORE_THRESHOLD = 0.4;
 
 function errorResponse(status: number, code: string, message: string, correlationId: string) {
   return Response.json(
@@ -39,12 +38,12 @@ export async function POST(request: Request) {
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
     const retrievalQuery = expandKnowledgeQuery(body.tenantId, query);
-    const scoreThreshold = retrievalQuery === query ? DEFAULT_SCORE_THRESHOLD : EXPANDED_QUERY_SCORE_THRESHOLD;
     const upstream = await fetch(getAnswerEndpoint(), {
       method: 'POST',
       cache: 'no-store',
       signal: controller.signal,
       headers: {
+        'user-agent': AI_SERVER_USER_AGENT,
         'content-type': 'application/json',
         appkey,
         [CORRELATION_HEADER]: correlationId,
@@ -52,14 +51,15 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         query: retrievalQuery,
         limit: 5,
-        scoreThreshold,
-        answerStyle: 'concise',
+        // Cosine similarity is not a calibrated relevance probability. Broad
+        // Korean catalog questions can score low against terse CSV rows.
+        // Retrieve the bounded tenant-scoped candidates and let strict grounded
+        // generation decide whether they actually support the requested answer.
+        ...answerQualityOptions(),
         includeSources: true,
         includeSourceContent: false,
         strict: true,
         noAnswerMessage: NO_ANSWER_MESSAGE,
-        maxTokens: 512,
-        temperature: 0.1,
       }),
     });
     const upstreamCorrelationId = upstream.headers.get(CORRELATION_HEADER) ?? correlationId;

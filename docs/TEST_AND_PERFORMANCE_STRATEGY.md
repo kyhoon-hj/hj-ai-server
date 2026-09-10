@@ -1,5 +1,29 @@
 # 기능·품질·성능 검증 전략
 
+최신 데모 성능 프리셋/비교: Smoke 5/1, Baseline 20/2, Burst 50/5와 직접 설정을 추가했다. 실행 JSON 기준 지정·조건 차이·지표 비교·내보내기를 구현하고 데모 47개 및 로컬 합성 HTTP/브라우저 흐름을 검증했다. [프리셋·비교](PERFORMANCE_PRESETS_2026-09-05.md) 참조. 실제 AWS 부하 결과는 아니다.
+
+최신 RAG 측정 구현: 검색/생성 구간의 monotonic 시간·실효 maxTokens를 서버 응답과 execution JSON에 추가했다. 검증 데모에서 단계별 p95·측정 수·입출력 토큰을 집계하고 누락값을 미측정으로 구분한다. [측정 계약](RAG_PERFORMANCE_TELEMETRY_2026-09-05.md) 참조. 실제 AWS 시간·비용 측정은 별도다.
+
+최신 컴파일 지속 시험: `npm run test:multiprocess-soak-compiled` PASS. 부모·워커 모두 일반 Node.js로 실행해 4,021작업 완료 및 실제 lease 만료 후 465ms 내 회수 확인. 장기 실행 PID 최대 RSS 317~321MiB(이전 ts-node 845~866MiB). [컴파일 비교](COMPILED_SOAK_2026-09-05.md) 참조. 단일 비교이며 CPU·운영 처리량 개선을 단정하지 않는다.
+
+최신 프로세스 지속 시험: `npm run test:multiprocess-soak` PASS. 별도 프로세스 3개·390초 공급·3,986개 완료, 실제 5분 lease 만료 후 402ms 내 강제 종료 작업 복구. 워커별 CPU/RSS/heap와 DB 연결을 기록했다. [프로세스 지속 시험](MULTIPROCESS_SOAK_2026-09-05.md) 참조. 서비스 경계의 합성 의존성과 ts-node를 사용하므로 운영 SDK/컴파일 빌드 자원 기준과는 구분한다.
+
+최신 여러 청크 반복 부하: `npm run test:network-load-extended` 6/6 PASS. 약 43KB·12파일·192청크를 워커 3개에서 정상/단절 각 3회 처리했다. 정상 중앙값 4.430초·연결 복구 후 중앙값 4.487초, 표본 최대 RSS 383~439MiB·워커 DB 연결 최대 4개. CPU·heap도 JSON으로 기록했다. [반복 부하·자원 측정](EXTENDED_NETWORK_LOAD_2026-09-05.md) 참조. 단일 프로세스·합성 의존성이며 운영 capacity나 메모리 누수 판정은 별도다.
+
+최신 로컬 부하 측정: `npm run test:network-load` 4/4 PASS. 24개 파일을 워커 1/3개로 처리하고 DB 단절 후 복구 시간을 기록했다. 워커 3개 정상 0.700초, 연결 복구 후 0.792초, 중복 청크 0. [부하 측정](NETWORK_LOAD_2026-09-05.md) 참조. 단일 프로세스·합성 외부 응답·단일 실행이므로 운영 처리량과 SLO 판정은 별도다. 기본 통합 39개와 서버 197개·데모 37개·build/typecheck/lint도 PASS.
+
+이전 비대칭 단절 검증: 이전 워커만 DB 연결을 잃은 뒤 정상 워커가 완료한 최신 결과를 이전 워커의 늦은 성공·오류가 덮어쓰지 못함을 확인했다. 네트워크 15/15, 격리 통합 39/39, 서버 197개·데모 37개 및 build/typecheck/lint PASS. [비대칭 단절 검증](ASYMMETRIC_PARTITION_2026-09-05.md) 참조. 운영 시간 기준 장시간·다중 호스트 부하는 별도다.
+
+이전 동시 복구 검증: 워커별 독립 DB pool 3개, 테스트 lease 3회 이상 실제 소켓 차단 후 경쟁 회수·중복 방지·반복 단절의 시도 상한을 검증했다. 당시 네트워크 13/13 PASS. [다중 워커 단절 복구](MULTI_WORKER_PARTITION_2026-09-05.md) 참조.
+
+이전 DB 검증: 인덱스 COMMIT 응답 유실 후 실제 저장 성공과 lease 만료/attempt 2 복구, 중복 청크 없음을 확인했다. 네트워크 11/11 PASS, build/typecheck/lint·서버 197개·데모 37개 PASS. [COMMIT 응답 유실](DB_COMMIT_RESPONSE_LOSS_2026-09-05.md) 참조.
+
+최신 실제 AWS 연결 검증: S3 TLS 단절·Bedrock TLS 지연 복구 2/2 PASS, 같은 job attempt 2 완료 및 기존 인덱스 보존. 테스트 객체 버전/삭제 마커와 임시 DB 정리 완료. [실제 AWS 연결 복구](LIVE_AWS_CONNECTION_RECOVERY_2026-09-05.md) 참조. 일반 Node test 프로세스에서 실행하며 AWS 서비스 내부 429/5xx를 재현한 결과와 구분한다.
+
+2026-09-05 후속 네트워크 검증: 실제 HTTP/1·HTTP/2 소켓과 AWS SDK, PostgreSQL 연결 단절을 이용한 10개 시나리오 PASS. 전송 오류의 영구 실패 오분류 수정 후 단위 197개·검증 데모 37개·격리 DB 통합 34개 PASS, 임시 DB 정리 완료. 로그인 갱신 후 실제 AWS 영구 오류 probe도 2/2 PASS (S3 404·Bedrock 400, 각 SDK attempts 1·retryable false). [소켓 장애 검증](NETWORK_RECOVERY_2026-09-05.md) 참조. 실제 AWS 일시 장애 복구는 별도 잔여 검증이다.
+
+2026-09-05 실행 추적 검증: 서버 단위 186개·검증 데모 37개·격리 PostgreSQL 통합 24개 PASS. 설정 및 색인 snapshot, 재색인/삭제 후 과거 기록 보존, 실패 요청과 평가 실행 ID 연결을 검증했다. 13번째 migration은 임시 DB에만 적용했다. [실행·색인 추적](EXECUTION_PROVENANCE_2026-09-05.md) 참조. 아래 RAG 품질 수치는 기존 AWS 실측 이력이며 이번에는 유료 평가를 재실행하지 않았다.
+
 ## 시험 계층
 
 1. 단위 시험: DTO, policy, chunking, quota, 오류 변환

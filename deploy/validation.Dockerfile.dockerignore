@@ -1,0 +1,12 @@
+**
+!config/
+!config/standard-ports.mjs
+!demo/
+!demo/**
+demo/reports
+demo/node_modules
+demo/.env
+demo/.env.*
+demo/**/*.log
+demo/test
+demo/docs

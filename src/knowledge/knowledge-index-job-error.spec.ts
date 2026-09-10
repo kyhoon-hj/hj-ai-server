@@ -77,4 +77,57 @@ describe('classifyKnowledgeIndexJobError', () => {
     });
     expect(failure.errorMessage).not.toContain('secret');
   });
+
+  it.each([
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'EPIPE',
+    'EAI_AGAIN',
+    'ENETUNREACH',
+    'EHOSTUNREACH',
+    'ERR_HTTP2_GOAWAY_SESSION',
+    'ERR_HTTP2_STREAM_CANCEL',
+    'ERR_HTTP2_INVALID_SESSION',
+  ])(
+    'retries native transport code %s without depending on message wording',
+    (code) => {
+      const error = Object.assign(new Error('arbitrary private diagnostic'), {
+        code,
+      });
+      expect(classifyKnowledgeIndexJobError(error, 2, 100)).toMatchObject({
+        retryable: true,
+        errorCode: 'UPSTREAM_TEMPORARILY_UNAVAILABLE',
+        retryAfterMs: 200,
+      });
+      expect(
+        classifyKnowledgeIndexJobError(error, 2, 100).errorMessage,
+      ).not.toContain('private');
+    },
+  );
+  it('recognizes the real HTTP2 no-response error and wrapped socket resets', () => {
+    for (const error of [
+      new Error('Unexpected error: http2 request did not get a response'),
+      new Error('SDK wrapper', {
+        cause: Object.assign(new Error('aborted'), { code: 'ECONNRESET' }),
+      }),
+    ])
+      expect(classifyKnowledgeIndexJobError(error, 1, 100).retryable).toBe(
+        true,
+      );
+  });
+  it('keeps protocol/configuration errors and permanent responses non-retryable', () => {
+    for (const error of [
+      Object.assign(new Error('protocol mismatch'), {
+        code: 'ERR_HTTP2_ERROR',
+      }),
+      Object.assign(new Error('invalid host'), { code: 'ENOTFOUND' }),
+      {
+        ...awsError('AccessDeniedException', 403),
+        cause: { code: 'ECONNRESET' },
+      },
+    ])
+      expect(classifyKnowledgeIndexJobError(error, 1, 100).retryable).toBe(
+        false,
+      );
+  });
 });

@@ -7,6 +7,8 @@ import { validateKnowledgeFile } from './knowledge-file-security';
 import { parseCsvRows } from './csv-rows';
 import { parseMarkdownSections } from './markdown-sections';
 
+export const DOCUMENT_PARSER_VERSION = 'multiformat-v2';
+
 export type ParsedDocumentSection = {
   title?: string;
   content: string;

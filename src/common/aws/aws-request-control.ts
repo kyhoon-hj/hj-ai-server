@@ -4,6 +4,8 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import { readAwsAttempts } from './aws-attempts';
+import { awsMetricsContext } from './aws-request-metrics';
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -76,18 +78,34 @@ export async function runAwsRequest<T>(
     once: true,
   });
   activeControllers.add(controller);
+  const metrics = awsMetricsContext.getStore();
+  if (metrics && !metrics.closed) metrics.started++;
 
   try {
-    return await operation(controller.signal);
+    const result = await operation(controller.signal);
+    if (metrics && !metrics.closed)
+      metrics.completed.push(readAwsAttempts(result));
+    return result;
   } catch (error) {
+    if (metrics && !metrics.closed)
+      metrics.completed.push(readAwsAttempts(error));
     const record =
       error && typeof error === 'object' ? (error as { name?: unknown }) : {};
     const name = typeof record.name === 'string' ? record.name : '';
     if (timedOut || name.includes('Timeout')) {
-      throw new GatewayTimeoutException({
-        message: 'AWS dependency request timed out.',
-        code: 'AWS_REQUEST_TIMEOUT',
-      });
+      const metadata = readAwsAttempts(error);
+      throw Object.assign(
+        new GatewayTimeoutException({
+          message: 'AWS dependency request timed out.',
+          code: 'AWS_REQUEST_TIMEOUT',
+        }),
+        {
+          $metadata: {
+            attempts: metadata.attempts,
+            totalRetryDelay: metadata.totalRetryDelayMs,
+          },
+        },
+      );
     }
     throw error;
   } finally {

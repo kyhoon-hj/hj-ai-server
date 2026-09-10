@@ -90,10 +90,16 @@ suite('Real parser, chunks and pgvector (isolated PostgreSQL)', () => {
   }
   async function storedVectors() {
     return prisma.$queryRaw<
-      Array<{ id: string; content: string; dimensions: number; value: string }>
+      Array<{
+        id: string;
+        content: string;
+        dimensions: number;
+        value: string;
+        provenance: unknown;
+      }>
     >`
       SELECT id, content, vector_dims(embedding_vector) AS dimensions,
-        embedding_vector::text AS value
+        embedding_vector::text AS value, index_provenance AS provenance
       FROM knowledge_chunk WHERE file_id = ${fileId}::uuid ORDER BY chunk_no
     `;
   }
@@ -127,6 +133,16 @@ suite('Real parser, chunks and pgvector (isolated PostgreSQL)', () => {
     await indexFile();
     const rows = await storedVectors();
     expect(rows.length).toBeGreaterThan(1);
+    expect(rows[0].provenance).toMatchObject({
+      schemaVersion: 1,
+      parser: 'text',
+      parserVersion: 'multiformat-v2',
+      indexRunId: expect.any(String) as unknown,
+      sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
+      chunkSize: 3000,
+      overlap: 300,
+      embeddingModel: 'fixed-vector',
+    });
     expect(
       rows.every(
         (row) =>
@@ -146,6 +162,66 @@ suite('Real parser, chunks and pgvector (isolated PostgreSQL)', () => {
     expect(
       (await searchPgVector()).matches.some((match) => match.fileId === fileId),
     ).toBe(false);
+  });
+
+  it('retains an answer execution snapshot after reindex and deletion without exposing provenance', async () => {
+    await indexFile();
+    const oldRows = await storedVectors();
+    const send = jest.fn().mockResolvedValue({
+      output: {
+        message: {
+          content: [
+            {
+              text: JSON.stringify({
+                answerable: true,
+                answer: 'Original document content.',
+                sourceIndexes: [1],
+              }),
+            },
+          ],
+        },
+      },
+      stopReason: 'end_turn',
+    });
+    Object.defineProperty(knowledge, 'bedrockClient', {
+      value: { send },
+      configurable: true,
+    });
+    const requestId = `trace-${fileId}`;
+    const result = await knowledge.createRagResponse(
+      { query: 'Original?', modelId: 'test-model', includeSourceContent: true },
+      appcode,
+      requestId,
+    );
+    expect(JSON.stringify(result)).not.toContain('indexProvenance');
+    expect(JSON.stringify((await searchPgVector()).matches)).not.toContain(
+      'indexProvenance',
+    );
+    const log = await prisma.knowledgeQueryLog.findFirstOrThrow({
+      where: { appcode, requestId },
+    });
+    expect(log.execution).toMatchObject({
+      performance: result.performance,
+      answerStatus: 'answered',
+      citedSourceIndexes: [1],
+      retrievedSources: expect.arrayContaining([
+        expect.objectContaining({ indexProvenance: oldRows[0].provenance }),
+      ]) as unknown,
+    });
+    body = 'Replacement document content. '.repeat(200);
+    await indexFile();
+    expect((await storedVectors())[0].provenance).not.toEqual(
+      oldRows[0].provenance,
+    );
+    await prisma.knowledgeFile.delete({ where: { id: fileId } });
+    expect(
+      (
+        await prisma.knowledgeQueryLog.findUniqueOrThrow({
+          where: { id: log.id },
+        })
+      ).execution,
+    ).toEqual(log.execution);
+    await prisma.knowledgeQueryLog.delete({ where: { id: log.id } });
   });
 
   it('preserves existing chunk IDs and vectors on embedding failure, then replaces them on job retry', async () => {

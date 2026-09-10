@@ -1,0 +1,52 @@
+# Run from a validated release directory with --project-name hj-ai-server.
+services:
+  app:
+    image: hj-ai-server:${RELEASE_TAG:?Set the validated release tag}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        format: raw
+    ports:
+      - "127.0.0.1:11000:11000"
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:11000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  validation-demo:
+    image: hj-ai-validation:${RELEASE_TAG:?Set the validated release tag}
+    restart: unless-stopped
+    env_file:
+      - path: deploy/validation.env
+        format: raw
+    environment:
+      NODE_ENV: production
+      DEMO_HOST: 0.0.0.0
+      AI_SERVER_BASE_URL: http://app:11000
+      DEMO_ALLOW_NON_LOCAL_MUTATIONS: "true"
+    ports:
+      - "127.0.0.1:11001:11001"
+    volumes:
+      - validation-reports:/app/demo/reports
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:11001/api/catalog').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  validation-reports:

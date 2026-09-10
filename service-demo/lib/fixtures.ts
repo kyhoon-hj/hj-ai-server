@@ -62,8 +62,8 @@ export const journeys: Journey[] = [
     id: 'JOURNEY_PRODUCT_01',
     personaId: 'customer',
     title: '상품 정보 탐색',
-    description: 'LED 스탠드의 밝기 조절과 전원 방식을 묻습니다.',
-    prompt: '밝기 조절이 되고 USB-C로 충전하는 LED 스탠드가 있나요?',
+    description: '등록된 상품의 가격과 위치를 비교합니다.',
+    prompt: '5천 원 이하 상품의 종류, 가격과 위치를 알려주세요.',
     category: '상품 문의',
     eta: '약 20초',
   },
@@ -106,9 +106,9 @@ export const journeys: Journey[] = [
 ];
 
 export const products = [
-  { id: 'PRODUCT_POWER_01', name: '6구 안전 멀티탭', category: '생활가전' },
-  { id: 'PRODUCT_LIGHT_01', name: 'USB-C LED 스탠드', category: '조명' },
-  { id: 'PRODUCT_PET_01', name: '깃털 고양이 장난감', category: '반려용품' },
+  { id: 'PRODUCT_POWER_01', name: '멀티탭 3구 2m', category: '생활가전' },
+  { id: 'PRODUCT_BATTERY_01', name: 'AA 건전지 8입', category: '생활용품' },
+  { id: 'PRODUCT_STORAGE_01', name: '투명 리빙박스 24L', category: '수납' },
 ] as const;
 
 export const policyFixtures = [

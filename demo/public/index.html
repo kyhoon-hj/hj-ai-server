@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HJ AI Server 검증 콘솔</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header class="hero">
@@ -18,6 +19,7 @@
 
     <nav class="tabs" aria-label="검증 영역">
       <button class="tab active" data-tab="setup">연결 설정</button>
+      <button class="tab" data-tab="appAdmin">앱·AppKey 관리</button>
       <button class="tab" data-tab="explorer">전체 기능</button>
       <button class="tab" data-tab="contract">자동 계약 검증</button>
       <button class="tab" data-tab="performance">성능 검증</button>
@@ -73,9 +75,60 @@
         <div class="notice"><strong>운영 안전장치</strong><p>기본 바인딩은 127.0.0.1이며, 파괴적 API는 별도 확인값 없이는 실행되지 않습니다. 성능 시험도 최대 200회·동시 20개로 제한됩니다.</p></div>
       </section>
 
+      <section id="appAdmin" class="panel">
+        <div class="section-title">
+          <div><span>02</span><h2>앱·AppKey 관리</h2></div>
+          <p>앱을 등록하고 AppKey의 만료, 회전과 사용 상태를 관리합니다.</p>
+        </div>
+        <div class="admin-toolbar card">
+          <div>
+            <h3>등록 앱</h3>
+            <p id="appAdminStatus">관리자 credential을 확인해 주세요.</p>
+          </div>
+          <button id="refreshApps" class="secondary" type="button">목록 새로고침</button>
+        </div>
+        <div id="issuedKeyPanel" class="card issued-key-panel" hidden aria-live="polite">
+          <div class="issued-key-head">
+            <div><p class="eyebrow">ONE-TIME SECRET</p><h3 id="issuedKeyTitle">AppKey가 발급되었습니다</h3></div>
+            <button id="dismissIssuedKey" class="ghost" type="button">화면에서 지우기</button>
+          </div>
+          <p class="key-warning">이 키는 다시 조회할 수 없습니다. 지금 안전한 비밀 저장소에 보관하세요.</p>
+          <div class="key-copy-row">
+            <input id="issuedAppkey" type="password" readonly autocomplete="off" aria-label="새로 발급된 AppKey" />
+            <button id="toggleIssuedKey" class="secondary" type="button">표시</button>
+            <button id="copyIssuedKey" class="primary" type="button">AppKey 복사</button>
+          </div>
+          <dl id="issuedKeyMeta" class="key-meta"></dl>
+        </div>
+        <div class="admin-workspace">
+          <form id="createAppForm" class="card controls">
+            <div><h3>신규 앱과 AppKey 발급</h3><p>앱 등록과 동시에 첫 AppKey가 한 번 발급됩니다.</p></div>
+            <label>앱 이름<input id="newAppName" type="text" maxlength="120" required placeholder="매장 안내 서비스" /></label>
+            <label>앱 코드<input id="newAppCode" type="text" maxlength="63" pattern="[a-z0-9][a-z0-9-]*" required placeholder="store-assistant" /></label>
+            <fieldset class="access-fieldset">
+              <legend>지식 접근 등급</legend>
+              <label class="check"><input name="accessLevel" type="checkbox" value="PUBLIC" checked /> PUBLIC</label>
+              <label class="check"><input name="accessLevel" type="checkbox" value="INTERNAL" /> INTERNAL</label>
+              <label class="check"><input name="accessLevel" type="checkbox" value="RESTRICTED" /> RESTRICTED</label>
+            </fieldset>
+            <div class="compact-fields">
+              <label>유효기간(일)<input id="newAppTtl" type="number" min="1" max="3650" value="90" required /></label>
+              <label>저장공간(MB)<input id="newAppStorage" type="number" min="1" max="1048576" placeholder="선택" /></label>
+              <label>월 토큰 한도<input id="newAppTokens" type="number" min="1" placeholder="선택" /></label>
+            </div>
+            <label>메모<input id="newAppRemark" type="text" maxlength="500" placeholder="서비스 담당자와 용도" /></label>
+            <label class="check issue-confirm"><input id="confirmAppIssue" type="checkbox" required /> AppKey가 한 번만 표시되는 것을 확인했습니다.</label>
+            <button id="issueAppkey" class="primary" type="submit">앱 등록 및 AppKey 발급</button>
+          </form>
+          <div class="card app-list-card">
+            <div id="appList" class="app-list"><p class="empty-state">목록을 불러오면 앱이 여기에 표시됩니다.</p></div>
+          </div>
+        </div>
+      </section>
+
       <section id="explorer" class="panel">
         <div class="section-title">
-          <div><span>02</span><h2>전체 기능 점검</h2></div>
+          <div><span>03</span><h2>전체 기능 점검</h2></div>
           <p>앱 관리, Bedrock, S3, 지식 생명주기와 외부 소비자 후보 API를 직접 호출합니다.</p>
         </div>
         <div class="workspace">
@@ -111,7 +164,7 @@
 
       <section id="contract" class="panel">
         <div class="section-title">
-          <div><span>03</span><h2>자동 계약 검증</h2></div>
+          <div><span>04</span><h2>자동 계약 검증</h2></div>
           <p>상태, 인증, correlation ID, 일반 답변, 검색과 제품 답변의 핵심 계약을 순차 실행합니다.</p>
         </div>
         <div class="card run-card">
@@ -136,10 +189,11 @@
 
       <section id="performance" class="panel">
         <div class="section-title">
-          <div><span>04</span><h2>제한된 성능 검증</h2></div>
+          <div><span>05</span><h2>제한된 성능 검증</h2></div>
           <p>p50·p95·p99, 처리량, 상태 코드, 토큰 사용량과 429 발생을 측정합니다.</p>
         </div>
         <form id="performanceForm" class="card form-grid">
+          <label>부하 프리셋<select id="performancePreset"></select></label>
           <label>대상 API<select id="performanceOperation"></select></label>
           <label>총 요청 수<input id="totalRequests" type="number" min="1" max="200" value="20" /></label>
           <label>동시 요청 수<input id="concurrency" type="number" min="1" max="20" value="1" /></label>
@@ -150,14 +204,39 @@
   "maxTokens": 512
 }</textarea></label>
           <div class="wide warning">Bedrock는 입력 토큰과 maxTokens를 기준으로 TPM을 예약합니다. 목적에 맞게 maxTokens를 줄인 뒤 단계적으로 동시성을 높이세요.</div>
-          <button class="primary" type="submit">성능 시험 실행</button>
+          <button id="runPerformance" class="primary" type="submit">성능 시험 실행</button>
         </form>
         <div id="performanceSummary" class="metrics"></div>
+        <p class="muted">성공률은 최종 HTTP 응답 기준입니다. 데모는 요청당 한 번 호출합니다. 요청 전체 SDK 지표는 검색·생성 등 공통 AWS 호출 경로를 집계하며 일부 메타데이터가 없으면 미측정입니다. 생성 호출과 실패 호출 지표도 따로 제공합니다. 타임아웃 뒤 서버 처리 완료 여부는 알 수 없습니다. HTTP 504는 기타 HTTP 실패로 집계합니다.</p>
         <pre id="performanceResult">아직 실행하지 않았습니다.</pre>
+        <div id="performanceComparison" class="card">
+          <h3>이전 실행과 비교</h3>
+          <button id="usePerformanceBaseline" type="button" disabled>현재 결과를 비교 기준으로</button>
+          <label>저장된 실행 JSON 불러오기<input id="performanceBaselineFile" type="file" accept=".json,application/json" /></label>
+          <p id="performanceBaselineStatus">비교 기준이 없습니다. 실행 결과를 지정하거나 저장된 JSON을 불러오세요.</p>
+          <button id="exportPerformance" type="button" disabled>현재 실행 JSON 저장</button>
+          <button id="exportPerformanceComparison" type="button" disabled>비교 JSON 저장</button>
+          <p id="performanceComparisonNote"></p>
+          <div style="overflow-x:auto"><table><thead><tr><th>지표</th><th>기준</th><th>현재</th><th>차이</th><th>변화율</th></tr></thead><tbody id="performanceComparisonRows"></tbody></table></div>
+        </div>
       </section>
     </main>
 
+    <dialog id="rotateDialog" class="admin-dialog">
+      <form id="rotateKeyForm" method="dialog">
+        <div class="dialog-head"><div><p class="eyebrow">KEY ROTATION</p><h3 id="rotateAppTitle">AppKey 회전</h3></div><button id="cancelRotate" class="ghost" type="button">닫기</button></div>
+        <input id="rotateAppId" type="hidden" />
+        <p>새 키 발급 후 이전 키는 설정한 유예시간까지만 사용할 수 있습니다.</p>
+        <div class="compact-fields">
+          <label>새 키 유효기간(일)<input id="rotateTtl" type="number" min="1" max="3650" value="90" required /></label>
+          <label>이전 키 유예시간(초)<input id="rotateGrace" type="number" min="0" max="86400" value="300" required /></label>
+        </div>
+        <label class="check issue-confirm"><input id="confirmRotate" type="checkbox" required /> 기존 키의 만료 영향을 확인했습니다.</label>
+        <div class="dialog-actions"><button class="secondary" id="cancelRotateBottom" type="button">취소</button><button id="rotateAppkey" class="primary" type="submit">새 AppKey 발급</button></div>
+      </form>
+    </dialog>
+
     <div id="toast" class="toast" role="status"></div>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

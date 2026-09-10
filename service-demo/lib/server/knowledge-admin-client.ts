@@ -1,6 +1,6 @@
 import { CORRELATION_HEADER } from '@/lib/api-client';
 import type { TenantId } from '@/lib/knowledge-contract';
-import { getKnowledgeAdminConfig } from './tenant-config';
+import { AI_SERVER_USER_AGENT, getKnowledgeAdminConfig } from './tenant-config';
 
 export interface AdminUpstreamResult {
   response: Response;
@@ -17,6 +17,7 @@ export async function callKnowledgeAdmin(
   const config = getKnowledgeAdminConfig(tenantId);
   if (!config) return null;
   const headers = new Headers(init.headers);
+  headers.set('user-agent', AI_SERVER_USER_AGENT);
   headers.set('x-admin-key', config.operatorKey);
   headers.set(CORRELATION_HEADER, correlationId);
   try {

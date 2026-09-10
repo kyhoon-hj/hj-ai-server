@@ -22,6 +22,27 @@ describe('BedrockService general answer contract', () => {
     return { service, send, logCreate };
   }
 
+  it.each(['zinframe', 'ZINFRAME-test', 'ZINFRAME_P0', 'SUPPORT'])(
+    'applies content retention policy at the database sink for %s',
+    async (appcode) => {
+      const { service, logCreate } = createService('private answer');
+      await service.createGeneralAnswer(
+        { query: 'private question' },
+        { appcode, defaultModelId: 'model-v1' },
+      );
+      const [[{ data }]] = logCreate.mock.calls as [
+        {
+          data: { searchword: string; totaltokens: number };
+        },
+      ][];
+      expect(data.searchword).toBe(
+        appcode === 'SUPPORT' ? 'private question' : '[CONTENT_OMITTED]',
+      );
+      expect(data.totaltokens).toBe(15);
+      expect(JSON.stringify(data)).not.toContain('private answer');
+    },
+  );
+
   it('returns an eligible low-risk general answer with a fixed prompt version', async () => {
     const { service, send, logCreate } = createService(
       '클라우드는 컴퓨팅 자원을 제공하는 방식입니다.',

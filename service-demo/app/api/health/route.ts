@@ -1,4 +1,5 @@
 import { CORRELATION_HEADER, createCorrelationId } from '@/lib/api-client';
+import { AI_SERVER_USER_AGENT } from '@/lib/server/tenant-config';
 
 const DEFAULT_AI_SERVER_URL = 'http://127.0.0.1:11000';
 
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
     const response = await fetch(`${baseUrl}/health/ready`, {
       cache: 'no-store',
       signal: controller.signal,
-      headers: { [CORRELATION_HEADER]: correlationId },
+      headers: { [CORRELATION_HEADER]: correlationId, 'user-agent': AI_SERVER_USER_AGENT },
     });
     const upstreamCorrelationId = response.headers.get(CORRELATION_HEADER) ?? correlationId;
     const details = await response.json().catch(() => null);

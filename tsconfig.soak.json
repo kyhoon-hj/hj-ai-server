@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./work/soak-build",
+    "incremental": false,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["test/multiprocess-soak.ts", "test/fixtures/soak-worker-process.ts"],
+  "exclude": ["node_modules", "dist", "work", "service-demo", "**/*spec.ts"]
+}

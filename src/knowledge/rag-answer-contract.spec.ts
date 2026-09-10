@@ -34,6 +34,20 @@ describe('RAG answer contract', () => {
     });
   });
 
+  it('preserves a cited partial answer and its explicit uncertainty', () => {
+    const answer =
+      '상품 위치에서 1층과 2층이 확인됩니다. 전체 층수와 평면도는 확인할 수 없습니다.';
+    expect(parse({ answerable: true, answer, sourceIndexes: [1] })).toEqual({
+      answerable: true,
+      answer,
+      sourceIndexes: [1],
+      answerStatus: 'answered',
+    });
+    expect(
+      parse({ answerable: true, answer, sourceIndexes: [] }).answerable,
+    ).toBe(false);
+  });
+
   it.each([
     null,
     [],

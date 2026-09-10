@@ -1,10 +1,12 @@
 import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { AwsMetricsInterceptor } from './common/http/aws-metrics.interceptor';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppInfoModule } from './app-info/app-info.module';
 import { BedrockModule } from './bedrock/bedrock.module';
+import { ConversationModule } from './conversation/conversation.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { StorageModule } from './storage/storage.module';
 import { TestTableModule } from './test-table/test-table.module';
@@ -23,6 +25,7 @@ import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
     SecurityModule,
     AppInfoModule,
     BedrockModule,
+    ConversationModule,
     KnowledgeModule,
     StorageModule,
     TestTableModule,
@@ -31,6 +34,7 @@ import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
   providers: [
     AppService,
     AwsRequestShutdownService,
+    { provide: APP_INTERCEPTOR, useClass: AwsMetricsInterceptor },
     {
       provide: APP_FILTER,
       useClass: StructuredHttpExceptionFilter,

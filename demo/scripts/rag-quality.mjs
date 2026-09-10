@@ -51,6 +51,17 @@ if (args.length === 0 || args[0] === '--validate') {
 } else {
   let responses;
   const startedAt = new Date().toISOString();
+  const evaluationRunId = randomUUID();
+  const manifest = {
+    schemaVersion: 1, evaluationRunId, startedAt,
+    datasetVersion: dataset.version, fixtureVersion: dataset.fixtureVersion,
+    datasetSha256: digest(datasetText),
+    effectiveDatasetSha256: digest(JSON.stringify(dataset)),
+    parameters: { maxTokens: 256, temperature: 0, scoreThreshold: 0.35, limit: 5, strict: true },
+    fixtureSha256: Object.fromEntries(Object.entries(fixtures).map(([name, text]) => [name, digest(text)])),
+    scorerSha256: digest(await readFile(new URL('../rag-quality.mjs', import.meta.url), 'utf8')),
+    requests: [],
+  };
   if (args[0] === '--answers' && args.length === 2) {
     responses = JSON.parse(await readFile(args[1], 'utf8'));
   } else if (args[0] === '--live' && args.length === 1) {
@@ -80,14 +91,17 @@ if (args.length === 0 || args[0] === '--validate') {
         await writeFile(join(process.env.RAG_EVAL_REPORT_DIRECTORY, 'retrieval-diagnostics.json'), JSON.stringify(diagnostics, null, 2), { mode: 0o600 });
       }
       let record;
+      const requestId = randomUUID();
+      manifest.requests.push({ caseId: c.id, tenant: c.tenant, requestId });
+      if (process.env.RAG_EVAL_REPORT_DIRECTORY) await writeFile(join(process.env.RAG_EVAL_REPORT_DIRECTORY, 'run-manifest.json'), JSON.stringify(manifest, null, 2), { mode: 0o600 });
       try {
         const response = await fetch(url('/knowledge/answers'), {
-          method: 'POST', headers: { 'content-type': 'application/json', appkey: keys[c.tenant], 'x-correlation-id': randomUUID() },
+          method: 'POST', headers: { 'content-type': 'application/json', appkey: keys[c.tenant], 'x-correlation-id': requestId },
           body: JSON.stringify({ query: c.query, strict: true, includeSources: true, includeSourceContent: Boolean(c.requiredExposureMarker), maxTokens: 256, temperature: 0, limit: 5, scoreThreshold: 0.35, filters: { accessLevels: ['PUBLIC'], businessStatuses: ['PUBLISHED'] } }),
           signal: AbortSignal.timeout(45000),
         });
-        record = { id: c.id, status: response.status, body: response.ok ? await response.json() : null, latencyMs: Date.now() - start };
-      } catch { record = { id: c.id, status: 0, body: null, latencyMs: Date.now() - start }; }
+        record = { id: c.id, requestId, evaluationRunId, status: response.status, body: response.ok ? await response.json() : null, latencyMs: Date.now() - start };
+      } catch { record = { id: c.id, requestId, evaluationRunId, status: 0, body: null, latencyMs: Date.now() - start }; }
       if (record.status !== 200) failures++;
       responses.push(record);
       if (process.env.RAG_EVAL_REPORT_DIRECTORY) await writeFile(join(process.env.RAG_EVAL_REPORT_DIRECTORY, 'responses.json'), JSON.stringify(responses, null, 2), { mode: 0o600 });
@@ -95,6 +109,8 @@ if (args.length === 0 || args[0] === '--validate') {
     }
   } else throw new Error('Use --validate, --answers <responses.json>, or --live');
   const report = evaluateDataset(dataset, responses);
+  report.evaluationRunId = args[0] === '--live' ? evaluationRunId : null;
+  report.responseExecutionReferences = responses.map(r => ({ caseId: r.id, requestId: r.requestId ?? r.body?.requestId ?? null, evaluationRunId: r.evaluationRunId ?? null }));
   report.repeatability = summarizeRepeatability(dataset, responses, report.results);
   report.cohorts = Object.fromEntries([...new Set(dataset.cases.map(c => c.cohort ?? 'baseline'))].map(cohort => {
     const ids = new Set(dataset.cases.filter(c => (c.cohort ?? 'baseline') === cohort).map(c => c.id));

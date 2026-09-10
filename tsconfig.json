@@ -22,5 +22,5 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
-  "exclude": ["service-demo"]
+  "exclude": ["node_modules", "dist", "service-demo", "work", "outputs"]
 }

@@ -166,6 +166,7 @@ model KnowledgeChunk {
   embedding       Float[]                      @default([])
   embeddingVector Unsupported("vector(1024)")? @map("embedding_vector")
   embeddingModel  String?                      @map("embedding_model")
+  indexProvenance Json?                        @map("index_provenance")
   createdAt       DateTime                     @default(now()) @map("created_at")
 
   file KnowledgeFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
@@ -190,6 +191,7 @@ model KnowledgeQueryLog {
   outputtokens    Int?
   totaltokens     Int?
   requestId       String?  @map("request_id")
+  execution       Json?
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([appcode])

@@ -55,7 +55,10 @@ describe('answers BFF', () => {
     const upstreamHeaders = new Headers(fetchMock.mock.calls[0][1]?.headers);
     const upstreamBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(upstreamHeaders.get('appkey')).toBe('server-only-appkey');
-    expect(upstreamBody).toMatchObject({ scoreThreshold: 0.4, strict: true });
+    expect(upstreamBody).toMatchObject({ limit: 5, strict: true });
+    expect(upstreamBody).toMatchObject({ answerStyle: 'detailed', maxTokens: 768 });
+    expect(upstreamBody.system).toContain('등록 자료 기준');
+    expect(upstreamBody).not.toHaveProperty('scoreThreshold');
     expect(upstreamBody.query).toContain('STORE_A 매장의 운영 및 영업 시간');
     const body = await response.json();
     expect(body).toMatchObject({ answerable: true, requestId, sources: [{ id: 'file-1', name: '운영시간 안내.pdf', page: 2 }] });
@@ -70,7 +73,22 @@ describe('answers BFF', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ answer: '등록된 자료에서 확인할 수 없습니다.', answerable: false, sources: [], requestId }), { status: 200, headers: { [CORRELATION_HEADER]: requestId } }));
     const response = await POST(answerRequest({ tenantId: 'STORE_B', query: '다음 입고일' }));
     const upstreamBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(upstreamBody).toMatchObject({ query: '다음 입고일', scoreThreshold: 0.35, strict: true });
+    expect(upstreamBody).toMatchObject({ query: '다음 입고일', strict: true });
     expect(await response.json()).toMatchObject({ answerable: false, sources: [], requestId });
+  });
+
+  it('does not discard low-similarity catalog evidence and preserves the selected tenant', async () => {
+    process.env.AI_SERVER_APPKEY_STORE_A = 'catalog-appkey-a';
+    process.env.AI_SERVER_APPKEY_STORE_B = 'catalog-appkey-b';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      answer: '등록된 상품은 멀티탭, 건전지, 리빙박스입니다.', answerable: true,
+      sources: [{ fileId: 'products-a', fileName: 'store-a-products.csv', score: 0.02984 }], requestId,
+    }), { status: 200 }));
+    const response = await POST(answerRequest({ tenantId: 'STORE_A', query: '상품의 종류가 뭐가 있나' }));
+    const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(sent).toMatchObject({ query: '상품의 종류가 뭐가 있나', limit: 5, strict: true, includeSources: true });
+    expect(sent).not.toHaveProperty('scoreThreshold');
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('appkey')).toBe('catalog-appkey-a');
+    expect(await response.json()).toMatchObject({ answerable: true, sources: [{ id: 'products-a', name: 'store-a-products.csv' }] });
   });
 });

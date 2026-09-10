@@ -1,8 +1,8 @@
 # AI Server·검증 데모·서비스 데모 통합 로드맵
 
 최초 작성일: 2026-08-05
-개정일: 2026-09-04
-상태: **단계 3 잔여 장애 검증 + 단계 4 RAG 개발 평가 진행 — 반복 74/74회 통과, 운영 배포 승인과 독립 검수는 별도**
+개정일: 2026-09-05
+상태: **실행 추적·소켓 장애·실제 AWS 연결 복구·인덱스 COMMIT 응답 유실 검증 완료 — 장기 분할·운영 배포·독립 검수는 별도**
 적용 범위: `src/`, `prisma/`, `demo/`, `service-demo/`, 배포 및 운영 설정
 
 ## 1. 목적
@@ -19,18 +19,42 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 ## 현재 위치 요약
 
+> **2026-09-06 운영 배포 완료:** AI 서버·검증 데모는 EC2 11000/11001, 서비스 데모는 기존 비공개 Sites에 배포했습니다. migration 13개 적용, 실제 서비스 답변·출처·근거 부족 및 업로드·비동기 색인·매장 격리·보관 검증 PASS. [운영 배포 기록](PRODUCTION_DEPLOYMENT_2026-09-06.md). 아래 9월 5일 수치는 과거 이력이며 장기 부하·독립 검수·정식 운영 승인은 별도입니다.
+
 > **현재: 단계 3 잔여 검증과 단계 4 RAG 품질·안전성 병행**
+>
+> 최신 RAG 측정 구현: 검색/생성 시간과 실효 maxTokens를 응답·실행 로그에 추가하고 데모 p95·입출력 토큰·측정 건수와 연결했습니다. 미지원/실패 응답의 누락값은 0 대신 미측정으로 표시합니다. [단계별 측정](RAG_PERFORMANCE_TELEMETRY_2026-09-05.md). 실제 AWS 지연 기준선은 별도입니다.
+>
+> 최신 컴파일 실행: 같은 390초/5분 lease 시험에서 4,021작업 완료, lease 만료 후 465ms에 종료 작업 회수. 장기 실행 PID의 표본 최대 RSS 317~321MiB로 이전 ts-node 845~866MiB보다 낮았습니다. [컴파일 비교](COMPILED_SOAK_2026-09-05.md). 단일 실행·합성 adapter의 비교이며 운영 capacity/메모리 누수 판정은 별도입니다.
+>
+> 최신 별도 프로세스 검증: 워커 3개·390초 공급·3,986작업 완료. 처리 중 한 워커 강제 종료/재시작 후 실제 5분 lease 만료 402ms 뒤 attempt 2 완료, 대기 중 다른 작업 3,051개 완료. [프로세스 지속 시험](MULTIPROCESS_SOAK_2026-09-05.md). 서비스 경계 합성 의존성·ts-node 실행이며 운영 컴파일 빌드/다중 호스트/수시간 안정성은 별도입니다.
+>
+> 최신 반복 부하 검증: 약 43KB × 12파일·192청크, 워커 3개에서 정상/단절 각 3회 총 6/6 PASS. 정상 완료 중앙값 4.430초, 연결 복구 후 4.487초, 중복 없음. CPU·RSS·heap·DB 연결 표본을 기록했습니다. [여러 청크 반복 측정](EXTENDED_NETWORK_LOAD_2026-09-05.md). 운영 장시간·다중 프로세스 성능 판정은 별도입니다.
+>
+> 최신 로컬 부하 검증: 24개 파일 × 워커 1/3개 × 정상/DB 단절의 4개 조건 PASS. 워커 3개에서 정상 0.700초, 연결 복구 후 0.792초에 24개 완료·중복 청크 없음. [부하 측정](NETWORK_LOAD_2026-09-05.md). 합성 외부 응답·단일 실행이며 운영 처리량/SLO 판정은 아닙니다.
+>
+> 최신 비대칭 단절 검증: 이전 워커만 DB 연결 차단, 정상 워커의 lease 회수/attempt 2 완료 후 이전 워커의 늦은 성공·오류가 최신 청크·파일·작업 상태를 바꾸지 못함을 확인했습니다. 네트워크 15/15 PASS. [비대칭 단절 검증](ASYMMETRIC_PARTITION_2026-09-05.md). 아래 기록은 각 실행 시점의 이력입니다.
+>
+> 최신 동시 복구 검증: 별도 DB pool의 워커 3개, 테스트 lease 3회 이상 단절 후 단일 attempt 회수 및 반복 단절 시 시도 상한 준수. 네트워크 13/13 PASS. [다중 워커 단절 복구](MULTI_WORKER_PARTITION_2026-09-05.md). 운영 시간 기준 장시간·다중 호스트 부하와 비대칭 분할은 별도입니다.
+>
+> 최신 DB 검증: 인덱스 COMMIT 응답을 실제로 차단한 뒤 직접 DB 연결에서 저장 성공 확인. lease 만료 후 같은 job attempt 2 완료 및 중복 청크 없음. 네트워크 11/11 PASS. [COMMIT 응답 유실](DB_COMMIT_RESPONSE_LOSS_2026-09-05.md). 아래 수치는 각 실행 시점의 이력입니다.
+>
+> 최신 후속: 실제 AWS TLS 경로의 S3 단절·Bedrock 지연 복구 2/2 PASS. 동일 job attempt 2 완료, 기존 청크 보존, 테스트 객체 버전/삭제 마커와 임시 DB 정리 완료. [실제 AWS 연결 복구](LIVE_AWS_CONNECTION_RECOVERY_2026-09-05.md). AWS 서비스 내부 429/5xx·COMMIT 응답 유실·장기 분할은 별도 검증입니다.
+>
+> 2026-09-05 후속: HTTP/2 연결 종료·S3 스트림 중단이 영구 실패로 분류되는 결함 수정. 실제 소켓/SDK·격리 DB 네트워크 시나리오 10개, 서버 단위 197개·검증 데모 37개 PASS. 로그인 갱신 후 실제 AWS NoSuchKey/ValidationException 영구 오류 probe 2/2 PASS. [소켓 장애 검증](NETWORK_RECOVERY_2026-09-05.md) 참조. 실제 AWS 일시 장애 복구 완료를 의미하지 않습니다.
+>
+> 2026-09-05: 요청 설정·색인 snapshot·빌드 식별 정보의 영속 기록과 평가 실행 ID 연결을 구현했습니다. 서버 186개·검증 데모 37개·격리 통합 24개 통과. [실행·색인 추적](EXECUTION_PROVENANCE_2026-09-05.md) 참조. 아래 과거 평가 실행 수치는 해당 실행의 이력입니다.
 >
 > DB 기반 job·retry·lease·종료 복구와 실제 AWS 생명주기 기반을 검증했습니다. CSV/Markdown 파싱 및 RAG 답변 계약을 개선하고 golden 50, 확장 70, 간접 공격 56, 반복 74회 평가를 수행했습니다. **실제 AWS 일시 장애 복구·독립 검수·운영 승인은 남아 있습니다.** 로컬 검증/소스 푸시는 원격 운영 배포 완료를 의미하지 않습니다. [구현·검증 인수인계](IMPLEMENTATION_AND_VALIDATION_2026-09-04.md) 참조.
 
 | 단계 | 주제 | 현재 판정 | 핵심 상태 |
 | ---: | --- | --- | --- |
 | 0 | 재현 가능한 기준 환경 | 대부분 완료 | fixture, readiness, 서비스 데모 실행 기반 확보; migration 복구 리허설·dependency 잔여 |
-| 1 | 인증·권한·tenant 경계 | 서버·검증 완료, 서비스 일부 진행 | BFF credential 비노출과 STORE_A/B 격리 확인; 역할별 메뉴·권한 분리 남음 |
+| 1 | 인증·권한·tenant 경계 | 현재 데모 역할 범위 완료 | BFF credential 비노출, STORE_A/B 격리, 역할별 메뉴·서버 권한 검증 완료 |
 | 2 | 지식 생명주기·파일 안전성 | 완료 | 고객·관리자·역할 경계와 정책 matrix 17/17 완료 |
-| **3** | **비동기 인덱싱·장애 복원력** | **진행 중** | queue job·선별 retry·idempotency·동시성·timeout/abort·상태 UX 완료; 실제 AWS 장애 호출 남음 |
-| 4 | RAG 품질·안전성 | 개발 평가 진행 | 파서·응답 계약 및 3유형 반복 검증 완료; 독립 자료·검수·운영 피드백 남음 |
-| 5 | 쿼터·성능·비용 | 예정 | SLO, 부하, token·quota·metric |
+| **3** | **비동기 인덱싱·장애 복원력** | **진행 중** | 실제 AWS 연결 복구·인덱스 COMMIT 응답 유실 검증; 서비스 내부 장애·장기 분할 남음 |
+| 4 | RAG 품질·안전성 | 개발 평가·실행 추적 구현 | 파서·응답 계약·3유형 반복 및 설정/색인 snapshot 완료; 독립 자료·검수·운영 피드백 남음 |
+| 5 | 쿼터·성능·비용 | 로컬 반복 부하·자원 기준 확보 | 작은 문서 4조건 및 192청크 정상/단절 6회·프로세스 자원·DB 연결 측정; 운영 SLO·장시간·비용은 별도 |
 | 6 | `/v1` 공통 API·배포 게이트 | 일부 기반만 진행 | 관리자 API 일부 완료; 외부 계약·OpenAPI·배포 승인 남음 |
 | 7 | 매출 자료 분석 확장 | 예정 | 고객응대 MVP와 `/v1` 안정 후 착수 |
 
@@ -69,17 +93,17 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 | 항목                  | 현재 상태                                         | 목표                                   |
 | --------------------- | ------------------------------------------------- | -------------------------------------- |
 | AI Server build       | PASS                                              | 계속 PASS                              |
-| 단위 테스트           | 129/129 PASS                                      | 핵심 서비스 branch 80% 이상            |
-| 검증 데모 자체 테스트 | 15/15 PASS                                        | 시나리오·fixture 변경마다 계속 PASS    |
+| 단위 테스트           | 197/197 PASS (2026-09-05)                          | 핵심 서비스 branch 80% 이상            |
+| 검증 데모 자체 테스트 | 37/37 PASS (2026-09-05)                            | 시나리오·fixture 변경마다 계속 PASS    |
 | CI 품질 게이트        | 로컬·GitHub PASS, `main` PR 필수 체크 적용        | 계속 PASS 및 audit artifact 보존       |
-| E2E                   | 로컬 고객응대 대표 여정 PASS, 전체 자동화 예정    | 외부·관리·지식 생명주기 전체 자동 실행 |
-| line coverage         | 30.34%                                            | 핵심 서비스 80% 이상                   |
+| E2E                   | 격리 DB 통합 39/39 PASS (2026-09-05, 네트워크 15개 포함), 고객응대 대표 여정은 이전 검증 | 외부·관리·지식 생명주기 전체 자동 실행 |
+| line coverage         | 이전 측정 30.34%, 이번 작업 미측정                 | 핵심 서비스 80% 이상                   |
 | typecheck             | PASS                                              | 계속 PASS                              |
 | lint                  | PASS                                              | 계속 PASS                              |
-| dependency audit      | 전체·production High 4, Moderate 0                | High 0 또는 승인 예외                  |
-| DB migration          | 로컬 신규 DB 12개 migration·pgvector 0.8.6·E2E PASS | 배포 환경과 schema 일치                |
+| dependency audit      | 이전 측정 High 4, Moderate 0; 현재 수치 재측정 필요 | High 0 또는 승인 예외                  |
+| DB migration          | 격리 신규 DB 13개 migration·pgvector·E2E PASS; 서비스 DB 미적용 | 배포 환경과 schema 일치                |
 | 검증 데모             | 핵심 계약·보안·parser 검증과 제한 성능 러너       | 전체 자동 검증 및 승인 리포트          |
-| 서비스 데모           | 고객 채팅 MVP E2E PASS, 관리자 업로드 화면 예정   | 마트 고객응대 MVP 후 매출 분석 확장    |
+| 서비스 데모           | 고객 채팅·관리자 업로드·정책·색인 상태/복구 화면 구현, 9/4 테스트 56개 PASS | 마트 고객응대 MVP 후 매출 분석 확장    |
 | 외부 API              | 기존 내부 endpoint 혼재                           | `/v1` 안정 계약 확정                   |
 | 관리자 API            | API key 기반 관리자·지식 운영자 RBAC 적용         | identity 기반 인증과 감사 보존 정책    |
 | 관측성                | correlation ID와 DB log 일부                      | 로그·metric·trace·alert 연결           |
@@ -258,10 +282,11 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 #### 데모
 
 - [~] `REL-DEM-01` 인덱싱 job 제출·조회·완료 scenario와 서비스 실패·재시도 화면 완료; 강제 실패·재시도 scenario 남음
-- [~] `REL-DEM-02` Bedrock 429, timeout, 5xx 단위 fault injection 완료; 실제 호출 E2E 남음
+- [~] `REL-DEM-02` Bedrock 429, timeout, 5xx 단위 및 로컬 HTTP/2·실제 SDK E2E, 실제 AWS TLS 경로 지연/복구 완료. AWS 서비스 내부 429/5xx 시험은 별도
 - [~] `REL-DEM-03` S3 없음·DB 일시 오류를 서비스 경계에 주입하고 로컬 PostgreSQL 상태 전이 검증 완료; 실제 AWS 장애 호출 E2E 남음
   - 2026-09-04 추가: `npm run test:aws-live-lifecycle` PASS. 실제 S3 원본 삭제 후 HTTP reindex job이 `INDEX_SOURCE_NOT_FOUND`, attempt 1, retryable false로 종료하고 기존 vector·검색을 보존함. 실제 AWS 일시 장애 복구/DB 네트워크 장애는 여전히 미검증.
   - 로컬 전용 opt-in E2E 7/7 PASS: 429·timeout 복구, 5xx 재시도 소진, Validation·AccessDenied·NoSuchKey 영구 실패, Prisma transaction 일시 오류 복구
+  - 2026-09-05 추가: 소켓/SDK 네트워크 E2E 10/10 PASS. 실제 PostgreSQL 워커 연결 종료·신규 연결 차단 후 lease 자연 만료/재처리 확인. S3 스트림·Bedrock HTTP/2 연결 중단의 영구 실패 오분류 수정. 로컬 응답 합성이며 실제 AWS·COMMIT 응답 유실·장기 분할 검증은 별도.
   - 재시도 대기와 영구 실패 중 기존 chunk 보존, 성공 transaction에서만 chunk 교체, fixture 자동 정리 확인
 - [x] `REL-DEM-04` 동일 요청 중복 제출과 idempotency 검증
 - [x] `REL-DEM-05` 오류 code, retryable과 next attempt 계약 단위·BFF 검증
@@ -315,8 +340,8 @@ AI Server를 공통 제품 기반으로, 검증 데모를 실행 가능한 품�
 
 #### AI Server
 
-- [~] `RAG-SRV-01` 응답에 promptVersion `rag-answer-v2` 추가, 평가 설정/모델 기록. 로그 영속화 및 전체 설정 버전 관리는 남음
-- [ ] `RAG-SRV-02` source를 지시문이 아닌 불신 데이터로 구분하는 prompt 구조
+- [x] `RAG-SRV-01` promptVersion, 실효 모델/검색/생성 설정, source/index snapshot, 코드 revision/소스 해시 영속 기록 및 평가 실행 ID 연결. 2026-09-05 로컬 검증 완료. 과거 인덱스는 null 유지, 배포·재색인 별도. [상세](EXECUTION_PROVENANCE_2026-09-05.md)
+- [~] `RAG-SRV-02` 참고자료 내부 지시 무시 규칙과 출력 계약 구현·간접 공격 개발 평가 완료. 구조적 분리 강화 및 독립 검수는 남음
 - [~] `RAG-SRV-03` 모델의 구조화된 답변 가능 판단과 출처 검증으로 answerable 분리. 검색 score 보정은 남음
 - [~] `RAG-SRV-04` CSV 행별 파싱 및 Markdown 제목별 절/상위 제목 보존 적용. 긴 절 문맥·chunk 크기/overlap 비교는 남음
 - [ ] `RAG-SRV-05` 필요 시 Bedrock Guardrail 적용 방식 별도 결정
@@ -348,9 +373,9 @@ Guardrail을 적용하더라도 원본 PII가 모델 invocation log에 남을 �
 
 #### 데모
 
-- [ ] `PERF-DEM-01` 검색 시간과 생성 시간을 분리 기록
-- [ ] `PERF-DEM-02` input/output/total token과 maxTokens를 함께 기록
-- [ ] `PERF-DEM-03` Smoke/Baseline/Burst preset과 비교 리포트
+- [~] `PERF-DEM-01` RAG 검색·생성 시간을 응답/실행 로그/데모 리포트로 분리 기록 완료; 실제 AWS 기준선 수집 별도
+- [~] `PERF-DEM-02` input/output/total과 요청 maxTokens·RAG 서버 실효 maxTokens 및 측정 건수 기록 완료; 기타 AI endpoint 실효 설정 추적 별도
+- [x] `PERF-DEM-03` Smoke/Baseline/Burst·직접 설정, 기준 실행 지정/JSON 가져오기, 조건 차이·지표 비교 및 JSON 내보내기 구현. [검증](PERFORMANCE_PRESETS_2026-09-05.md)
 - [ ] `PERF-DEM-04` 429·timeout·retry 횟수와 최종 성공률 표시
 - [ ] `PERF-DEM-05` 30분 이상 soak는 전용 도구 결과를 import
 

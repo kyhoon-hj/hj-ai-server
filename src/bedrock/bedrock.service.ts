@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { omitConversationContent } from '../common/content-log-policy';
 import { ConfigService } from '@nestjs/config';
 import {
   BedrockClient,
@@ -12,6 +13,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { ConverseDto } from './dto/converse.dto';
+import { readAwsAttempts } from '../common/aws/aws-attempts';
 import { GeneralAnswerDto } from './dto/general-answer.dto';
 import { TextResponseDto } from './dto/text-response.dto';
 import {
@@ -164,6 +166,7 @@ export class BedrockService {
       response: text,
       usage,
       latencyMs,
+      sdk: { scope: 'generation', ...readAwsAttempts(result) },
     };
   }
 
@@ -252,6 +255,7 @@ export class BedrockService {
       modelId,
       promptVersion: GENERAL_ANSWER_PROMPT_VERSION,
       usage: result.usage ?? null,
+      sdk: { scope: 'generation', ...readAwsAttempts(result) },
       latencyMs,
       requestId,
     };
@@ -277,7 +281,9 @@ export class BedrockService {
     totaltokens?: number;
   }) {
     return this.prisma.bedrockSearchLog.create({
-      data,
+      data: omitConversationContent(data.appcode)
+        ? { ...data, searchword: '[CONTENT_OMITTED]' }
+        : data,
     });
   }
 

@@ -21,8 +21,8 @@ const stores: Record<TenantId, { name: string; region: string }> = {
 
 const recommendations = [
   '개봉한 멀티탭도 교환할 수 있나요?',
-  'STORE_A는 매일 몇 시부터 몇 시까지 운영하나요?',
-  'USB-C LED 스탠드의 기능을 알려주세요.',
+  '이 매장은 매일 몇 시부터 몇 시까지 운영하나요?',
+  '등록된 상품의 종류와 가격을 알려주세요.',
   '품절 상품의 다음 입고일을 알 수 있나요?',
 ];
 
@@ -43,7 +43,7 @@ function SourceList({ result }: { result: AnswerResult }) {
       {result.sources.map((source, index) => (
         <Card key={`${source.id}-${index}`} size="sm" className="border-stone-200 bg-white ring-0">
           <CardHeader>
-            <div className="mb-1 flex items-center justify-between"><Badge variant="outline">근거 {index + 1}</Badge><span className="text-[11px] text-stone-500">관련도 {Math.round(source.score * 100)}%</span></div>
+            <div className="mb-1 flex items-center justify-between"><Badge variant="outline">근거 {index + 1}</Badge><span className="text-[11px] text-stone-500">답변에 사용한 문서</span></div>
             <CardTitle className="flex items-start gap-2 text-sm"><FileText className="mt-0.5 size-4 shrink-0 text-forest-700" />{source.name}</CardTitle>
             <CardDescription>{[source.page ? `${source.page}페이지` : null, source.productCode ? `상품 ${source.productCode}` : null].filter(Boolean).join(' · ') || '게시된 지식 문서'}</CardDescription>
           </CardHeader>
@@ -135,7 +135,7 @@ export default function ChatPage() {
                 {conversation.map((item) => item.kind === 'question' ? (
                   <Message key={item.id} align="end"><MessageContent><MessageHeader>고객 01</MessageHeader><div className="max-w-[80%] rounded-2xl rounded-br-sm bg-forest-950 px-4 py-3 leading-6 text-white">{item.text}</div></MessageContent></Message>
                 ) : item.kind === 'answer' ? (
-                  <Message key={item.id}><MessageAvatar className="bg-lime-200 text-forest-950"><Bot className="size-4" /></MessageAvatar><MessageContent><MessageHeader>HJ Mart Assist</MessageHeader><div className="max-w-[92%] rounded-2xl rounded-bl-sm bg-stone-100 px-4 py-3 leading-6">{item.result.answer}</div><SourceList result={item.result} /><MessageFooter>{item.result.answerable ? `${item.result.sources.length}개 근거 · ${item.result.latencyMs}ms` : '근거 없음 · 상담원 검토 가능'} · ID {item.result.requestId}</MessageFooter></MessageContent></Message>
+                  <Message key={item.id}><MessageAvatar className="bg-lime-200 text-forest-950"><Bot className="size-4" /></MessageAvatar><MessageContent><MessageHeader>HJ Mart Assist</MessageHeader><div className="whitespace-pre-wrap max-w-[92%] rounded-2xl rounded-bl-sm bg-stone-100 px-4 py-3 leading-6">{item.result.answer}</div><SourceList result={item.result} /><MessageFooter>{item.result.answerable ? `${item.result.sources.length}개 근거 · ${item.result.latencyMs}ms` : '근거 없음 · 상담원 검토 가능'} · ID {item.result.requestId}</MessageFooter></MessageContent></Message>
                 ) : (
                   <Alert key={item.id} className="border-amber-200 bg-amber-50"><CircleAlert /><AlertTitle>답변을 불러오지 못했습니다</AlertTitle><AlertDescription>{item.error.message}<span className="mt-1 block font-mono text-[11px] opacity-70">ID {item.error.correlationId}</span></AlertDescription></Alert>
                 ))}

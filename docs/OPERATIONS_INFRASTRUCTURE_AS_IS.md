@@ -443,3 +443,4 @@ curl.exe -o public-openapi.json https://ai.hjshub.com/api-docs-json
 - [외부 앱 공통 API 명세 초안](COMMON_API_SPEC_DRAFT.md)
 - [기능·품질·성능 검증 전략](TEST_AND_PERFORMANCE_STRATEGY.md)
 - [Credential 수명주기와 감사 운영 가이드](CREDENTIAL_LIFECYCLE_AND_AUDIT.md)
+> 2026-09-05 원격 AWS 조회 및 SSM 점검으로 실제 운영 EC2·Compose·RDS를 확인했습니다. 아래의 원격 미확인/권한 부족 내용은 과거 조사 시점의 기록입니다. 최신 구성은 [AWS 운영 서버 실측](AWS_PRODUCTION_DISCOVERY_2026-09-05.md)을 참고하세요.

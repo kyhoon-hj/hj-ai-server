@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { readAwsAttempts } from '../../common/aws/aws-attempts';
 
 class KnowledgeRetrievalEntity {
   @ApiProperty()
@@ -45,7 +46,30 @@ class KnowledgeSourceEntity {
   sourceType?: 'KNOWLEDGE_DOCUMENT' | 'SUPPORT_BOARD_APPROVED_ANSWER';
 }
 
+class KnowledgePerformanceEntity {
+  @ApiProperty({ description: '질문 embedding과 지식 검색에 걸린 시간(ms)' })
+  retrievalMs!: number;
+
+  @ApiProperty({
+    description:
+      '생성 요청의 대기·SDK 재시도를 포함한 시간(ms). 모델 미호출 시 0.',
+  })
+  generationMs!: number;
+
+  @ApiProperty({
+    description:
+      '서버가 적용한 생성 maxTokens 설정. 실제 사용 토큰 수와 다릅니다.',
+  })
+  maxTokens!: number;
+}
+
 export class KnowledgeAnswerEntity {
+  @ApiPropertyOptional({
+    type: Object,
+    description: '생성 호출의 SDK 시도·재시도·재시도 지연. 누락 측정은 null.',
+  })
+  sdk?: ReturnType<typeof readAwsAttempts> & { scope: string };
+
   @ApiProperty()
   query!: string;
 
@@ -88,6 +112,9 @@ export class KnowledgeAnswerEntity {
 
   @ApiPropertyOptional({ nullable: true, type: Object })
   usage!: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ type: KnowledgePerformanceEntity })
+  performance?: KnowledgePerformanceEntity;
 
   @ApiProperty()
   latencyMs!: number;

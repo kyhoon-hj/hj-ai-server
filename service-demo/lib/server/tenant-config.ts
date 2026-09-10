@@ -1,5 +1,7 @@
 import type { TenantId } from '@/lib/knowledge-contract';
 
+export const AI_SERVER_USER_AGENT = 'HJ-Service-Demo/1.0';
+
 const tenantEnvironmentKeys: Record<TenantId, string> = {
   STORE_A: 'AI_SERVER_APPKEY_STORE_A',
   STORE_B: 'AI_SERVER_APPKEY_STORE_B',

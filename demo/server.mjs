@@ -1,5 +1,13 @@
 
 import { createServer } from 'node:http';
+import {
+  assertAppId,
+  issuedApp,
+  normalizeCreateAppInput,
+  normalizeRotateAppInput,
+  normalizeStatusInput,
+  publicApp,
+} from './app-admin.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { Readable } from 'node:stream';
@@ -19,6 +27,8 @@ import {
   renderPath,
 } from './lib.mjs';
 import { findOperation, operations } from './catalog.mjs';
+import { summarizeAiPerformance, summarizeRequestOutcomes } from './performance-metrics.mjs';
+import { resolvePerformanceLoad } from './public/performance-tools.js';
 import { requireStandardPort } from '../config/standard-ports.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
@@ -191,9 +201,9 @@ async function invoke(operation, options = {}) {
   const startedAt = performance.now();
   try {
     const upstream = await fetch(url, init);
-    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const contentType = upstream.headers.get('content-type') ?? '';
     const text = await upstream.text();
+    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
     let body = text;
     if (contentType.includes('json') && text) {
       try { body = JSON.parse(text); } catch { body = text; }
@@ -218,7 +228,7 @@ async function invoke(operation, options = {}) {
       ok: false,
       durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
       headers: {},
-      body: { code: error.name === 'TimeoutError' ? 'DEMO_UPSTREAM_TIMEOUT' : 'DEMO_UPSTREAM_ERROR', message: error.message },
+      body: { code: init.signal.aborted || error.name === 'TimeoutError' ? 'DEMO_UPSTREAM_TIMEOUT' : 'DEMO_UPSTREAM_ERROR', message: error.message },
     };
   }
 }
@@ -1005,7 +1015,7 @@ async function runTenantIsolationScenario() {
       method: 'POST',
       appkey: storeA.appkey,
       body: {
-        query: '디지털 상품과 고객 주문 제작 상품의 환불 정책을 알려주세요.',
+        query: 'STORE_A에서 구매한 상품의 교환·환불 기한과 조건을 알려주세요.',
         limit: 20,
         scoreThreshold: -1,
         strict: true,
@@ -1022,7 +1032,7 @@ async function runTenantIsolationScenario() {
       method: 'POST',
       appkey: storeB.appkey,
       body: {
-        query: 'STORE_A의 오전 10시 운영과 구매 후 7일 환불 정책을 알려주세요.',
+        query: 'STORE_B의 디지털 상품과 고객 주문 제작 상품 환불 정책을 알려주세요.',
         limit: 20,
         scoreThreshold: -1,
         strict: true,
@@ -1342,12 +1352,15 @@ async function runPerformance(input) {
   const operation = findOperation(input.operationId);
   if (!operation?.performanceSafe) throw Object.assign(new Error('성능 시험이 허용된 operation이 아닙니다.'), { statusCode: 400 });
   if (operation.auth !== false && !runtime.appkey) throw Object.assign(new Error('appkey 설정이 필요합니다.'), { statusCode: 400 });
-  const total = Math.min(200, Math.max(1, Number(input.total ?? 20)));
-  const concurrency = Math.min(20, Math.max(1, Number(input.concurrency ?? 1)));
+  let load;
+  try { load = resolvePerformanceLoad(input); }
+  catch (error) { throw Object.assign(error, { statusCode: 400 }); }
+  const { preset, total, concurrency } = load;
   const body = structuredClone(input.body ?? {});
   if (['bedrock.converse', 'knowledge.rag', 'knowledge.answers'].includes(operation.id) && body.maxTokens === undefined) {
     body.maxTokens = 512;
   }
+  const startedAtIso = new Date().toISOString();
   const startedAt = performance.now();
   const results = new Array(total);
   let cursor = 0;
@@ -1363,13 +1376,13 @@ async function runPerformance(input) {
   const latencies = results.map((result) => result.durationMs);
   const statusCounts = {};
   for (const result of results) statusCounts[result.status] = (statusCounts[result.status] ?? 0) + 1;
-  const totalTokens = results.reduce((sum, result) => sum + collectTotalTokens(result.body), 0);
   const report = {
     type: 'performance',
     ...(await reportContext()),
     operationId: operation.id,
-    startedAt: new Date().toISOString(),
-    configuration: { total, concurrency, body, query: input.query ?? {} },
+    startedAt: startedAtIso,
+    finishedAt: new Date().toISOString(),
+    configuration: { preset, total, concurrency, body, query: input.query ?? {}, timeoutMs: runtime.timeoutMs, retryPolicy: 'none' },
     summary: {
       elapsedMs: Math.round(elapsedMs * 100) / 100,
       throughputPerSecond: Math.round((total / (elapsedMs / 1000)) * 100) / 100,
@@ -1383,7 +1396,8 @@ async function runPerformance(input) {
         p99: percentile(latencies, 0.99),
         max: Math.max(...latencies),
       },
-      tokens: { total: totalTokens, averagePerRequest: Math.round((totalTokens / total) * 100) / 100 },
+      ...summarizeAiPerformance(results, body.maxTokens),
+      ...summarizeRequestOutcomes(results),
     },
     samples: results.slice(0, 10),
   };
@@ -1427,6 +1441,29 @@ export const server = createServer(async (request, response) => {
       return sendJson(response, 200, publicConfig());
     }
     if (request.method === 'GET' && url.pathname === '/api/catalog') return sendJson(response, 200, operations);
+    if (request.method === 'GET' && url.pathname === '/api/admin/apps') {
+      const apps = requireUpstream(await callAdminUpstream('/app-info'), '앱 목록 조회');
+      return sendJson(response, 200, { apps: apps.map(publicApp) });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/apps') {
+      const body = normalizeCreateAppInput(await readJson(request));
+      const app = requireUpstream(await callAdminUpstream('/app-info', { method: 'POST', body }), '앱 생성과 AppKey 발급');
+      return sendJson(response, 201, issuedApp(app));
+    }
+    const appKeyRoute = url.pathname.match(/^\/api\/admin\/apps\/([^/]+)\/appkey$/);
+    if (request.method === 'POST' && appKeyRoute) {
+      const appId = assertAppId(appKeyRoute[1]);
+      const body = normalizeRotateAppInput(await readJson(request));
+      const app = requireUpstream(await callAdminUpstream(`/app-info/${appId}/appkey`, { method: 'POST', body }), 'AppKey 회전');
+      return sendJson(response, 201, issuedApp(app));
+    }
+    const appStatusRoute = url.pathname.match(/^\/api\/admin\/apps\/([^/]+)\/status$/);
+    if (request.method === 'PATCH' && appStatusRoute) {
+      const appId = assertAppId(appStatusRoute[1]);
+      const body = normalizeStatusInput(await readJson(request));
+      const app = requireUpstream(await callAdminUpstream(`/app-info/${appId}`, { method: 'PATCH', body }), '앱 상태 변경');
+      return sendJson(response, 200, { app: publicApp(app) });
+    }
     if (request.method === 'GET' && url.pathname === '/api/demo/state') return sendJson(response, 200, publicDemoState());
     if (request.method === 'POST' && url.pathname === '/api/demo/setup') {
       const input = await readJson(request);

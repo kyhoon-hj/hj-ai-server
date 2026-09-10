@@ -14,6 +14,7 @@ import { StorageService } from '../src/storage/storage.service';
 
 const suite =
   process.env.RUN_RAG_QUALITY_E2E === 'true' ? describe : describe.skip;
+const performanceBaseline = process.env.RUN_PERFORMANCE_BASELINE === 'true';
 suite('RAG quality baseline (paid AWS, isolated DB)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -54,6 +55,8 @@ suite('RAG quality baseline (paid AWS, isolated DB)', () => {
     const dataset = JSON.parse(
       await readFile(resolve('demo/fixtures/rag-golden.json'), 'utf8'),
     ) as { sources: Record<string, string[]> };
+    if (performanceBaseline)
+      dataset.sources = { STORE_A: ['store-a-policy.md'] };
     if (process.env.RAG_EVAL_DATASET === 'adversarial') {
       dataset.sources.STORE_A.push('store-a-inspection-test.md');
     }
@@ -129,7 +132,14 @@ suite('RAG quality baseline (paid AWS, isolated DB)', () => {
     const stdout = await new Promise<string>((resolveResult, reject) => {
       const child = spawn(
         process.execPath,
-        [resolve('demo/scripts/rag-quality.mjs'), '--live'],
+        [
+          resolve(
+            performanceBaseline
+              ? 'demo/scripts/performance-baseline.mjs'
+              : 'demo/scripts/rag-quality.mjs',
+          ),
+          '--live',
+        ],
         {
           env: {
             ...process.env,
@@ -156,6 +166,23 @@ suite('RAG quality baseline (paid AWS, isolated DB)', () => {
       });
     });
     await writeFile(join(directory, 'report.json'), stdout, { mode: 0o600 });
+    if (performanceBaseline) {
+      const baseline = JSON.parse(stdout) as {
+        configuration: { total: number; concurrency: number };
+        summary: {
+          successRate: number;
+          awsRequest: { completeRequests: number };
+        };
+      };
+      console.log(JSON.stringify(baseline.summary));
+      expect(baseline.configuration).toMatchObject({
+        total: 5,
+        concurrency: 1,
+      });
+      expect(baseline.summary.successRate).toBe(100);
+      expect(baseline.summary.awsRequest.completeRequests).toBe(5);
+      return;
+    }
     const report = JSON.parse(stdout) as {
       metrics: { total: number; received: number; valid: number };
       gatePassed: boolean;
@@ -195,6 +222,25 @@ suite('RAG quality baseline (paid AWS, isolated DB)', () => {
         if (failures.length)
           throw new Error(`Fixture cleanup failed: ${failures.join(', ')}`);
         console.log(`Removed ${files.length} evaluation S3 objects.`);
+        if (directory) {
+          // Export failures must not prevent S3 cleanup. DB is removed by the runner.
+          const executions = await prisma.knowledgeQueryLog.findMany({
+            where: { appcode: { in: tenants } },
+            select: {
+              id: true,
+              requestId: true,
+              appcode: true,
+              execution: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+          await writeFile(
+            join(directory, 'server-executions.json'),
+            JSON.stringify(executions, null, 2),
+            { mode: 0o600 },
+          );
+        }
       }
     } finally {
       await app?.close();

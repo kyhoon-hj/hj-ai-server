@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ParsedDocumentSection } from './document-parser.service';
 
+export const CHUNKING_VERSION = 'structured-row-text-window-v1';
+
 export type KnowledgeChunkInput = {
   content: string;
   metadata: Record<string, unknown>;
+  configuration: {
+    version: string;
+    chunkSize: number | null;
+    overlap: number | null;
+  };
 };
 
 type ChunkingOptions = {
@@ -41,6 +48,11 @@ export class ChunkingService {
     return [
       {
         content,
+        configuration: {
+          version: CHUNKING_VERSION,
+          chunkSize: null,
+          overlap: null,
+        },
         metadata: {
           ...(section.metadata ?? {}),
           chunkStrategy: 'structured-row',
@@ -83,6 +95,7 @@ export class ChunkingService {
       if (content) {
         chunks.push({
           content,
+          configuration: { version: CHUNKING_VERSION, chunkSize, overlap },
           metadata: {
             ...(section.metadata ?? {}),
             chunkStrategy: 'text-window',

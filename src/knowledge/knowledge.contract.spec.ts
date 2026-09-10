@@ -72,6 +72,7 @@ describe('KnowledgeService provider contract', () => {
         },
       },
       stopReason: 'end_turn',
+      $metadata: { attempts: 2, totalRetryDelay: 12 },
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
     });
     Object.defineProperty(service, 'bedrockClient', {
@@ -89,6 +90,93 @@ describe('KnowledgeService provider contract', () => {
       getLoggedRequestId: () => loggedRequestId,
     };
   };
+
+  it.each(['answer', 'no-answer', 'generation-error'])(
+    'omits Frame content at the query log sink for %s',
+    async (mode) => {
+      const { service, bedrockSend, queryLogCreate } = createService();
+      if (mode === 'generation-error')
+        bedrockSend.mockRejectedValueOnce(new Error('private provider detail'));
+      const result = service.createRagResponse(
+        { query: 'private family question', strict: mode === 'no-answer' },
+        'zinframe-test',
+      );
+      if (mode === 'generation-error') await expect(result).rejects.toThrow();
+      else await result;
+      const data = queryLogCreate.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        question: '[CONTENT_OMITTED]',
+        matchedChunkIds: [],
+      });
+      expect(data).not.toHaveProperty('response', expect.any(String));
+      expect(data).not.toHaveProperty('execution', expect.any(Object));
+      expect(JSON.stringify(data)).not.toContain('private');
+    },
+  );
+
+  it.each(['answer', 'no-answer', 'retrieval-error', 'generation-error'])(
+    'records separate monotonic stage timings for %s',
+    async (mode) => {
+      const { service, embeddingService, bedrockSend, queryLogCreate } =
+        createService();
+      const reply: unknown = await bedrockSend();
+      bedrockSend.mockClear();
+      const failure = new Error('synthetic stage failure');
+      jest.useFakeTimers();
+      try {
+        embeddingService.createEmbedding.mockImplementationOnce(() => {
+          jest.advanceTimersByTime(25);
+          return mode === 'retrieval-error'
+            ? Promise.reject(failure)
+            : Promise.resolve([1, 0]);
+        });
+        bedrockSend.mockImplementationOnce(() => {
+          jest.advanceTimersByTime(40);
+          return mode === 'generation-error'
+            ? Promise.reject(failure)
+            : Promise.resolve(reply);
+        });
+        const response = service.createRagResponse(
+          {
+            query: 'stage timing fixture',
+            strict: mode === 'no-answer',
+            maxTokens: 257,
+          },
+          'APP_A',
+        );
+        const expected = {
+          retrievalMs: 25,
+          generationMs: ['answer', 'generation-error'].includes(mode) ? 40 : 0,
+          maxTokens: 257,
+        };
+        if (mode.endsWith('-error'))
+          await expect(response).rejects.toBe(failure);
+        else {
+          const answer = await response;
+          expect(answer.performance).toEqual(expected);
+          if (mode === 'answer') {
+            expect(answer.sdk).toEqual({
+              scope: 'generation',
+              attempts: 2,
+              retryCount: 1,
+              totalRetryDelayMs: 12,
+            });
+            expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
+              execution: { sdk: answer.sdk },
+            });
+          }
+        }
+        expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
+          execution: { performance: expected },
+        });
+        expect(bedrockSend).toHaveBeenCalledTimes(
+          expected.generationMs ? 1 : 0,
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
 
   it('TS-CON-001/002 applies public, published, product and active-period filters', async () => {
     const { service, getCapturedQuery } = createService();
@@ -170,7 +258,7 @@ describe('KnowledgeService provider contract', () => {
   });
 
   it('TS-CON-003 returns the compatible strict no-answer shape and logs request ID', async () => {
-    const { service, getLoggedRequestId } = createService();
+    const { service, getLoggedRequestId, queryLogCreate } = createService();
     const requestId = 'd594d4d0-d5e5-4b74-9c5a-e0f0bf282d72';
 
     const result = await service.createRagResponse(
@@ -202,6 +290,23 @@ describe('KnowledgeService provider contract', () => {
       retrieval: { count: 0, limit: 5, scoreThreshold: null },
     });
     expect(getLoggedRequestId()).toBe(requestId);
+    expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
+      execution: {
+        promptVersion: 'rag-answer-v3-partial',
+        modelId: 'model-v1',
+        embeddingModel: 'embed-v1',
+        inferenceConfig: { maxTokens: 1024, temperature: 0.2 },
+        retrieval: {
+          limit: 5,
+          scoreThreshold: -1,
+          filters: { accessLevels: ['PUBLIC'] },
+        },
+        answerStatus: 'insufficient_evidence',
+        modelInvoked: false,
+        retrievedSources: [],
+        citedSourceIndexes: [],
+      },
+    });
   });
 
   it('uses an approved support board answer as a supplemental grounded source', async () => {
@@ -297,7 +402,7 @@ describe('KnowledgeService provider contract', () => {
       expect(result).toMatchObject({
         answerable: false,
         answerStatus,
-        promptVersion: 'rag-answer-v2',
+        promptVersion: 'rag-answer-v3-partial',
         stopReason,
         answer: '담당자 확인이 필요합니다.',
         response: '담당자 확인이 필요합니다.',
@@ -308,6 +413,12 @@ describe('KnowledgeService provider contract', () => {
       expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
         response: '담당자 확인이 필요합니다.',
         totaltokens: 15,
+        execution: {
+          answerStatus,
+          stopReason,
+          modelInvoked: true,
+          citedSourceIndexes: [],
+        },
       });
     },
   );
@@ -373,6 +484,86 @@ describe('KnowledgeService provider contract', () => {
     const command = calls[0][0];
     expect(command.input.system).toHaveLength(2);
     expect(command.input.system[1].text).toContain('출력 계약');
+  });
+
+  it.each(['retrieval', 'generation'])(
+    'preserves the original %s error and records its execution context',
+    async (stage) => {
+      const { service, embeddingService, bedrockSend, queryLogCreate } =
+        createService();
+      const failure = new Error('Provider error with sensitive detail');
+      if (stage === 'retrieval')
+        embeddingService.createEmbedding.mockRejectedValueOnce(failure);
+      else bedrockSend.mockRejectedValueOnce(failure);
+      await expect(
+        service.createRagResponse(
+          { query: 'question', strict: false },
+          'APP_A',
+          'failure-id',
+        ),
+      ).rejects.toBe(failure);
+      const data = queryLogCreate.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        requestId: 'failure-id',
+        execution: {
+          answerStatus: 'request_failed',
+          failedStage: stage,
+          modelId: 'model-v1',
+          generationAttempted: stage === 'generation',
+        },
+      });
+      expect(JSON.stringify(data)).not.toContain('sensitive detail');
+    },
+  );
+
+  it('snapshots effective overrides and legacy provenance without leaking them into the model or sources', async () => {
+    const match = {
+      id: 'chunk-a',
+      fileId: 'file-a',
+      fileName: 'a.md',
+      key: 'a',
+      content: 'Original evidence',
+      score: 0.9,
+      metadata: null,
+    };
+    const { service, bedrockSend, queryLogCreate } = createService({
+      rawMatches: [match],
+    });
+    const response = await service.createRagResponse(
+      {
+        query: 'question',
+        modelId: 'override-model',
+        system: 'private system text',
+        maxTokens: 200,
+        temperature: 0,
+        limit: 2,
+        scoreThreshold: 0.4,
+      },
+      'APP_A',
+      'trace-id',
+    );
+    expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
+      execution: {
+        modelId: 'override-model',
+        inferenceConfig: { maxTokens: 200, temperature: 0 },
+        retrieval: { limit: 2, scoreThreshold: 0.4 },
+        answerStatus: 'answered',
+        retrievedSources: [
+          { chunkId: 'chunk-a', fileId: 'file-a', indexProvenance: null },
+        ],
+        citedSourceIndexes: [1],
+      },
+    });
+    expect(JSON.stringify(queryLogCreate.mock.calls[0][0].data)).not.toContain(
+      'private system text',
+    );
+    expect(JSON.stringify(response)).not.toContain('execution');
+    const calls = bedrockSend.mock.calls as unknown as [
+      { input: { messages: { content: { text: string }[] }[] } },
+    ][];
+    expect(calls[0][0].input.messages[0].content[0].text).not.toContain(
+      'indexProvenance',
+    );
   });
 
   it('TS-CON-004 keeps the unfiltered legacy search path unchanged', async () => {
