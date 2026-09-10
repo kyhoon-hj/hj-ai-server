@@ -52,7 +52,7 @@ RAG 스위트는 최종 실행에서 3/3 PASS다.
 ## 운영 전 남은 범위
 
 1. 실제 Bedrock embedding/Converse provider를 사용하는 제한된 staging 수용 시험
-2. 운영 DB backup 및 migration 13개 → 16개 preflight와 rollback 절차 검증
+2. ~~운영 DB backup 및 migration 13개 → 16개 preflight와 rollback 절차 검증~~
+   — 2026-09-10 비활성 배포 완료
 3. `FRAME_FAMILY_RAG_ENABLED`와 정확한 appcode allowlist를 사용한 단계적 활성화
 4. ZINFrame provider 이벤트부터 최종 대화까지의 교차 프로젝트 수용 시험
-

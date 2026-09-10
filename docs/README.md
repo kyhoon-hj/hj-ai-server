@@ -1,5 +1,7 @@
 # HJ AI Server 문서
 
+- [Family RAG 비활성 운영 배포 (2026-09-10)](PRODUCTION_FAMILY_RAG_DEPLOYMENT_2026-09-10.md)
+
 - [Family RAG 격리 PostgreSQL 통합 검증 (2026-09-10)](FAMILY_RAG_INTEGRATION_VALIDATION_2026-09-10.md)
 
 - [서비스 데모 시간 초과 및 EC2 중지 복구 (2026-09-06)](SERVICE_OUTAGE_2026-09-06.md)
