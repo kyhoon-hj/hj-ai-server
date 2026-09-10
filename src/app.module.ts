@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AppInfoModule } from './app-info/app-info.module';
 import { BedrockModule } from './bedrock/bedrock.module';
 import { ConversationModule } from './conversation/conversation.module';
+import { FamilyKnowledgeModule } from './family-knowledge/family-knowledge.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { StorageModule } from './storage/storage.module';
 import { TestTableModule } from './test-table/test-table.module';
@@ -26,6 +27,7 @@ import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
     AppInfoModule,
     BedrockModule,
     ConversationModule,
+    FamilyKnowledgeModule,
     KnowledgeModule,
     StorageModule,
     TestTableModule,

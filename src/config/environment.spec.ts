@@ -119,10 +119,29 @@ describe('validateEnvironment', () => {
         ENABLE_TEST_TABLE_API: 'yes',
         ENABLE_LEGACY_BEDROCK_INSPECTION_API: '1',
         ENABLE_LEGACY_KNOWLEDGE_WRITE_API: 'enabled',
+        FRAME_FAMILY_RAG_ENABLED: 'enabled',
       }),
     ).toThrow(
-      /ENABLE_TEST_TABLE_API must be.*ENABLE_LEGACY_BEDROCK_INSPECTION_API must be.*ENABLE_LEGACY_KNOWLEDGE_WRITE_API must be/,
+      /ENABLE_TEST_TABLE_API must be.*ENABLE_LEGACY_BEDROCK_INSPECTION_API must be.*ENABLE_LEGACY_KNOWLEDGE_WRITE_API must be.*FRAME_FAMILY_RAG_ENABLED must be/,
     );
+  });
+
+  it('Family RAG allowlist는 wildcard 없는 정확한 appcode만 허용한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        FRAME_FAMILY_RAG_APPCODES: 'zinframe-app,*',
+      }),
+    ).toThrow(/FRAME_FAMILY_RAG_APPCODES must contain exact/);
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        FRAME_FAMILY_RAG_ENABLED: 'false',
+        FRAME_FAMILY_RAG_APPCODES: 'zinframe-app,zinframe-staging',
+      }),
+    ).toMatchObject({
+      FRAME_FAMILY_RAG_APPCODES: 'zinframe-app,zinframe-staging',
+    });
   });
 
   it('appkey TTL과 최대 rotation grace 범위를 검증한다', () => {

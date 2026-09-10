@@ -15,6 +15,7 @@ const BOOLEAN_ENVIRONMENT_KEYS = [
   'ENABLE_TEST_TABLE_API',
   'ENABLE_LEGACY_BEDROCK_INSPECTION_API',
   'ENABLE_LEGACY_KNOWLEDGE_WRITE_API',
+  'FRAME_FAMILY_RAG_ENABLED',
 ] as const;
 
 const ISO_DATE_TIME_PATTERN =
@@ -248,6 +249,18 @@ export function validateEnvironment(
     }
   }
 
+  const familyRagAppcodes = valueOf(config, 'FRAME_FAMILY_RAG_APPCODES');
+  const invalidFamilyRagAppcode = familyRagAppcodes
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .find((item) => !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(item));
+  if (invalidFamilyRagAppcode) {
+    errors.push(
+      'FRAME_FAMILY_RAG_APPCODES must contain exact comma-separated appcodes without wildcards',
+    );
+  }
+
   const swaggerPath = valueOf(config, 'SWAGGER_PATH') || 'api-docs';
   if (
     !/^[A-Za-z0-9][A-Za-z0-9/_-]*$/.test(swaggerPath) ||
@@ -297,5 +310,6 @@ export function validateEnvironment(
     KNOWLEDGE_EMBEDDING_CONCURRENCY: String(knowledgeEmbeddingConcurrency),
     AWS_CONNECTION_TIMEOUT_MS: String(awsConnectionTimeoutMs),
     AWS_REQUEST_TIMEOUT_MS: String(awsRequestTimeoutMs),
+    FRAME_FAMILY_RAG_APPCODES: familyRagAppcodes,
   };
 }

@@ -18,6 +18,39 @@ enum KnowledgeBusinessStatus {
   RETIRED
 }
 
+enum FamilyKnowledgeAudience {
+  FAMILY
+  MEMBER
+}
+
+enum FamilyKnowledgeSourceType {
+  TEXT
+  PHOTO_DESCRIPTION
+}
+
+enum FamilyKnowledgeSensitivity {
+  NON_SENSITIVE
+  SENSITIVE
+}
+
+enum FamilyKnowledgeDocumentStatus {
+  ACTIVE
+  DELETED
+}
+
+enum FamilyKnowledgeOperation {
+  UPSERT
+  DELETE
+}
+
+enum FamilyKnowledgeEventStatus {
+  QUEUED
+  PROCESSING
+  RETRY
+  SUCCEEDED
+  FAILED
+}
+
 model TestTable {
   id        Int      @id @default(autoincrement())
   name      String
@@ -198,4 +231,80 @@ model KnowledgeQueryLog {
   @@index([createdAt])
   @@index([requestId])
   @@map("knowledge_query_log")
+}
+
+model FamilyKnowledgeDocument {
+  id             String                        @id @default(uuid()) @db.Uuid
+  appcode        String
+  tenantRef      String                        @map("tenant_ref") @db.VarChar(64)
+  memberRef      String?                       @map("member_ref") @db.VarChar(64)
+  audience       FamilyKnowledgeAudience
+  sourceId       String                        @map("source_id") @db.VarChar(191)
+  sourceVersion  Int                           @map("source_version")
+  sourceType     FamilyKnowledgeSourceType     @map("source_type")
+  sensitivity    FamilyKnowledgeSensitivity
+  status         FamilyKnowledgeDocumentStatus @default(ACTIVE)
+  title          String?                       @db.VarChar(200)
+  content        String?
+  publishedAt    DateTime                      @map("published_at")
+  indexedAt      DateTime?                     @map("indexed_at")
+  embeddingModel String?                       @map("embedding_model")
+  createdAt      DateTime                      @default(now()) @map("created_at")
+  updatedAt      DateTime                      @updatedAt @map("updated_at")
+  deletedAt      DateTime?                     @map("deleted_at")
+
+  chunks FamilyKnowledgeChunk[]
+
+  @@unique([appcode, sourceId])
+  @@index([appcode, tenantRef, audience, memberRef, status])
+  @@index([status, indexedAt])
+  @@map("family_knowledge_document")
+}
+
+model FamilyKnowledgeChunk {
+  id              String                       @id @default(uuid()) @db.Uuid
+  documentId      String                       @map("document_id") @db.Uuid
+  appcode         String
+  tenantRef       String                       @map("tenant_ref") @db.VarChar(64)
+  memberRef       String?                      @map("member_ref") @db.VarChar(64)
+  audience        FamilyKnowledgeAudience
+  sourceVersion   Int                          @map("source_version")
+  chunkNo         Int                          @map("chunk_no")
+  content         String
+  contentHash     String                       @map("content_hash") @db.VarChar(64)
+  embeddingVector Unsupported("vector(1024)")? @map("embedding_vector")
+  embeddingModel  String                       @map("embedding_model")
+  createdAt       DateTime                     @default(now()) @map("created_at")
+
+  document FamilyKnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, sourceVersion, chunkNo])
+  @@index([appcode, tenantRef, audience, memberRef, embeddingModel])
+  @@index([documentId, sourceVersion])
+  @@map("family_knowledge_chunk")
+}
+
+model FamilyKnowledgeEvent {
+  id             String                     @id @default(uuid()) @db.Uuid
+  appcode        String
+  sourceId       String                     @map("source_id") @db.VarChar(191)
+  sourceVersion  Int                        @map("source_version")
+  operation      FamilyKnowledgeOperation
+  payloadHash    String                     @map("payload_hash") @db.VarChar(64)
+  status         FamilyKnowledgeEventStatus @default(QUEUED)
+  resultCode     String?                    @map("result_code") @db.VarChar(64)
+  attemptCount   Int                        @default(0) @map("attempt_count")
+  maxAttempts    Int                        @default(3) @map("max_attempts")
+  nextAttemptAt  DateTime?                  @map("next_attempt_at")
+  leaseExpiresAt DateTime?                  @map("lease_expires_at")
+  errorCode      String?                    @map("error_code") @db.VarChar(128)
+  retryable      Boolean                    @default(false)
+  completedAt    DateTime?                  @map("completed_at")
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  updatedAt      DateTime                   @updatedAt @map("updated_at")
+
+  @@unique([appcode, sourceId, sourceVersion, operation])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@map("family_knowledge_event")
 }
