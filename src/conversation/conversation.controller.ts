@@ -67,7 +67,7 @@ export class ConversationController {
         requestId: { type: 'string', format: 'uuid' },
         policyVersion: {
           type: 'string',
-          enum: ['frame-family-v1', 'frame-family-v2'],
+          enum: ['frame-family-v1', 'frame-family-v2', 'frame-family-rag-v1'],
         },
       },
     },

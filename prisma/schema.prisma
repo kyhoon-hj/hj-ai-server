@@ -309,3 +309,21 @@ model FamilyKnowledgeEvent {
   @@index([status, leaseExpiresAt])
   @@map("family_knowledge_event")
 }
+
+model FamilyConversationMetric {
+  id            String   @id @default(uuid()) @db.Uuid
+  appcode       String
+  requestId     String   @map("request_id") @db.Uuid
+  policyVersion String   @map("policy_version") @db.VarChar(64)
+  status        String   @db.VarChar(32)
+  latencyMs     Int      @map("latency_ms")
+  inputTokens   Int?     @map("input_tokens")
+  outputTokens  Int?     @map("output_tokens")
+  totalTokens   Int?     @map("total_tokens")
+  resultCount   Int      @map("result_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([appcode, createdAt])
+  @@index([requestId])
+  @@map("family_conversation_metric")
+}

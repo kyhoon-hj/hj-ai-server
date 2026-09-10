@@ -12,7 +12,10 @@ const dto = {
 const app = { appcode: 'zinframe-app', defaultEmbeddingModelId: null };
 
 function createFixture() {
-  const prisma = { $queryRaw: jest.fn() };
+  const prisma = {
+    $queryRaw: jest.fn(),
+    familyKnowledgeDocument: { findMany: jest.fn() },
+  };
   const embedding = {
     getDefaultEmbeddingModelId: jest.fn().mockReturnValue('embed-model'),
     createEmbedding: jest.fn().mockResolvedValue(vector(1)),
@@ -144,5 +147,51 @@ describe('FamilyKnowledgeSearchService', () => {
       name: 'ValidationException',
     });
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('revalidates every deduplicated source against the same active FAMILY scope', async () => {
+    const { service, prisma } = createFixture();
+    prisma.familyKnowledgeDocument.findMany.mockResolvedValue([
+      { sourceId: 'story-1', sourceVersion: 2 },
+    ]);
+
+    await expect(
+      service.isEvidenceSnapshotCurrent(
+        [
+          { sourceId: 'story-1', sourceVersion: 2 },
+          { sourceId: 'story-1', sourceVersion: 2 },
+        ],
+        app,
+        dto.tenantRef,
+      ),
+    ).resolves.toBe(true);
+    expect(callArgument(prisma.familyKnowledgeDocument.findMany, 0)).toEqual({
+      where: {
+        appcode: app.appcode,
+        tenantRef: dto.tenantRef,
+        audience: 'FAMILY',
+        memberRef: null,
+        sensitivity: 'NON_SENSITIVE',
+        status: 'ACTIVE',
+        deletedAt: null,
+        indexedAt: { not: null },
+        embeddingModel: 'embed-model',
+        OR: [{ sourceId: 'story-1', sourceVersion: 2 }],
+      },
+      select: { sourceId: true, sourceVersion: true },
+    });
+  });
+
+  it('rejects an evidence snapshot after its source version changes or is deleted', async () => {
+    const { service, prisma } = createFixture();
+    prisma.familyKnowledgeDocument.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.isEvidenceSnapshotCurrent(
+        [{ sourceId: 'story-1', sourceVersion: 2 }],
+        app,
+        dto.tenantRef,
+      ),
+    ).resolves.toBe(false);
   });
 });

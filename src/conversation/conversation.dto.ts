@@ -65,9 +65,11 @@ export class ConversationTurnDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
   sessionRef!: string;
-  @ApiProperty({ enum: ['frame-family-v1', 'frame-family-v2'] })
-  @IsIn(['frame-family-v1', 'frame-family-v2'])
-  policyVersion!: 'frame-family-v1' | 'frame-family-v2';
+  @ApiProperty({
+    enum: ['frame-family-v1', 'frame-family-v2', 'frame-family-rag-v1'],
+  })
+  @IsIn(['frame-family-v1', 'frame-family-v2', 'frame-family-rag-v1'])
+  policyVersion!: 'frame-family-v1' | 'frame-family-v2' | 'frame-family-rag-v1';
   @ApiProperty({ type: ConversationFactsDto, required: false })
   @IsOptional()
   @IsObject()

@@ -69,6 +69,49 @@ export class FamilyKnowledgeSearchService {
     };
   }
 
+  async isEvidenceSnapshotCurrent(
+    evidence: ReadonlyArray<{ sourceId: string; sourceVersion: number }>,
+    app: { appcode: string; defaultEmbeddingModelId: string | null },
+    tenantRef: string,
+  ) {
+    const uniqueEvidence = [
+      ...new Map(
+        evidence.map((item) => [
+          `${item.sourceId}\u0000${item.sourceVersion}`,
+          item,
+        ]),
+      ).values(),
+    ];
+    if (!uniqueEvidence.length) return true;
+    const embeddingModel =
+      app.defaultEmbeddingModelId ??
+      this.embedding.getDefaultEmbeddingModelId();
+    const current = await this.prisma.familyKnowledgeDocument.findMany({
+      where: {
+        appcode: app.appcode,
+        tenantRef,
+        audience: 'FAMILY',
+        memberRef: null,
+        sensitivity: 'NON_SENSITIVE',
+        status: 'ACTIVE',
+        deletedAt: null,
+        indexedAt: { not: null },
+        embeddingModel,
+        OR: uniqueEvidence.map((item) => ({
+          sourceId: item.sourceId,
+          sourceVersion: item.sourceVersion,
+        })),
+      },
+      select: { sourceId: true, sourceVersion: true },
+    });
+    const currentKeys = new Set(
+      current.map((item) => `${item.sourceId}\u0000${item.sourceVersion}`),
+    );
+    return uniqueEvidence.every((item) =>
+      currentKeys.has(`${item.sourceId}\u0000${item.sourceVersion}`),
+    );
+  }
+
   private async findWithPgVector(data: {
     appcode: string;
     tenantRef: string;

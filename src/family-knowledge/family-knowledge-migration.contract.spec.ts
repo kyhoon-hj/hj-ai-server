@@ -16,6 +16,13 @@ describe('Family knowledge migration contract', () => {
     ),
     'utf8',
   );
+  const conversationMetricMigration = readFileSync(
+    resolve(
+      process.cwd(),
+      'prisma/migrations/20260910140000_add_family_conversation_metric/migration.sql',
+    ),
+    'utf8',
+  );
 
   it('enforces versions, pseudonymous refs, scope and payload hashes in PostgreSQL', () => {
     expect(migration).toContain('"source_version" > 0');
@@ -36,5 +43,14 @@ describe('Family knowledge migration contract', () => {
     expect(vectorMigration).toContain('cardinality("embedding") IN (0, 1024)');
     expect(vectorMigration).toContain('USING hnsw');
     expect(vectorMigration).toContain('vector_cosine_ops');
+  });
+
+  it('stores only content-free Family conversation metrics', () => {
+    expect(conversationMetricMigration).toContain('"request_id" UUID');
+    expect(conversationMetricMigration).toContain('"result_count" INTEGER');
+    expect(conversationMetricMigration).toContain('"input_tokens" INTEGER');
+    expect(conversationMetricMigration).not.toMatch(
+      /"(?:question|response|content|tenant_ref|member_ref)"/,
+    );
   });
 });
