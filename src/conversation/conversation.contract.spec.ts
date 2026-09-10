@@ -325,16 +325,40 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('forbids caller-provided facts in the RAG policy', async () => {
-    await post({
+  it('keeps fresh server facts and retrieved evidence as separate untrusted RAG data', async () => {
+    const dto = {
       ...fixture(),
-      policyVersion: 'frame-family-rag-v1',
+      policyVersion: 'frame-family-rag-v1' as const,
       contextFacts: {
-        text: '호출자가 주입한 자료',
+        text: '서버가 확인한 가상 공용 일정',
         version: 'b'.repeat(64),
         expiresAt: new Date(Date.now() + 60000).toISOString(),
       },
-    }).expect(400);
+    };
+    await post(dto).expect(200);
+
+    expect(searchFamily).toHaveBeenCalledTimes(1);
+    const command = send.mock.calls[0][0].input;
+    expect(command.system).toEqual([{ text: FAMILY_RAG_POLICY }]);
+    expect(JSON.stringify(command.system)).not.toContain(dto.contextFacts.text);
+    expect(JSON.stringify(command.messages)).toContain(dto.contextFacts.text);
+    expect(JSON.stringify(command.messages)).toContain(
+      familyEvidence.results[0].content,
+    );
+  });
+
+  it('rejects expired or excessively long-lived facts in the RAG policy', async () => {
+    for (const expiresAt of [Date.now() - 1, Date.now() + 130000]) {
+      await post({
+        ...fixture(),
+        policyVersion: 'frame-family-rag-v1',
+        contextFacts: {
+          text: '유효하지 않은 가상 자료',
+          version: 'b'.repeat(64),
+          expiresAt: new Date(expiresAt).toISOString(),
+        },
+      }).expect(400);
+    }
 
     expect(searchFamily).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
