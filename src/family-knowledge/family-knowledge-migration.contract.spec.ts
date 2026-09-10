@@ -9,6 +9,13 @@ describe('Family knowledge migration contract', () => {
     ),
     'utf8',
   );
+  const vectorMigration = readFileSync(
+    resolve(
+      process.cwd(),
+      'prisma/migrations/20260910110000_add_family_knowledge_vector_index/migration.sql',
+    ),
+    'utf8',
+  );
 
   it('enforces versions, pseudonymous refs, scope and payload hashes in PostgreSQL', () => {
     expect(migration).toContain('"source_version" > 0');
@@ -26,5 +33,8 @@ describe('Family knowledge migration contract', () => {
     expect(migration).toContain('enforce_family_knowledge_chunk_scope');
     expect(migration).toContain('IS DISTINCT FROM NEW."tenant_ref"');
     expect(migration).toContain('IS DISTINCT FROM NEW."member_ref"');
+    expect(vectorMigration).toContain('cardinality("embedding") IN (0, 1024)');
+    expect(vectorMigration).toContain('USING hnsw');
+    expect(vectorMigration).toContain('vector_cosine_ops');
   });
 });

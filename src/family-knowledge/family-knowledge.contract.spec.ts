@@ -7,6 +7,7 @@ import { AppInfoService } from '../app-info/app-info.service';
 import { AppkeyGuard, type AppkeyRequest } from '../common/guards/appkey.guard';
 import { FamilyKnowledgeAccessGuard } from './family-knowledge-access.guard';
 import { FamilyKnowledgeController } from './family-knowledge.controller';
+import { FamilyKnowledgeSearchService } from './family-knowledge-search.service';
 import { FamilyKnowledgeService } from './family-knowledge.service';
 
 const appInfo: NonNullable<AppkeyRequest['appInfo']> = {
@@ -50,17 +51,20 @@ describe('Family knowledge ingestion HTTP contract', () => {
     resultCode: 'QUEUED',
     replayed: false,
   });
+  const search = jest.fn().mockResolvedValue({ results: [] });
 
   beforeEach(async () => {
     settings.FRAME_FAMILY_RAG_ENABLED = 'true';
     settings.FRAME_FAMILY_RAG_APPCODES = 'zinframe-app';
     receiveEvent.mockClear();
+    search.mockClear();
     const module = await Test.createTestingModule({
       controllers: [FamilyKnowledgeController],
       providers: [
         AppkeyGuard,
         FamilyKnowledgeAccessGuard,
         { provide: FamilyKnowledgeService, useValue: { receiveEvent } },
+        { provide: FamilyKnowledgeSearchService, useValue: { search } },
         {
           provide: ConfigService,
           useValue: { get: (key: string) => settings[key] },
@@ -129,5 +133,44 @@ describe('Family knowledge ingestion HTTP contract', () => {
     await post({ ...body, appcode: 'other-app' }, 'fixture-key').expect(400);
     await post({ ...body, tenantRef: 'NOT-A-REF' }, 'fixture-key').expect(400);
     expect(receiveEvent).not.toHaveBeenCalled();
+  });
+
+  it('allows only bounded FAMILY searches and forbids member/sensitivity overrides', async () => {
+    const searchBody = {
+      query: '가상 가족 질문',
+      tenantRef: body.tenantRef,
+      audience: 'FAMILY',
+    };
+    await request(app.getHttpServer() as Server)
+      .post('/family-knowledge/search')
+      .set('appkey', 'fixture-key')
+      .send(searchBody)
+      .expect(200);
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5 }),
+      appInfo,
+      undefined,
+    );
+
+    await request(app.getHttpServer() as Server)
+      .post('/family-knowledge/search')
+      .set('appkey', 'fixture-key')
+      .send({ ...searchBody, audience: 'MEMBER' })
+      .expect(400);
+    await request(app.getHttpServer() as Server)
+      .post('/family-knowledge/search')
+      .set('appkey', 'fixture-key')
+      .send({ ...searchBody, memberRef: 'b'.repeat(64) })
+      .expect(400);
+    await request(app.getHttpServer() as Server)
+      .post('/family-knowledge/search')
+      .set('appkey', 'fixture-key')
+      .send({ ...searchBody, sensitivity: 'SENSITIVE' })
+      .expect(400);
+    await request(app.getHttpServer() as Server)
+      .post('/family-knowledge/search')
+      .set('appkey', 'fixture-key')
+      .send({ ...searchBody, limit: 6 })
+      .expect(400);
   });
 });

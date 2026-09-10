@@ -40,5 +40,6 @@ import { KnowledgeIndexJobService } from './knowledge-index-job.service';
     AdminApiKeyGuard,
     ApiExposureGuard,
   ],
+  exports: [ChunkingService, EmbeddingService],
 })
 export class KnowledgeModule {}

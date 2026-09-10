@@ -272,6 +272,7 @@ model FamilyKnowledgeChunk {
   chunkNo         Int                          @map("chunk_no")
   content         String
   contentHash     String                       @map("content_hash") @db.VarChar(64)
+  embedding       Float[]                      @default([])
   embeddingVector Unsupported("vector(1024)")? @map("embedding_vector")
   embeddingModel  String                       @map("embedding_model")
   createdAt       DateTime                     @default(now()) @map("created_at")
