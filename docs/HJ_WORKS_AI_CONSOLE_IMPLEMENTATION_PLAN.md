@@ -3,7 +3,13 @@
 작성일: 2026-09-11  
 대상 서비스: HJ AI Server, HJ-Works, HJ AI Console  
 목표 주소: `https://ai.hjshub.com/console`  
-상태: 기획 기준선, HJ-Works 인증 계약 확인 전
+상태: `CON-WORKS-01` 인증 조사 완료, 사용자·조직 계약 확정 전
+
+> 2026-09-11 조사 결과 HJ-Works는 범용 OIDC Provider가 아니라 Firebase 기반 Works
+> 플랫폼 세션과 60초·1회용 서비스 인가 코드 교환 계약을 제공한다. AI Console MVP는
+> 이 SSO v1을 재사용하고, 권한 회수 전파·AI 전용 permission·PKCE는 후속 계약에서
+> 보완한다. 상세 내용은 [HJ-Works 연계 인증 조사 결과](HJ_WORKS_AUTH_DISCOVERY_2026-09-11.md)를
+> 참조한다.
 
 ## 1. 목적
 
@@ -109,8 +115,10 @@ HJ 내부 플랫폼 운영자
 
 ### 6.1 권장 프로토콜
 
-HJ-Works가 OpenID Connect Provider 역할을 하고 AI Console을 confidential client로
-등록한다. Authorization Code Flow와 PKCE를 사용하며 implicit flow는 허용하지 않는다.
+장기 목표는 HJ-Works가 OpenID Connect Provider 역할을 하고 AI Console을 confidential
+client로 등록하는 것이다. 다만 현재 Works에는 표준 OIDC가 아닌 60초·1회용 서비스
+인가 코드와 backend 교환 계약이 구현되어 있다. AI Console MVP는 이 SSO v1을 사용하고,
+표준 OIDC 전환은 서비스 확장과 외부 federation 필요성에 따라 별도 결정한다.
 
 HJ-Works 프로젝트에서 다음 기능의 현재 지원 여부를 먼저 확인한다.
 
@@ -122,34 +130,37 @@ HJ-Works 프로젝트에서 다음 기능의 현재 지원 여부를 먼저 확�
 - AI Console 전용 client ID, redirect URI와 audience
 - MFA 및 계정 정지 정책
 
-HJ-Works에 OIDC Provider가 없다면 해당 구현을 Console 선행 작업으로 등록한다. 임시
-공유 secret이나 사용자 정보를 query string에 담는 자체 SSO를 운영 계약으로 사용하지
-않는다.
+현재 SSO v1은 등록 callback과 backend client secret, 원본 Works 세션에 결합된 일회용
+code를 사용한다. 사용자 정보나 client secret을 query string에 전달하지 않으며,
+callback의 code는 Console backend가 즉시 교환한 뒤 폐기한다.
 
 ### 6.2 로그인 흐름
 
 1. 사용자가 `/console` 또는 HJ-Works 앱 런처에서 진입한다.
-2. Console BFF가 유효한 세션이 없으면 Works authorization endpoint로 이동시킨다.
-3. `state`, `nonce`, PKCE verifier를 서버 측 임시 저장소에 보관한다.
-4. Works 로그인과 MFA 완료 후 등록된 callback으로 authorization code를 반환한다.
-5. Console BFF가 code를 token으로 교환한다.
-6. issuer, audience, signature, `exp`, `iat`, `nonce`를 검증한다.
-7. Works 사용자 상태와 조직 멤버십을 확인하고 로컬 binding을 upsert한다.
-8. 사용 가능한 조직이 하나면 바로 진입하고, 여러 개면 조직 선택 화면을 표시한다.
+2. Console BFF가 유효한 세션이 없으면 고엔트로피 `state`를 생성·저장하고 Works
+   `/sso/authorize`로 이동시킨다.
+3. Works에서 로그인과 회사 선택을 완료한다.
+4. Works가 등록 callback으로 60초·1회용 code와 state를 반환한다.
+5. Console BFF가 state의 일치·만료·단일 사용을 검증한다.
+6. Console backend가 등록 client ID, client secret과 callback으로 code를 교환한다.
+7. 교환 결과의 만료, user/tenant ID 일관성과 허용 상태를 검증한다.
+8. Works 사용자와 tenant binding을 upsert한다.
 9. Console 전용 session ID를 `HttpOnly`, `Secure`, `SameSite=Lax` cookie로 발급한다.
 
-### 6.3 필수 claim
+### 6.3 SSO v1 필수 응답
 
-| claim | 의미 | 규칙 |
+| 필드 | 의미 | 규칙 |
 | --- | --- | --- |
-| `iss` | Works issuer | 허용 목록 exact match |
-| `aud` | Console client/audience | Console 전용 값 필수 |
-| `sub` | Works 사용자 ID | 불변 식별자 |
-| `exp`, `iat` | token 수명 | clock skew를 제한하여 검증 |
-| `jti` | token 식별자 | 재사용·폐기 추적에 활용 |
+| `userId`, `user.id` | Works 사용자 ID | 동일한 UUID여야 함 |
+| `tenantId`, `tenant.id` | Works 회사 ID | 동일한 UUID여야 함 |
+| `membershipRole` | 회사 역할 | `OWNER`, `ADMIN`, `MEMBER` 중 하나 |
+| `user.email` | 검증된 이메일 | 표시·알림용, 관계 key로 사용 금지 |
+| `user.displayName` | 표시 이름 | 최소 캐시만 허용 |
+| `tenant.name`, `tenant.slug` | 회사 표시 정보 | tenant binding 보조 정보 |
+| `expiresAt` | 교환 결과 만료 | 만료 결과 거절 |
 
-조직과 권한 정보가 token에 포함되더라도 장기 세션 동안 고정된 것으로 신뢰하지 않는다.
-권한 변화 반영을 위해 짧은 캐시 TTL의 Works 조회 또는 서명된 이벤트를 함께 사용한다.
+교환된 조직과 권한 정보를 장기 세션 동안 고정된 것으로 신뢰하지 않는다. 권한 변화
+반영을 위해 짧은 Console session, Works 조회 또는 서명된 이벤트를 후속 계약으로 정한다.
 
 ### 6.4 사용자 정보 최소 공유
 
@@ -423,7 +434,8 @@ membership.removed
 
 ### 단계 0. HJ-Works 계약 확인
 
-- [ ] `CON-WORKS-01` Works 인증 구현과 OIDC Provider 지원 여부 조사
+- [x] `CON-WORKS-01` Works 인증 구현과 OIDC Provider 지원 여부 조사 — SSO v1 재사용 판정,
+  [조사 결과](HJ_WORKS_AUTH_DISCOVERY_2026-09-11.md)
 - [ ] `CON-WORKS-02` 불변 user ID, organization ID와 membership 계약 확정
 - [ ] `CON-WORKS-03` AI Console 서비스 역할과 permission 소유 시스템 확정
 - [ ] `CON-WORKS-04` account·membership 변경 event와 재전송 계약 확정
