@@ -327,3 +327,28 @@ model FamilyConversationMetric {
   @@index([requestId])
   @@map("family_conversation_metric")
 }
+
+enum FamilyEmbeddingUsageKind {
+  INDEX
+  SEARCH
+}
+
+enum FamilyEmbeddingUsageState {
+  RESERVED
+  SUCCEEDED
+  UNCERTAIN
+}
+
+model FamilyEmbeddingUsage {
+  id               String                    @id @default(uuid()) @db.Uuid
+  appcode          String
+  periodKey        String                    @map("period_key") @db.VarChar(7)
+  operationKeyHash String                    @unique @map("operation_key_hash") @db.VarChar(64)
+  kind             FamilyEmbeddingUsageKind
+  state            FamilyEmbeddingUsageState @default(RESERVED)
+  completedAt      DateTime?                 @map("completed_at")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+
+  @@index([appcode, periodKey, createdAt])
+  @@map("family_embedding_usage")
+}

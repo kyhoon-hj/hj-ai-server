@@ -194,6 +194,22 @@ export function validateEnvironment(
     );
   }
 
+  const familyEmbeddingMonthlyLimitValue = valueOf(
+    config,
+    'FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT',
+  );
+  const familyEmbeddingMonthlyLimit = Number(familyEmbeddingMonthlyLimitValue);
+  if (
+    familyEmbeddingMonthlyLimitValue &&
+    (!Number.isInteger(familyEmbeddingMonthlyLimit) ||
+      familyEmbeddingMonthlyLimit < 1 ||
+      familyEmbeddingMonthlyLimit > 1_000_000)
+  ) {
+    errors.push(
+      'FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT must be an integer between 1 and 1000000',
+    );
+  }
+
   const awsConnectionTimeoutMs = Number(
     valueOf(config, 'AWS_CONNECTION_TIMEOUT_MS') || 5000,
   );
@@ -308,6 +324,7 @@ export function validateEnvironment(
     KNOWLEDGE_INDEX_MAX_ATTEMPTS: String(knowledgeIndexMaxAttempts),
     KNOWLEDGE_INDEX_RETRY_DELAY_MS: String(knowledgeIndexRetryDelayMs),
     KNOWLEDGE_EMBEDDING_CONCURRENCY: String(knowledgeEmbeddingConcurrency),
+    FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT: familyEmbeddingMonthlyLimitValue,
     AWS_CONNECTION_TIMEOUT_MS: String(awsConnectionTimeoutMs),
     AWS_REQUEST_TIMEOUT_MS: String(awsRequestTimeoutMs),
     FRAME_FAMILY_RAG_APPCODES: familyRagAppcodes,

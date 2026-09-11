@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   ApiAcceptedResponse,
   ApiHeader,
@@ -55,6 +56,11 @@ export class FamilyKnowledgeController {
   @ApiOperation({ summary: '인증된 FAMILY 범위의 지식 근거를 검색합니다.' })
   @ApiOkResponse({ type: FamilyKnowledgeSearchResponseDto })
   search(@Body() dto: FamilyKnowledgeSearchDto, @Req() request: AppkeyRequest) {
-    return this.familySearch.search(dto, request.appInfo!, request.abortSignal);
+    return this.familySearch.search(
+      dto,
+      request.appInfo!,
+      request.abortSignal,
+      `http-search:${randomUUID()}`,
+    );
   }
 }

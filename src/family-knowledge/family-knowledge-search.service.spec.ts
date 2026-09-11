@@ -20,11 +20,15 @@ function createFixture() {
     getDefaultEmbeddingModelId: jest.fn().mockReturnValue('embed-model'),
     createEmbedding: jest.fn().mockResolvedValue(vector(1)),
   };
+  const embeddingUsage = {
+    execute: jest.fn((_input, work: () => Promise<unknown>) => work()),
+  };
   const service = new FamilyKnowledgeSearchService(
     prisma as never,
     embedding as never,
+    embeddingUsage as never,
   );
-  return { service, prisma, embedding };
+  return { service, prisma, embedding, embeddingUsage };
 }
 
 function queryText(call: unknown) {

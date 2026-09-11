@@ -248,6 +248,7 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
       },
       appInfo,
       undefined,
+      `conversation:${dto.requestId}`,
     );
     const command = send.mock.calls[0][0].input;
     expect(command.system).toEqual([{ text: FAMILY_RAG_POLICY }]);

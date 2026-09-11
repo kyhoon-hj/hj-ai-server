@@ -4,6 +4,7 @@ import { AppkeyGuard } from '../common/guards/appkey.guard';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FamilyKnowledgeAccessGuard } from './family-knowledge-access.guard';
+import { FamilyEmbeddingUsageService } from './family-embedding-usage.service';
 import { FamilyKnowledgeController } from './family-knowledge.controller';
 import { FamilyKnowledgeIndexJobService } from './family-knowledge-index-job.service';
 import { FamilyKnowledgeIndexService } from './family-knowledge-index.service';
@@ -15,6 +16,7 @@ import { FamilyKnowledgeService } from './family-knowledge.service';
   controllers: [FamilyKnowledgeController],
   providers: [
     FamilyKnowledgeService,
+    FamilyEmbeddingUsageService,
     FamilyKnowledgeAccessGuard,
     FamilyKnowledgeIndexService,
     FamilyKnowledgeIndexJobService,

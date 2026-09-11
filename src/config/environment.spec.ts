@@ -144,6 +144,21 @@ describe('validateEnvironment', () => {
     });
   });
 
+  it('Family embedding 월 상한은 양의 정수만 허용한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT: '0',
+      }),
+    ).toThrow(/FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT must be/);
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT: '100',
+      }),
+    ).toMatchObject({ FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT: '100' });
+  });
+
   it('appkey TTL과 최대 rotation grace 범위를 검증한다', () => {
     expect(() =>
       validateEnvironment({

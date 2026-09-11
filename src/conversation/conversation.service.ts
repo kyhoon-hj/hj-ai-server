@@ -165,6 +165,7 @@ export class ConversationService implements OnModuleDestroy {
           },
           app,
           signal,
+          `conversation:${dto.requestId}`,
         );
       } catch (error) {
         this.throwConversationProviderError(error, signal);

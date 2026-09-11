@@ -7,6 +7,7 @@ import { FamilyKnowledgeIndexJobService } from '../src/family-knowledge/family-k
 import { FamilyKnowledgeIndexService } from '../src/family-knowledge/family-knowledge-index.service';
 import { FamilyKnowledgeSearchService } from '../src/family-knowledge/family-knowledge-search.service';
 import { FamilyKnowledgeService } from '../src/family-knowledge/family-knowledge.service';
+import { FamilyEmbeddingUsageService } from '../src/family-knowledge/family-embedding-usage.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const suite =
@@ -31,6 +32,7 @@ suite('Family RAG lifecycle (isolated PostgreSQL)', () => {
     FRAME_CONVERSATION_MODEL_ID: 'family-e2e-model',
     FRAME_FAMILY_RAG_ENABLED: 'true',
     FRAME_FAMILY_RAG_APPCODES: appcode,
+    FRAME_FAMILY_EMBEDDING_MONTHLY_LIMIT: '1000',
     KNOWLEDGE_INDEX_MAX_ATTEMPTS: '3',
     KNOWLEDGE_INDEX_RETRY_DELAY_MS: '100',
     KNOWLEDGE_EMBEDDING_CONCURRENCY: '1',
@@ -54,14 +56,20 @@ suite('Family RAG lifecycle (isolated PostgreSQL)', () => {
       },
     });
     familyKnowledge = new FamilyKnowledgeService(prisma, config);
+    const embeddingUsage = new FamilyEmbeddingUsageService(prisma, config);
     const indexer = new FamilyKnowledgeIndexService(
       prisma,
       new ChunkingService(),
       embedding as never,
       config,
+      embeddingUsage,
     );
     jobs = new FamilyKnowledgeIndexJobService(prisma, indexer, config);
-    search = new FamilyKnowledgeSearchService(prisma, embedding as never);
+    search = new FamilyKnowledgeSearchService(
+      prisma,
+      embedding as never,
+      embeddingUsage,
+    );
     conversation = new ConversationService(config, prisma, search);
     Object.defineProperty(conversation, 'client', {
       value: { send, destroy: jest.fn() },
@@ -70,6 +78,7 @@ suite('Family RAG lifecycle (isolated PostgreSQL)', () => {
 
   beforeEach(async () => {
     await prisma.familyConversationMetric.deleteMany({ where: { appcode } });
+    await prisma.familyEmbeddingUsage.deleteMany({ where: { appcode } });
     await prisma.familyKnowledgeEvent.deleteMany({ where: { appcode } });
     await prisma.familyKnowledgeDocument.deleteMany({ where: { appcode } });
     embed.mockReset().mockResolvedValue(vector);
@@ -88,6 +97,7 @@ suite('Family RAG lifecycle (isolated PostgreSQL)', () => {
     conversation?.onModuleDestroy();
     await jobs?.onModuleDestroy();
     await prisma?.familyConversationMetric.deleteMany({ where: { appcode } });
+    await prisma?.familyEmbeddingUsage.deleteMany({ where: { appcode } });
     await prisma?.familyKnowledgeEvent.deleteMany({ where: { appcode } });
     await prisma?.familyKnowledgeDocument.deleteMany({ where: { appcode } });
     await prisma?.appInfo.deleteMany({ where: { appcode } });

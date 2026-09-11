@@ -7,6 +7,7 @@ import { ChunkingService } from '../knowledge/chunking.service';
 import { EmbeddingService } from '../knowledge/embedding.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertFamilyKnowledgeIndexLease } from './family-knowledge-index-lease';
+import { FamilyEmbeddingUsageService } from './family-embedding-usage.service';
 
 const FAMILY_CHUNK_SIZE = 2000;
 const FAMILY_CHUNK_OVERLAP = 200;
@@ -20,6 +21,7 @@ export class FamilyKnowledgeIndexService {
     private readonly chunking: ChunkingService,
     private readonly embedding: EmbeddingService,
     private readonly config: ConfigService,
+    private readonly embeddingUsage: FamilyEmbeddingUsageService,
   ) {}
 
   async indexEvent(
@@ -75,10 +77,18 @@ export class FamilyKnowledgeIndexService {
       this.embeddingConcurrency(),
       async (chunk, chunkNo) => {
         if (parentSignal?.aborted) throw parentSignal.reason;
-        const vector = await this.embedding.createEmbedding(
-          chunk.content,
-          embeddingModel,
-          parentSignal,
+        const vector = await this.embeddingUsage.execute(
+          {
+            appcode: event.appcode,
+            kind: 'INDEX',
+            operationKey: `index:${event.id}:${event.attemptCount}:${chunkNo}`,
+          },
+          () =>
+            this.embedding.createEmbedding(
+              chunk.content,
+              embeddingModel,
+              parentSignal,
+            ),
         );
         this.assertEmbedding(vector);
         return {

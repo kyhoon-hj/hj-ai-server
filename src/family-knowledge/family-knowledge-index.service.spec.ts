@@ -69,13 +69,17 @@ function createFixture(transactionDocument = document) {
     getDefaultEmbeddingModelId: jest.fn().mockReturnValue('embed-model'),
     createEmbedding: jest.fn().mockResolvedValue(vector()),
   };
+  const embeddingUsage = {
+    execute: jest.fn((_input, work: () => Promise<unknown>) => work()),
+  };
   const service = new FamilyKnowledgeIndexService(
     prisma as never,
     new ChunkingService(),
     embedding as never,
     { get: jest.fn().mockReturnValue('2') } as never,
+    embeddingUsage as never,
   );
-  return { service, prisma, transaction, embedding };
+  return { service, prisma, transaction, embedding, embeddingUsage };
 }
 
 describe('FamilyKnowledgeIndexService', () => {

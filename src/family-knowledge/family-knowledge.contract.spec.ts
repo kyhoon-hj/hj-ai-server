@@ -150,6 +150,7 @@ describe('Family knowledge ingestion HTTP contract', () => {
       expect.objectContaining({ limit: 5 }),
       appInfo,
       undefined,
+      expect.stringMatching(/^http-search:/),
     );
 
     await request(app.getHttpServer() as Server)

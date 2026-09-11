@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { EmbeddingService } from '../knowledge/embedding.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomUUID } from 'node:crypto';
+import { FamilyEmbeddingUsageService } from './family-embedding-usage.service';
 import {
   FamilyKnowledgeSearchDto,
   FamilyKnowledgeSearchResponseDto,
@@ -24,20 +26,22 @@ export class FamilyKnowledgeSearchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embedding: EmbeddingService,
+    private readonly embeddingUsage: FamilyEmbeddingUsageService,
   ) {}
 
   async search(
     dto: FamilyKnowledgeSearchDto,
     app: { appcode: string; defaultEmbeddingModelId: string | null },
     parentSignal?: AbortSignal,
+    operationKey = `search:${randomUUID()}`,
   ): Promise<FamilyKnowledgeSearchResponseDto> {
     const embeddingModel =
       app.defaultEmbeddingModelId ??
       this.embedding.getDefaultEmbeddingModelId();
-    const queryEmbedding = await this.embedding.createEmbedding(
-      dto.query,
-      embeddingModel,
-      parentSignal,
+    const queryEmbedding = await this.embeddingUsage.execute(
+      { appcode: app.appcode, kind: 'SEARCH', operationKey },
+      () =>
+        this.embedding.createEmbedding(dto.query, embeddingModel, parentSignal),
     );
     this.assertEmbedding(queryEmbedding);
 
