@@ -1,0 +1,16 @@
+{
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "tenantId": "22222222-2222-4222-8222-222222222222",
+  "membershipRole": "ADMIN",
+  "user": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "email": "console.admin@example.com",
+    "displayName": "Console Admin"
+  },
+  "tenant": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "HJ Console Fixture",
+    "slug": "hj-console-fixture"
+  },
+  "expiresAt": "2030-01-01T00:01:00.000Z"
+}

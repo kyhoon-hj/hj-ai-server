@@ -25,7 +25,7 @@ This project uses PostgreSQL through Prisma 7. Configure `DATABASE_URL` in `.env
 
 ## Standard ports
 
-Local and production origin processes use the same fixed role-based ports: AI Server `11000`, validation demo `11001`, and service demo `11002`. See [application port standard](docs/PORT_STANDARD.md).
+Local and production origin processes use the same fixed role-based ports: AI Server `11000`, validation demo `11001`, service demo `11002`, and AI Console Web/BFF `11003`. See [application port standard](docs/PORT_STANDARD.md).
 
 ## Docker
 

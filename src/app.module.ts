@@ -7,6 +7,8 @@ import { AppService } from './app.service';
 import { AppInfoModule } from './app-info/app-info.module';
 import { BedrockModule } from './bedrock/bedrock.module';
 import { ConversationModule } from './conversation/conversation.module';
+import { ConsoleSecurityModule } from './console/security/console-security.module';
+import { ConsoleAppsModule } from './console/apps/console-apps.module';
 import { FamilyKnowledgeModule } from './family-knowledge/family-knowledge.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { StorageModule } from './storage/storage.module';
@@ -22,11 +24,13 @@ import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
+    ConsoleSecurityModule,
     HealthModule,
     SecurityModule,
     AppInfoModule,
     BedrockModule,
     ConversationModule,
+    ConsoleAppsModule,
     FamilyKnowledgeModule,
     KnowledgeModule,
     StorageModule,

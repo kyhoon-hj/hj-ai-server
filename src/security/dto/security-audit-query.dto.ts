@@ -13,6 +13,16 @@ export class SecurityAuditQueryDto {
   @IsOptional()
   appId?: string;
 
+  @ApiPropertyOptional({ example: 'baea61e0-570b-4f73-a8df-529fa96717fb' })
+  @IsUUID()
+  @IsOptional()
+  consoleOrganizationId?: string;
+
+  @ApiPropertyOptional({ example: '70fb3457-5134-4999-9efe-caf5f78a6b08' })
+  @IsUUID()
+  @IsOptional()
+  worksUserId?: string;
+
   @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 200 })
   @Type(() => Number)
   @IsInt()

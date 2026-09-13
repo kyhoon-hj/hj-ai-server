@@ -76,6 +76,7 @@ describe('AppInfo appkey lifecycle', () => {
         appcode: 'LIFECYCLE',
       },
     );
+    expect(getState()?.appkeyLastUsedAt).toBeInstanceOf(Date);
 
     const rotated = await service.rotateAppKey(created.id, {
       gracePeriodSeconds: 60,
@@ -86,6 +87,7 @@ describe('AppInfo appkey lifecycle', () => {
         appcode: 'LIFECYCLE',
       },
     );
+    expect(getState()?.previousAppkeyLastUsedAt).toBeInstanceOf(Date);
     await expect(service.validateAppKey(rotated.appkey)).resolves.toMatchObject(
       {
         appcode: 'LIFECYCLE',
@@ -122,5 +124,34 @@ describe('AppInfo appkey lifecycle', () => {
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'APPKEY_ROTATED' }),
     );
+  });
+
+  it('never extends a previous key beyond its original expiry', () => {
+    const service = new AppInfoService(
+      {} as never,
+      {
+        get: jest.fn().mockReturnValue('s'.repeat(32)),
+      } as unknown as ConfigService,
+      { record: jest.fn() } as never,
+    );
+    const issuedAt = new Date('2030-01-01T00:00:00.000Z');
+    const originalExpiry = new Date('2030-01-01T00:00:30.000Z');
+
+    expect(
+      service.previousCredentialValidUntil(
+        issuedAt,
+        60,
+        'current-hash',
+        originalExpiry,
+      ),
+    ).toEqual(originalExpiry);
+    expect(
+      service.previousCredentialValidUntil(
+        issuedAt,
+        60,
+        'current-hash',
+        issuedAt,
+      ),
+    ).toBeNull();
   });
 });

@@ -1,7 +1,6 @@
 import {
   createHash,
   createHmac,
-  randomBytes,
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
@@ -53,26 +52,20 @@ export class AppInfoService {
     await this.ensureUniqueAppCode(dto.appcode);
 
     const id = randomUUID();
-    const issuedAt = new Date();
-    const expiresAt = this.createExpiry(issuedAt, dto.appkeyTtlDays);
-    const appkey = this.createAppKey({
-      sub: id,
-      appname: dto.appname,
-      appcode: dto.appcode,
-      iat: Math.floor(issuedAt.getTime() / 1000),
-      exp: Math.floor(expiresAt.getTime() / 1000),
-      jti: randomBytes(12).toString('base64url'),
-    });
-    const appkeyHash = this.hashAppKey(appkey);
+    const credential = this.createAppKeyMaterial(
+      { id, appname: dto.appname, appcode: dto.appcode },
+      dto.appkeyTtlDays,
+    );
 
     const row = await this.prisma.appInfo
       .create({
         data: {
           id,
           appkey: null,
-          appkeyHash,
-          appkeyExpiresAt: expiresAt,
-          appkeyRotatedAt: issuedAt,
+          appkeyId: credential.credentialId,
+          appkeyHash: credential.appkeyHash,
+          appkeyExpiresAt: credential.expiresAt,
+          appkeyRotatedAt: credential.issuedAt,
           appname: dto.appname,
           appcode: dto.appcode,
           allowedAccessLevels: dto.allowedAccessLevels,
@@ -99,12 +92,12 @@ export class AppInfoService {
       appcode: row.appcode,
       credentialSlot: request?.admin?.credentialSlot,
       requestId: request?.correlationId,
-      metadata: { expiresAt: expiresAt.toISOString() },
+      metadata: { expiresAt: credential.expiresAt.toISOString() },
     });
 
     return {
       ...row,
-      appkey,
+      appkey: credential.appkey,
     };
   }
 
@@ -178,41 +171,50 @@ export class AppInfoService {
       select: {
         ...this.publicSelect,
         appkey: true,
+        appkeyId: true,
         appkeyHash: true,
+        appkeyIssuedByIdentityId: true,
+        appkeyLastUsedAt: true,
       },
     });
     if (!appInfo) throw new NotFoundException(`AppInfo ${id} not found`);
 
-    const issuedAt = new Date();
-    const expiresAt = this.createExpiry(issuedAt, dto.ttlDays);
     const gracePeriodSeconds = this.resolveGracePeriod(
       dto.gracePeriodSeconds ?? 0,
     );
     const currentHash =
       appInfo.appkeyHash ??
       (appInfo.appkey ? this.hashAppKey(appInfo.appkey) : null);
-    const previousValidUntil =
-      gracePeriodSeconds > 0 && currentHash
-        ? new Date(issuedAt.getTime() + gracePeriodSeconds * 1000)
-        : null;
-    const appkey = this.createAppKey({
-      sub: id,
-      appname: appInfo.appname,
-      appcode: appInfo.appcode,
-      iat: Math.floor(issuedAt.getTime() / 1000),
-      exp: Math.floor(expiresAt.getTime() / 1000),
-      jti: randomBytes(12).toString('base64url'),
-    });
+    const credential = this.createAppKeyMaterial(appInfo, dto.ttlDays);
+    const previousValidUntil = this.previousCredentialValidUntil(
+      credential.issuedAt,
+      gracePeriodSeconds,
+      currentHash,
+      appInfo.appkeyExpiresAt,
+    );
 
     const row = await this.prisma.appInfo.update({
       where: { id },
       data: {
         appkey: null,
-        appkeyHash: this.hashAppKey(appkey),
+        appkeyId: credential.credentialId,
+        appkeyHash: credential.appkeyHash,
+        appkeyIssuedByIdentityId: null,
+        appkeyLastUsedAt: null,
+        previousAppkeyId: previousValidUntil ? appInfo.appkeyId : null,
         previousAppkeyHash: previousValidUntil ? currentHash : null,
+        previousAppkeyIssuedByIdentityId: previousValidUntil
+          ? appInfo.appkeyIssuedByIdentityId
+          : null,
+        previousAppkeyIssuedAt: previousValidUntil
+          ? appInfo.appkeyRotatedAt
+          : null,
+        previousAppkeyLastUsedAt: previousValidUntil
+          ? appInfo.appkeyLastUsedAt
+          : null,
         previousAppkeyValidUntil: previousValidUntil,
-        appkeyExpiresAt: expiresAt,
-        appkeyRotatedAt: issuedAt,
+        appkeyExpiresAt: credential.expiresAt,
+        appkeyRotatedAt: credential.issuedAt,
       },
       select: this.publicSelect,
     });
@@ -226,14 +228,14 @@ export class AppInfoService {
       requestId: request?.correlationId,
       metadata: {
         gracePeriodSeconds,
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: credential.expiresAt.toISOString(),
         previousValidUntil: previousValidUntil?.toISOString() ?? null,
       },
     });
 
     return {
       ...row,
-      appkey,
+      appkey: credential.appkey,
     };
   }
 
@@ -264,8 +266,12 @@ export class AppInfoService {
         monthlyTokenLimit: true,
         metadata: true,
         appkey: true,
+        appkeyId: true,
         appkeyHash: true,
+        appkeyLastUsedAt: true,
         previousAppkeyHash: true,
+        previousAppkeyId: true,
+        previousAppkeyLastUsedAt: true,
         appkeyExpiresAt: true,
         previousAppkeyValidUntil: true,
       },
@@ -283,6 +289,13 @@ export class AppInfoService {
     ) {
       return null;
     }
+
+    await this.prisma.appInfo.update({
+      where: { id: row.id },
+      data: currentMatches
+        ? { appkeyLastUsedAt: now }
+        : { previousAppkeyLastUsedAt: now },
+    });
 
     return {
       id: row.id,
@@ -339,6 +352,57 @@ export class AppInfoService {
       .digest('base64url');
 
     return `${unsignedToken}.${signature}`;
+  }
+
+  createAppKeyMaterial(
+    app: { id: string; appname: string; appcode: string },
+    requestedTtlDays?: number,
+  ) {
+    const issuedAt = new Date();
+    const expiresAt = this.createExpiry(issuedAt, requestedTtlDays);
+    const credentialId = randomUUID();
+    const appkey = this.createAppKey({
+      sub: app.id,
+      appname: app.appname,
+      appcode: app.appcode,
+      iat: Math.floor(issuedAt.getTime() / 1000),
+      exp: Math.floor(expiresAt.getTime() / 1000),
+      jti: credentialId,
+    });
+    return {
+      credentialId,
+      appkey,
+      appkeyHash: this.hashAppKey(appkey),
+      issuedAt,
+      expiresAt,
+    };
+  }
+
+  resolveRotationGracePeriod(requestedSeconds: number) {
+    return this.resolveGracePeriod(requestedSeconds);
+  }
+
+  hashAppKeyValue(appkey: string) {
+    return this.hashAppKey(appkey);
+  }
+
+  previousCredentialValidUntil(
+    issuedAt: Date,
+    gracePeriodSeconds: number,
+    currentHash: string | null,
+    currentExpiresAt: Date | null,
+  ) {
+    if (
+      gracePeriodSeconds <= 0 ||
+      !currentHash ||
+      (currentExpiresAt && currentExpiresAt <= issuedAt)
+    ) {
+      return null;
+    }
+    const requested = new Date(issuedAt.getTime() + gracePeriodSeconds * 1000);
+    return currentExpiresAt && currentExpiresAt < requested
+      ? currentExpiresAt
+      : requested;
   }
 
   private createExpiry(issuedAt: Date, requestedTtlDays?: number) {

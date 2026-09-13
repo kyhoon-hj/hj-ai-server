@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="HJ-Works 조직의 AI 애플리케이션을 관리하는 HJ AI Console"
+    />
+    <title>앱 · HJ AI Console</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%2367e8b4%22/><text x=%226%22 y=%2221%22 font-size=%2212%22 font-family=%22Arial%22 font-weight=%22700%22 fill=%22%2310241e%22>HJ</text></svg>"
+    />
+    <link rel="stylesheet" href="/console-assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside id="sidebar" class="sidebar" aria-label="주 메뉴">
+        <a class="brand" href="/console/apps" data-link>
+          <span class="brand-mark" aria-hidden="true">HJ</span>
+          <span><strong>AI Console</strong><small>HJ SOLUTION</small></span>
+        </a>
+        <div class="org-switcher">
+          <span class="org-avatar">H</span>
+          <span><small>현재 조직</small><strong>HJ Solution</strong></span>
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="m8 10 4 4 4-4" />
+          </svg>
+        </div>
+        <nav>
+          <p class="nav-label">Workspace</p>
+          <a class="nav-item" href="/console" data-link
+            ><span class="nav-icon">⌂</span>홈</a
+          >
+          <a class="nav-item active" href="/console/apps" data-link
+            ><span class="nav-icon">◇</span>애플리케이션</a
+          >
+          <a class="nav-item muted" href="#" aria-disabled="true"
+            ><span class="nav-icon">▥</span>사용량</a
+          >
+          <a class="nav-item muted" href="#" aria-disabled="true"
+            ><span class="nav-icon">≡</span>요청 로그</a
+          >
+          <p class="nav-label">Organization</p>
+          <a class="nav-item muted" href="#" aria-disabled="true"
+            ><span class="nav-icon">♙</span>멤버</a
+          >
+          <a class="nav-item muted" href="#" aria-disabled="true"
+            ><span class="nav-icon">◎</span>보안</a
+          >
+          <a class="nav-item muted" href="#" aria-disabled="true"
+            ><span class="nav-icon">⚙</span>설정</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <div class="user-avatar">김</div>
+          <div><strong>김관리</strong><small>Administrator</small></div>
+          <button
+            class="icon-button dark"
+            type="button"
+            aria-label="사용자 메뉴"
+          >
+            •••
+          </button>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <button
+            class="mobile-menu"
+            type="button"
+            aria-label="메뉴 열기"
+            aria-controls="sidebar"
+            aria-expanded="false"
+          >
+            ☰
+          </button>
+          <div class="breadcrumb">
+            <span>Console</span><b>/</b
+            ><strong id="breadcrumb-current">애플리케이션</strong>
+          </div>
+          <div class="top-actions">
+            <span class="environment"><i></i> Development</span>
+            <a
+              class="docs-link"
+              href="/api-docs"
+              target="_blank"
+              rel="noreferrer"
+              >API Docs ↗</a
+            >
+          </div>
+        </header>
+
+        <section id="app-view" class="content" aria-live="polite"></section>
+      </main>
+    </div>
+    <button
+      id="mobile-nav-backdrop"
+      class="mobile-nav-backdrop"
+      type="button"
+      aria-label="메뉴 닫기"
+    ></button>
+
+    <dialog id="create-dialog" class="modal">
+      <form id="create-form" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">NEW APPLICATION</p>
+            <h2>새 AI 앱 만들기</h2>
+            <p>
+              앱 이름과 사용 목적을 입력하세요. 앱 코드는 생성 후 자동으로
+              부여됩니다.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            value="cancel"
+            formmethod="dialog"
+            aria-label="닫기"
+          >
+            ×
+          </button>
+        </div>
+        <div class="form-stack">
+          <label
+            ><span>앱 이름 <b>*</b></span
+            ><input
+              name="appname"
+              required
+              maxlength="200"
+              placeholder="예: 고객 지원 챗봇"
+              autocomplete="off"
+            /><small
+              >조직 구성원이 알아보기 쉬운 이름을 사용하세요.</small
+            ></label
+          >
+          <label
+            ><span>설명</span
+            ><textarea
+              name="remark"
+              maxlength="1000"
+              rows="4"
+              placeholder="이 앱이 수행할 업무와 사용 대상을 설명하세요."
+            ></textarea
+            ><small><span id="remark-count">0</span> / 1,000</small></label
+          >
+          <div id="create-error" class="inline-error" hidden></div>
+        </div>
+        <div class="modal-actions">
+          <button class="button secondary" value="cancel" formmethod="dialog">
+            취소</button
+          ><button class="button primary" id="create-submit" type="submit">
+            앱 만들기
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="credential-dialog" class="modal">
+      <form id="credential-form">
+        <div class="modal-header">
+          <div>
+            <p id="credential-dialog-eyebrow" class="eyebrow">NEW CREDENTIAL</p>
+            <h2 id="credential-dialog-title">새 API Key 발급</h2>
+            <p id="credential-dialog-description">
+              Key 원문은 발급 직후 한 번만 표시됩니다.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-dialog-close="credential-dialog"
+            aria-label="닫기"
+          >
+            ×
+          </button>
+        </div>
+        <div class="form-stack">
+          <label
+            ><span>유효기간</span
+            ><select name="ttlDays">
+              <option value="30">30일</option>
+              <option value="90" selected>90일</option>
+              <option value="180">180일</option>
+              <option value="365">365일</option></select
+            ><small>만료 전에 새 Key로 회전할 수 있습니다.</small></label
+          >
+          <label id="grace-period-field" hidden
+            ><span>이전 Key 유예기간</span
+            ><select name="gracePeriodSeconds">
+              <option value="0">즉시 만료</option>
+              <option value="300">5분</option>
+              <option value="1800" selected>30분</option>
+              <option value="3600">1시간</option>
+              <option value="86400">24시간</option></select
+            ><small
+              >배포 전환 시간 동안 현재 Key를 함께 허용합니다.</small
+            ></label
+          >
+          <div class="warning-box">
+            <strong>안전한 Key 관리</strong
+            ><span
+              >Key를 소스 코드나 브라우저 저장소에 보관하지 마세요. 서버 측
+              secret manager 사용을 권장합니다.</span
+            >
+          </div>
+          <div id="credential-error" class="inline-error" hidden></div>
+        </div>
+        <div class="modal-actions">
+          <button
+            class="button secondary"
+            type="button"
+            data-dialog-close="credential-dialog"
+          >
+            취소</button
+          ><button class="button primary" id="credential-submit" type="submit">
+            Key 발급
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="key-reveal-dialog" class="modal key-modal">
+      <form method="dialog">
+        <div class="modal-header success-header">
+          <div>
+            <p class="eyebrow">CREDENTIAL READY</p>
+            <h2>API Key가 준비되었습니다</h2>
+            <p>이 창을 닫으면 Key 원문을 다시 확인할 수 없습니다.</p>
+          </div>
+        </div>
+        <div class="form-stack">
+          <div class="one-time-notice">
+            <span>✓</span>
+            <div>
+              <strong>지금 안전한 위치에 저장하세요</strong>
+              <p>분실한 Key는 복구할 수 없으며 새 Key로 회전해야 합니다.</p>
+            </div>
+          </div>
+          <label
+            ><span>API Key</span>
+            <div class="secret-control">
+              <input
+                id="issued-key"
+                class="mono"
+                readonly
+                aria-label="새 API Key"
+              /><button id="copy-key" class="button secondary" type="button">
+                복사
+              </button>
+            </div></label
+          ><label class="confirm-check"
+            ><input id="key-saved-confirmation" type="checkbox" /><span
+              >안전한 secret manager에 Key를 저장했습니다.</span
+            ></label
+          >
+        </div>
+        <div class="modal-actions">
+          <button
+            class="button primary"
+            id="close-key-reveal"
+            value="confirm"
+            disabled
+          >
+            확인하고 닫기
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="revoke-dialog" class="modal compact-modal">
+      <form id="revoke-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow danger-text">REVOKE CREDENTIAL</p>
+            <h2>API Key를 폐기할까요?</h2>
+            <p>
+              이 작업은 되돌릴 수 없으며 해당 Key를 사용하는 요청이 즉시 실패할
+              수 있습니다.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-dialog-close="revoke-dialog"
+            aria-label="닫기"
+          >
+            ×
+          </button>
+        </div>
+        <div class="form-stack">
+          <div id="revoke-target" class="credential-target mono"></div>
+          <div id="revoke-error" class="inline-error" hidden></div>
+        </div>
+        <div class="modal-actions">
+          <button
+            class="button secondary"
+            type="button"
+            data-dialog-close="revoke-dialog"
+          >
+            취소</button
+          ><button class="button danger" id="revoke-submit" type="submit">
+            Key 폐기
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="assertive"></div>
+    <script type="module" src="/console-assets/app.js"></script>
+  </body>
+</html>

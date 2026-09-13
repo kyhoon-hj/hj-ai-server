@@ -1,9 +1,14 @@
 # HJ-Works 연계 AI Console 구축 계획
 
 작성일: 2026-09-11  
+변경일: 2026-09-13
 대상 서비스: HJ AI Server, HJ-Works, HJ AI Console  
 목표 주소: `https://ai.hjshub.com/console`  
-상태: `CON-WORKS-01` 인증 조사 완료, 사용자·조직 계약 확정 전
+상태: 기능 우선 구현 순서 확정, `CON-WORKS-01` 인증 조사 완료,
+`CON-WORKS-02` AI Server 계약 초안 완료·공동 승인 전
+
+현재 구현 결과와 검증 내역은 [HJ AI Console 구현 진행 현황](HJ_AI_CONSOLE_PROGRESS_2026-09-13.md)에
+정리한다.
 
 > 2026-09-11 조사 결과 HJ-Works는 범용 OIDC Provider가 아니라 Firebase 기반 Works
 > 플랫폼 세션과 60초·1회용 서비스 인가 코드 교환 계약을 제공한다. AI Console MVP는
@@ -82,7 +87,7 @@ HJ-Works Web
   └─ 연계 서비스 > HJ AI Console
        └─ https://ai.hjshub.com/console
             ├─ Console Web/BFF
-            │    ├─ Works OIDC code 교환
+            │    ├─ Works SSO v1 code 교환
             │    ├─ HttpOnly Console session
             │    └─ CSRF·조직 context 검증
             └─ Console API
@@ -432,44 +437,47 @@ membership.removed
 
 ## 13. 단계별 실행 계획
 
-### 단계 0. HJ-Works 계약 확인
+### 단계 0. 기능 우선 개발 기반과 안전장치
 
 - [x] `CON-WORKS-01` Works 인증 구현과 OIDC Provider 지원 여부 조사 — SSO v1 재사용 판정,
   [조사 결과](HJ_WORKS_AUTH_DISCOVERY_2026-09-11.md)
-- [ ] `CON-WORKS-02` 불변 user ID, organization ID와 membership 계약 확정
-- [ ] `CON-WORKS-03` AI Console 서비스 역할과 permission 소유 시스템 확정
-- [ ] `CON-WORKS-04` account·membership 변경 event와 재전송 계약 확정
-- [ ] `CON-WORKS-05` 로그아웃, MFA, 정지·탈퇴와 개인정보 정책 확정
+- [ ] `CON-WORKS-02` 불변 user ID, organization ID와 membership 계약 확정 — AI Server
+  [v1 계약 초안과 fixture](HJ_WORKS_IDENTITY_CONTRACT_V1.md) 검증 완료, HJ-Works 공동 승인 대기
+- [x] `CON-SRV-01` Console organization, identity, membership, ownership schema와 additive migration
+  — Prisma schema·비파괴 migration·계약 시험 완료, 운영 DB 적용은 단계 5에서 수행
+- [x] `CON-SRV-03` 인증 방식과 분리된 `ConsoleIdentityContext`·조직 context·permission guard
+  — 기본 fail-closed resolver와 permission·조직 격리 계약 시험 완료
+- [x] `CON-SRV-05` 감사 actor를 Console identity와 조직으로 확장
+  — 내부·Works ID와 session ID hash 저장, 기존 관리자 감사 호환 계약 완료
 
-완료 기준: 두 프로젝트가 사용할 versioned 인증·사용자·이벤트 계약과 테스트 fixture가
-승인된다.
+기능 개발 중에는 test와 명시적 local development에서만 fixture identity adapter를 사용한다.
+이 adapter는 운영 build에서 활성화할 수 없고, 운영 환경에서 관련 flag가 설정되면 시작을
+거절한다. 실제 `/console-api` 경로는 HJ-Works 인증 통합이 끝날 때까지 production feature
+flag를 비활성 상태로 유지한다.
 
-### 단계 1. identity와 tenant 기반
+완료 기준: 두 조직·여러 역할 fixture에서 tenant 격리와 permission matrix가 통과하고,
+운영 환경에서는 fixture identity로 Console API에 접근할 수 없다.
 
-- [ ] `CON-SRV-01` Console organization, identity, membership, session schema와 migration
-- [ ] `CON-SRV-02` Works OIDC 검증, callback과 session service
-- [ ] `CON-SRV-03` 조직 선택과 permission guard
-- [ ] `CON-SRV-04` Works 동기화와 서명 event idempotency
-- [ ] `CON-SRV-05` 감사 actor를 Works identity와 조직으로 확장
-- [ ] `CON-WEB-01` 로그인, callback, 조직 선택, 접근 거부 화면
+### 단계 1. 앱과 API credential MVP
 
-완료 기준: 두 조직·세 역할 fixture에서 로그인, 조직 격리, role 변경, membership 제거와
-session 폐기 E2E가 통과한다.
-
-### 단계 2. 앱과 API credential MVP
-
-- [ ] `CON-SRV-06` 사용자용 앱 목록·상세·생성·수정 API
-- [ ] `CON-SRV-07` 조직 소유권과 기존 AppInfo 연결
-- [ ] `CON-SRV-08` 사용자용 key 발급·회전·폐기 API
-- [ ] `CON-SRV-09` key 마지막 사용 시각과 발급 actor metadata
-- [ ] `CON-WEB-02` 앱 목록·생성·상세 화면
-- [ ] `CON-WEB-03` key 일회성 표시·회전·폐기 UX
+- [x] `CON-SRV-06` 사용자용 앱 목록·상세·생성·수정 API
+  — `/console-api/v1/apps`와 apps read/write permission 계약 완료
+- [x] `CON-SRV-07` 조직 소유권과 기존 AppInfo 연결
+  — 조직 범위 조회·404 비노출과 AppInfo·ownership 원자적 생성 완료
+- [x] `CON-SRV-08` 사용자용 key 발급·회전·폐기 API
+  — 조직 소유권·권한 검증, 일회성 원문 응답, 회전 grace와 개별 폐기 완료
+- [x] `CON-SRV-09` key 마지막 사용 시각과 발급 actor metadata
+  — 현재·이전 credential ID, 발급자, 발급·최근 사용 시각 저장 및 조회 완료
+- [x] `CON-WEB-02` 앱 목록·생성·상세 화면
+  — 독립 Console Web/BFF, 검색·상태 필터, 생성 modal, 상세 수정과 반응형 상태 UX 완료
+- [x] `CON-WEB-03` key 일회성 표시·회전·폐기 UX
+  — metadata 조회, 발급·회전 설정, 저장 확인 후 DOM 폐기와 개별 폐기 확인 UX 완료
 - [ ] `CON-WEB-04` Playground와 빠른 시작 예제
 
-완료 기준: Works Admin이 앱을 생성하고 key를 한 번 확인한 뒤 실제 `/v1` 호출을
-성공시키며, Developer·Viewer의 허용·거부 계약이 자동 검증된다.
+완료 기준: Admin fixture가 앱을 생성하고 key를 한 번 확인한 뒤 실제 `/v1` 호출을
+성공시키며, Developer·Viewer fixture의 허용·거부 계약이 자동 검증된다.
 
-### 단계 3. 사용량과 운영 가시성
+### 단계 2. 사용량과 운영 가시성
 
 - [ ] `CON-SRV-10` 요청·token·embedding 집계 schema 또는 query 확정
 - [ ] `CON-SRV-11` summary·timeseries·breakdown API
@@ -482,7 +490,7 @@ session 폐기 E2E가 통과한다.
 완료 기준: 집계 합계가 원본 실행 기록과 일치하고, tenant 교차 조회가 실패하며,
 명시적 0과 미측정 값이 구분된다.
 
-### 단계 4. 지식 관리
+### 단계 3. 지식 관리
 
 - [ ] `CON-SRV-15` Console identity 기반 지식 운영 facade
 - [ ] `CON-SRV-16` 앱 소유권과 Knowledge Manager permission 적용
@@ -492,10 +500,26 @@ session 폐기 E2E가 통과한다.
 완료 기준: 브라우저에 관리자 credential이 없는 상태로 업로드부터 답변, 재색인, 보관까지
 완료하고 STORE_A/B 유형의 조직 격리 회귀를 통과한다.
 
+### 단계 4. HJ-Works 로그인·세션 최종 통합
+
+- [ ] `CON-WORKS-03` AI Console 서비스 역할과 permission 소유 시스템 확정
+- [ ] `CON-WORKS-04` account·membership 변경 event와 재전송 계약 확정
+- [ ] `CON-WORKS-05` 로그아웃, MFA, 정지·탈퇴와 개인정보 정책 확정
+- [ ] `CON-SRV-02` Works SSO v1 검증, callback과 Console session service
+- [ ] `CON-SRV-04` Works 동기화와 서명 event idempotency
+- [ ] `CON-WEB-01` 로그인, callback, 조직 선택, 접근 거부 화면
+
+기능 API와 화면은 `ConsoleIdentityContext`만 의존하며 Works SDK나 SSO 응답을 직접
+참조하지 않는다. 이 단계에서 fixture adapter를 Works SSO/session adapter로 교체하고 같은
+permission·tenant 격리 계약 suite를 다시 실행한다.
+
+완료 기준: 두 조직·세 역할에서 로그인, 조직 격리, role 변경, membership 제거, logout과
+session 폐기 E2E가 통과하고 production에서 fixture adapter가 완전히 비활성화된다.
+
 ### 단계 5. 운영 배포와 승인
 
 - [ ] `CON-OPS-01` `/console`과 `/console-api` reverse proxy·CORS·CSP 구성
-- [ ] `CON-OPS-02` OIDC secret과 signing key rotation 운영 절차
+- [ ] `CON-OPS-02` Works SSO client secret과 Console session signing key rotation 운영 절차
 - [ ] `CON-OPS-03` migration backup·rollback rehearsal
 - [ ] `CON-OPS-04` metric·alert·dashboard와 runbook
 - [ ] `CON-OPS-05` dependency·image scan과 배포 gate
@@ -508,10 +532,10 @@ session 폐기 E2E가 통과한다.
 
 ### 14.1 계약 시험
 
-- Works issuer·audience·signature·만료·nonce 검증
-- 변경되거나 알 수 없는 claim과 event schema fail-closed
 - Works ID와 Console binding의 versioned fixture
 - permission matrix 전수 검사
+- 기능 단계에서는 fixture identity와 Works identity가 동일한 `ConsoleIdentityContext`를 생성하는지 검사
+- 인증 통합 단계에서는 Works SSO code·state·만료와 변경되거나 알 수 없는 응답·event를 fail-closed
 
 ### 14.2 격리·보안 시험
 
@@ -531,21 +555,22 @@ session 폐기 E2E가 통과한다.
 
 ### 14.4 운영 시험
 
-- OIDC/JWKS 또는 Works 사용자 API 단절 시 안전한 실패
-- signing key rotation 중 무중단 로그인
+- Works SSO 또는 사용자 API 단절 시 안전한 실패
+- client secret과 Console session signing key rotation 중 무중단 로그인
 - event 중복·지연·순서 역전 복구
 - Console 배포 중 기존 AI API 무중단
 - migration rollback과 기존 AppInfo/appkey 호환
 
 ## 15. 배포 전략
 
-1. schema와 API를 feature flag 비활성 상태로 먼저 배포한다.
-2. HJ-Works staging client와 두 조직·여러 역할 fixture를 연결한다.
-3. HJ 내부 pilot 조직만 Works allowlist와 Console feature flag로 활성화한다.
-4. read-only dashboard를 먼저 공개한다.
-5. 앱 생성과 key 관리, 지식 쓰기 기능을 순서대로 활성화한다.
-6. 오류율, 인증 실패, tenant 거부, p95와 audit 누락을 관찰한다.
-7. 이상 시 Console 경로만 비활성화하고 기존 `/v1` AI 호출은 유지한다.
+1. 기능 schema와 API를 production feature flag 비활성 상태로 먼저 배포한다.
+2. fixture identity는 test와 local development에서만 사용하고 배포 image의 production 시작 검사를 통과시킨다.
+3. 앱, credential, 사용량과 지식 기능 계약을 fixture identity로 완료한다.
+4. 마지막 기능 단계에서 HJ-Works staging client와 두 조직·여러 역할을 연결한다.
+5. 로그인·세션 폐기·권한 회수 E2E가 통과한 뒤 HJ 내부 pilot 조직만 allowlist로 활성화한다.
+6. read-only dashboard를 먼저 공개하고 앱·key·지식 쓰기를 순서대로 활성화한다.
+7. 오류율, 인증 실패, tenant 거부, p95와 audit 누락을 관찰한다.
+8. 이상 시 Console 경로만 비활성화하고 기존 `/v1` AI 호출은 유지한다.
 
 rollback은 Console UI, Console API feature flag, 앱 image와 DB migration을 분리한다.
 additive migration을 우선하며 destructive schema 정리는 호환 기간 이후 별도 릴리스로 한다.
@@ -554,7 +579,8 @@ additive migration을 우선하며 destructive schema 정리는 호환 기간 �
 
 | 위험 | 영향 | 대응 |
 | --- | --- | --- |
-| Works가 OIDC Provider를 제공하지 않음 | 전체 일정 지연 | 단계 0에서 인증 제공 기능을 선행 deliverable로 확정 |
+| Works SSO 계약 확정이 지연됨 | 최종 통합·공개 지연 | 기능은 identity port로 분리 구현하고 공개 전 단계 4를 필수 gate로 유지 |
+| fixture identity가 운영에서 활성화됨 | 인증 우회 | production 시작 거부, build·배포 검사와 negative E2E |
 | 조직·멤버십 정보가 token에서 오래 유지됨 | 권한 철회 지연 | 짧은 TTL, 민감 작업 재조회, 서명 event와 session 폐기 |
 | 기존 AppInfo에 조직 소유권이 없음 | tenant 오연결 | 명시적 ownership migration과 중복·미소유 preflight |
 | 정적 관리자 key를 BFF가 대리 사용 | 권한 확대·감사 주체 손실 | identity-aware Console API와 permission guard 구현 |
@@ -564,29 +590,36 @@ additive migration을 우선하며 destructive schema 정리는 호환 기간 �
 
 ## 17. 예상 일정
 
-HJ-Works에 OIDC와 조직·권한 API가 이미 있다는 전제의 1인 기준 추정이다.
+HJ-Works SSO v1을 최종 인증 adapter로 재사용한다는 전제의 1인 기준 추정이다.
 
 | 단계 | 예상 |
 | --- | ---: |
-| Works 계약 확인과 상세 설계 | 3~5일 |
-| identity·조직·RBAC·세션 | 7~10일 |
+| 기능 개발 기반·identity port·조직 RBAC | 4~6일 |
 | 앱·credential·Playground | 7~10일 |
 | 사용량·로그·한도 | 7~10일 |
 | 지식 관리 연결 | 4~7일 |
+| Works 로그인·세션 최종 통합 | 5~8일 |
 | 운영·보안·접근성 검증 | 5~7일 |
 | 결제 제외 MVP 합계 | 약 6~8주 |
 
-Works OIDC Provider 신규 구현이 필요하면 별도 일정과 독립 보안 검토를 추가한다.
+Works SSO 계약 변경이나 권한 회수 event 신규 구현이 필요하면 별도 일정을 추가한다.
 
-## 18. 구현 전 확정 사항
+## 18. 단계별 확정 gate
 
-1. HJ-Works의 현재 로그인 프로토콜과 OIDC Provider 지원 여부
-2. 불변 Works 사용자·조직 ID의 형식과 수명주기
-3. 조직별 AI Console 역할을 Works가 관리할지 Console이 관리할지
-4. 한 사용자의 복수 조직 소속과 기본 조직 선택 규칙
-5. 계정 정지·퇴사·조직 탈퇴 시 허용되는 최대 권한 철회 지연
-6. MVP의 API credential을 기존 단일 회전 key로 제한할지 복수 key로 확장할지
-7. 사용량 원본과 질문·응답 내용의 보존기간
-8. 초기 pilot 조직, 월 한도와 알림 채널
+기능 구현 시작 전에 확정한다.
 
-이 항목의 결정 기록을 승인한 뒤 단계 1 schema와 공개 API 계약을 확정한다.
+1. 불변 Works 사용자·조직 ID 형식과 `ConsoleIdentityContext` 구조
+2. permission 이름과 각 기능이 요구하는 permission matrix
+3. MVP credential을 기존 단일 회전 key로 제한할지 복수 key로 확장할지
+4. 사용량 원본과 질문·응답 내용의 보존기간
+
+HJ-Works 인증 최종 통합 전에 확정한다.
+
+1. 조직별 역할을 Works가 관리할지 Console이 관리할지
+2. 복수 조직 소속과 기본 조직 선택 규칙
+3. 계정 정지·퇴사·조직 탈퇴 시 허용되는 최대 권한 철회 지연
+4. 변경 event, 로그아웃, 재인증과 개인정보 수명주기
+5. 초기 pilot 조직, 월 한도와 알림 채널
+
+기능 단계의 미확정 인증 항목은 adapter 경계 밖으로 누출하지 않는다. 단계 4 완료 전에는
+Console production feature flag를 활성화하거나 `/console-api`를 외부에 공개하지 않는다.

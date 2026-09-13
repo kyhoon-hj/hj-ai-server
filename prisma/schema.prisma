@@ -51,6 +51,27 @@ enum FamilyKnowledgeEventStatus {
   FAILED
 }
 
+enum ConsoleOrganizationStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ConsoleIdentityStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ConsoleMembershipStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum ConsoleWorksMembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model TestTable {
   id        Int      @id @default(autoincrement())
   name      String
@@ -60,50 +81,150 @@ model TestTable {
 }
 
 model AppInfo {
-  id                       String                 @id @default(uuid()) @db.Uuid
-  appname                  String
-  appkey                   String?
-  appkeyHash               String?                @unique @map("appkey_hash")
-  previousAppkeyHash       String?                @unique @map("previous_appkey_hash")
-  appkeyExpiresAt          DateTime?              @map("appkey_expires_at")
-  previousAppkeyValidUntil DateTime?              @map("previous_appkey_valid_until")
-  appkeyRotatedAt          DateTime?              @map("appkey_rotated_at")
-  appcode                  String                 @unique
-  allowedAccessLevels      KnowledgeAccessLevel[] @default([]) @map("allowed_access_levels")
-  status                   String                 @default("active")
-  s3Prefix                 String?                @map("s3_prefix")
-  defaultModelId           String?                @map("default_model_id")
-  defaultEmbeddingModelId  String?                @map("default_embedding_model_id")
-  systemPrompt             String?                @map("system_prompt")
-  maxStorageMb             Int?                   @map("max_storage_mb")
-  monthlyTokenLimit        Int?                   @map("monthly_token_limit")
-  metadata                 Json?
-  remark                   String?
-  createat                 DateTime               @default(now())
-  updateat                 DateTime               @updatedAt
+  id                               String                 @id @default(uuid()) @db.Uuid
+  appname                          String
+  appkey                           String?
+  appkeyId                         String?                @unique @map("appkey_id") @db.Uuid
+  appkeyHash                       String?                @unique @map("appkey_hash")
+  appkeyIssuedByIdentityId         String?                @map("appkey_issued_by_identity_id") @db.Uuid
+  appkeyLastUsedAt                 DateTime?              @map("appkey_last_used_at")
+  previousAppkeyId                 String?                @unique @map("previous_appkey_id") @db.Uuid
+  previousAppkeyHash               String?                @unique @map("previous_appkey_hash")
+  previousAppkeyIssuedByIdentityId String?                @map("previous_appkey_issued_by_identity_id") @db.Uuid
+  previousAppkeyIssuedAt           DateTime?              @map("previous_appkey_issued_at")
+  previousAppkeyLastUsedAt         DateTime?              @map("previous_appkey_last_used_at")
+  appkeyExpiresAt                  DateTime?              @map("appkey_expires_at")
+  previousAppkeyValidUntil         DateTime?              @map("previous_appkey_valid_until")
+  appkeyRotatedAt                  DateTime?              @map("appkey_rotated_at")
+  appcode                          String                 @unique
+  allowedAccessLevels              KnowledgeAccessLevel[] @default([]) @map("allowed_access_levels")
+  status                           String                 @default("active")
+  s3Prefix                         String?                @map("s3_prefix")
+  defaultModelId                   String?                @map("default_model_id")
+  defaultEmbeddingModelId          String?                @map("default_embedding_model_id")
+  systemPrompt                     String?                @map("system_prompt")
+  maxStorageMb                     Int?                   @map("max_storage_mb")
+  monthlyTokenLimit                Int?                   @map("monthly_token_limit")
+  metadata                         Json?
+  remark                           String?
+  createat                         DateTime               @default(now())
+  updateat                         DateTime               @updatedAt
+  consoleOwnership                 ConsoleAppOwnership?
+  appkeyIssuedBy                   ConsoleIdentity?       @relation("CurrentAppKeyIssuedBy", fields: [appkeyIssuedByIdentityId], references: [id], onDelete: Restrict)
+  previousAppkeyIssuedBy           ConsoleIdentity?       @relation("PreviousAppKeyIssuedBy", fields: [previousAppkeyIssuedByIdentityId], references: [id], onDelete: Restrict)
 
   @@index([status])
   @@map("appinfo")
 }
 
+model ConsoleOrganization {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  worksOrganizationId String                    @unique @map("works_organization_id") @db.Uuid
+  displayName         String                    @map("display_name") @db.VarChar(200)
+  status              ConsoleOrganizationStatus @default(ACTIVE)
+  planCode            String?                   @map("plan_code") @db.VarChar(64)
+  monthlyRequestLimit Int?                      @map("monthly_request_limit")
+  monthlyTokenLimit   Int?                      @map("monthly_token_limit")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
+  lastSyncedAt        DateTime                  @map("last_synced_at")
+
+  memberships ConsoleMembership[]
+  apps        ConsoleAppOwnership[]
+  auditEvents SecurityAuditEvent[]
+
+  @@index([status])
+  @@map("console_organization")
+}
+
+model ConsoleIdentity {
+  id              String                @id @default(uuid()) @db.Uuid
+  worksUserId     String                @unique @map("works_user_id") @db.Uuid
+  displayName     String?               @map("display_name") @db.VarChar(200)
+  email           String?               @db.VarChar(320)
+  profileImageUrl String?               @map("profile_image_url")
+  status          ConsoleIdentityStatus @default(ACTIVE)
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  lastSyncedAt    DateTime              @map("last_synced_at")
+
+  memberships           ConsoleMembership[]
+  createdApps           ConsoleAppOwnership[] @relation("ConsoleAppCreatedBy")
+  auditEvents           SecurityAuditEvent[]
+  issuedAppkeys         AppInfo[]             @relation("CurrentAppKeyIssuedBy")
+  issuedPreviousAppkeys AppInfo[]             @relation("PreviousAppKeyIssuedBy")
+
+  @@index([status])
+  @@map("console_identity")
+}
+
+model ConsoleMembership {
+  id             String                     @id @default(uuid()) @db.Uuid
+  organizationId String                     @map("organization_id") @db.Uuid
+  identityId     String                     @map("identity_id") @db.Uuid
+  worksRole      ConsoleWorksMembershipRole @map("works_role")
+  roleVersion    String?                    @map("role_version") @db.VarChar(128)
+  permissions    String[]                   @default([])
+  status         ConsoleMembershipStatus    @default(ACTIVE)
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  updatedAt      DateTime                   @updatedAt @map("updated_at")
+  lastSyncedAt   DateTime                   @map("last_synced_at")
+
+  organization ConsoleOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  identity     ConsoleIdentity     @relation(fields: [identityId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, identityId])
+  @@index([identityId, status])
+  @@index([organizationId, status])
+  @@map("console_membership")
+}
+
+model ConsoleAppOwnership {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  appInfoId           String   @unique @map("app_info_id") @db.Uuid
+  createdByIdentityId String   @map("created_by_identity_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organization ConsoleOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  appInfo      AppInfo             @relation(fields: [appInfoId], references: [id], onDelete: Restrict)
+  createdBy    ConsoleIdentity     @relation("ConsoleAppCreatedBy", fields: [createdByIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([createdByIdentityId])
+  @@map("console_app_ownership")
+}
+
 model SecurityAuditEvent {
-  id             String   @id @default(uuid()) @db.Uuid
-  eventType      String   @map("event_type")
-  actorType      String   @map("actor_type")
-  actorId        String?  @map("actor_id")
-  credentialSlot String?  @map("credential_slot")
-  appId          String?  @map("app_id") @db.Uuid
-  appcode        String?
-  requestId      String?  @map("request_id")
-  method         String?
-  path           String?
-  metadata       Json?
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                    String   @id @default(uuid()) @db.Uuid
+  eventType             String   @map("event_type")
+  actorType             String   @map("actor_type")
+  actorId               String?  @map("actor_id")
+  credentialSlot        String?  @map("credential_slot")
+  appId                 String?  @map("app_id") @db.Uuid
+  appcode               String?
+  requestId             String?  @map("request_id")
+  method                String?
+  path                  String?
+  metadata              Json?
+  consoleIdentityId     String?  @map("console_identity_id") @db.Uuid
+  consoleOrganizationId String?  @map("console_organization_id") @db.Uuid
+  worksUserId           String?  @map("works_user_id") @db.Uuid
+  worksOrganizationId   String?  @map("works_organization_id") @db.Uuid
+  consoleSessionIdHash  String?  @map("console_session_id_hash") @db.VarChar(64)
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  consoleIdentity     ConsoleIdentity?     @relation(fields: [consoleIdentityId], references: [id], onDelete: Restrict)
+  consoleOrganization ConsoleOrganization? @relation(fields: [consoleOrganizationId], references: [id], onDelete: Restrict)
 
   @@index([eventType, createdAt])
   @@index([actorType, actorId, createdAt])
   @@index([appId, createdAt])
   @@index([requestId])
+  @@index([consoleOrganizationId, createdAt])
+  @@index([consoleIdentityId, createdAt])
+  @@index([worksUserId, createdAt])
+  @@index([consoleSessionIdHash])
   @@map("security_audit_event")
 }
 

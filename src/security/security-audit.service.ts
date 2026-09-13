@@ -1,10 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecurityAuditQueryDto } from './dto/security-audit-query.dto';
+import type { ConsoleIdentityContext } from '../console/security/console-identity-context';
 
 export type SecurityAuditInput = {
   eventType: string;
-  actorType: 'platform-admin' | 'knowledge-operator' | 'appkey' | 'system';
+  actorType:
+    | 'platform-admin'
+    | 'knowledge-operator'
+    | 'console-user'
+    | 'appkey'
+    | 'system';
   actorId?: string;
   credentialSlot?: 'primary' | 'previous';
   appId?: string;
@@ -12,7 +18,26 @@ export type SecurityAuditInput = {
   requestId?: string;
   method?: string;
   path?: string;
+  consoleIdentityId?: string;
+  consoleOrganizationId?: string;
+  worksUserId?: string;
+  worksOrganizationId?: string;
+  consoleSessionIdHash?: string;
   metadata?: Record<string, string | number | boolean | null>;
+};
+
+export type ConsoleSecurityAuditInput = Omit<
+  SecurityAuditInput,
+  | 'actorType'
+  | 'actorId'
+  | 'consoleIdentityId'
+  | 'consoleOrganizationId'
+  | 'worksUserId'
+  | 'worksOrganizationId'
+  | 'consoleSessionIdHash'
+> & {
+  identity: ConsoleIdentityContext;
+  consoleSessionIdHash?: string;
 };
 
 @Injectable()
@@ -34,6 +59,11 @@ export class SecurityAuditService {
           requestId: input.requestId,
           method: input.method,
           path: input.path,
+          consoleIdentityId: input.consoleIdentityId,
+          consoleOrganizationId: input.consoleOrganizationId,
+          worksUserId: input.worksUserId,
+          worksOrganizationId: input.worksOrganizationId,
+          consoleSessionIdHash: input.consoleSessionIdHash,
           metadata: input.metadata,
         },
       });
@@ -45,6 +75,27 @@ export class SecurityAuditService {
     }
   }
 
+  recordConsole(input: ConsoleSecurityAuditInput): Promise<boolean> {
+    const { identity, consoleSessionIdHash, ...event } = input;
+    if (consoleSessionIdHash && !/^[0-9a-f]{64}$/.test(consoleSessionIdHash)) {
+      this.logger.error(
+        'Security audit persistence failed: invalid Console session ID hash',
+      );
+      return Promise.resolve(false);
+    }
+
+    return this.record({
+      ...event,
+      actorType: 'console-user',
+      actorId: identity.worksUserId,
+      consoleIdentityId: identity.identityId,
+      consoleOrganizationId: identity.organizationId,
+      worksUserId: identity.worksUserId,
+      worksOrganizationId: identity.worksOrganizationId,
+      consoleSessionIdHash,
+    });
+  }
+
   list(query: SecurityAuditQueryDto) {
     const requestedLimit = Number(query.limit ?? 50);
     const limit = Number.isInteger(requestedLimit)
@@ -54,6 +105,8 @@ export class SecurityAuditService {
       where: {
         eventType: query.eventType,
         appId: query.appId,
+        consoleOrganizationId: query.consoleOrganizationId,
+        worksUserId: query.worksUserId,
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
