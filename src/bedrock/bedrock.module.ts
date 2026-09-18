@@ -1,3 +1,4 @@
+import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
 import { Module } from '@nestjs/common';
 import { AppInfoModule } from '../app-info/app-info.module';
 import { AppkeyGuard } from '../common/guards/appkey.guard';
@@ -9,7 +10,7 @@ import { AdminApiKeyGuard } from '../common/guards/admin-api-key.guard';
 import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 
 @Module({
-  imports: [AppInfoModule, PrismaModule],
+  imports: [AppInfoModule, PrismaModule, UsageQuotaModule],
   controllers: [BedrockController, BedrockAdminController],
   providers: [BedrockService, AppkeyGuard, AdminApiKeyGuard, ApiExposureGuard],
 })

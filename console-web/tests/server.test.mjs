@@ -82,6 +82,101 @@ test('Console API 요청만 AI Server로 전달한다', async (context) => {
   ]);
 });
 
+test('CSV 다운로드에 필요한 제한된 응답 header를 전달한다', async (context) => {
+  const upstream = createServer((request, response) => {
+    response.writeHead(200, {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': 'attachment; filename="request-logs.csv"',
+      'x-export-row-count': '1',
+      'x-export-truncated': 'false',
+      'x-internal-secret': 'do-not-forward',
+    });
+    response.end('status\r\nsuccess\r\n');
+  });
+  const upstreamOrigin = await listen(upstream);
+  const server = createConsoleWebServer({ aiServerOrigin: upstreamOrigin });
+  const origin = await listen(server);
+  context.after(async () => {
+    await close(server);
+    await close(upstream);
+  });
+
+  const response = await fetch(
+    `${origin}/console-api/v1/request-logs/export.csv`,
+  );
+  assert.equal(
+    response.headers.get('content-disposition'),
+    'attachment; filename="request-logs.csv"',
+  );
+  assert.equal(response.headers.get('x-export-row-count'), '1');
+  assert.equal(response.headers.get('x-export-truncated'), 'false');
+  assert.equal(response.headers.get('x-internal-secret'), null);
+});
+
+test('Playground는 허용된 답변 경로에만 API Key를 전달한다', async (context) => {
+  const received = [];
+  const upstream = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    received.push({
+      url: request.url,
+      method: request.method,
+      appkey: request.headers.appkey,
+      body,
+    });
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ answerable: true, answer: '완료' }));
+  });
+  const upstreamOrigin = await listen(upstream);
+  const server = createConsoleWebServer({ aiServerOrigin: upstreamOrigin });
+  const origin = await listen(server);
+  context.after(async () => {
+    await close(server);
+    await close(upstream);
+  });
+
+  const input = { query: '등록된 정책은?', strict: true };
+  const response = await fetch(
+    `${origin}/console-playground-api/knowledge/answers`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-console-playground-appkey': 'temporary-key',
+      },
+      body: JSON.stringify(input),
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(received, [
+    {
+      url: '/knowledge/answers',
+      method: 'POST',
+      appkey: 'temporary-key',
+      body: JSON.stringify(input),
+    },
+  ]);
+
+  assert.equal(
+    (
+      await fetch(`${origin}/console-playground-api/knowledge/search`, {
+        method: 'POST',
+        headers: { 'x-console-playground-appkey': 'temporary-key' },
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await fetch(`${origin}/console-playground-api/knowledge/answers`, {
+        method: 'POST',
+      })
+    ).status,
+    400,
+  );
+});
+
 test('Console 이외 경로와 존재하지 않는 asset은 노출하지 않는다', async (context) => {
   const server = createConsoleWebServer();
   const origin = await listen(server);

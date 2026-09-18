@@ -35,6 +35,7 @@
     "test:rag-quality-extended": "node test/run-queue-http-e2e.mjs --rag-quality-extended",
     "test:rag-quality-adversarial": "node test/run-queue-http-e2e.mjs --rag-quality-adversarial",
     "test:rag-quality-repeatability": "node test/run-queue-http-e2e.mjs --rag-quality-repeatability",
+    "test:usage-quota-db": "node test/run-queue-http-e2e.mjs --usage-quota",
     "test:queue-http-e2e": "node test/run-queue-http-e2e.mjs",
     "test:network-e2e": "node test/run-queue-http-e2e.mjs --network",
     "test:network-load": "node test/run-queue-http-e2e.mjs --network-load",

@@ -9,6 +9,8 @@ import { BedrockModule } from './bedrock/bedrock.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { ConsoleSecurityModule } from './console/security/console-security.module';
 import { ConsoleAppsModule } from './console/apps/console-apps.module';
+import { ConsoleUsageModule } from './console/usage/console-usage.module';
+import { ConsoleRequestLogsModule } from './console/request-logs/console-request-logs.module';
 import { FamilyKnowledgeModule } from './family-knowledge/family-knowledge.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { StorageModule } from './storage/storage.module';
@@ -31,6 +33,8 @@ import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
     BedrockModule,
     ConversationModule,
     ConsoleAppsModule,
+    ConsoleUsageModule,
+    ConsoleRequestLogsModule,
     FamilyKnowledgeModule,
     KnowledgeModule,
     StorageModule,

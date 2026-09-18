@@ -15,12 +15,14 @@ import { KnowledgeService } from './knowledge.service';
 import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 import { createKnowledgeUploadOptions } from './knowledge-file-security';
 import { KnowledgeIndexJobService } from './knowledge-index-job.service';
+import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
 
 @Module({
   imports: [
     AppInfoModule,
     PrismaModule,
     StorageModule,
+    UsageQuotaModule,
     MulterModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>

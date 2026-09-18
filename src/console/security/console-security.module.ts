@@ -1,16 +1,18 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ConsolePermissionGuard } from './console-permission.guard';
 import {
   CONSOLE_IDENTITY_CONTEXT_RESOLVER,
-  UnavailableConsoleIdentityContextResolver,
+  DevelopmentConsoleIdentityContextResolver,
 } from './console-identity-context.resolver';
 
 @Module({
+  imports: [ConfigModule],
   providers: [
-    UnavailableConsoleIdentityContextResolver,
+    DevelopmentConsoleIdentityContextResolver,
     {
       provide: CONSOLE_IDENTITY_CONTEXT_RESOLVER,
-      useExisting: UnavailableConsoleIdentityContextResolver,
+      useExisting: DevelopmentConsoleIdentityContextResolver,
     },
     ConsolePermissionGuard,
   ],

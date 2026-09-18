@@ -79,6 +79,7 @@ export class BedrockController {
       dto,
       request.appInfo!.appcode,
       request.abortSignal,
+      request.correlationId,
     );
   }
 
@@ -103,6 +104,7 @@ export class BedrockController {
       dto,
       request.appInfo!.appcode,
       request.abortSignal,
+      request.correlationId,
     );
   }
 

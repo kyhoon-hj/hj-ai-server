@@ -15,6 +15,7 @@ const BOOLEAN_ENVIRONMENT_KEYS = [
   'ENABLE_TEST_TABLE_API',
   'ENABLE_LEGACY_BEDROCK_INSPECTION_API',
   'ENABLE_LEGACY_KNOWLEDGE_WRITE_API',
+  'ENABLE_CONSOLE_DEV_IDENTITY',
   'FRAME_FAMILY_RAG_ENABLED',
 ] as const;
 
@@ -263,6 +264,15 @@ export function validateEnvironment(
     if (value && !['true', 'false'].includes(value)) {
       errors.push(`${key} must be true or false`);
     }
+  }
+
+  if (
+    valueOf(config, 'ENABLE_CONSOLE_DEV_IDENTITY').toLowerCase() === 'true' &&
+    valueOf(config, 'NODE_ENV') !== 'development'
+  ) {
+    errors.push(
+      'ENABLE_CONSOLE_DEV_IDENTITY may only be true when NODE_ENV is development',
+    );
   }
 
   const familyRagAppcodes = valueOf(config, 'FRAME_FAMILY_RAG_APPCODES');

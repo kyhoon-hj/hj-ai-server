@@ -31,6 +31,7 @@ export async function consoleRequest(path, options = {}) {
     headers: {
       accept: 'application/json',
       ...(options.body ? { 'content-type': 'application/json' } : {}),
+      ...options.headers,
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
@@ -83,4 +84,45 @@ export const credentialsApi = {
       `/console-api/v1/apps/${encodeURIComponent(appId)}/credentials/${encodeURIComponent(credentialId)}`,
       { method: 'DELETE' },
     ),
+};
+
+export const playgroundApi = {
+  answer: (appkey, input) =>
+    consoleRequest('/console-playground-api/knowledge/answers', {
+      method: 'POST',
+      headers: { 'x-console-playground-appkey': appkey },
+      body: input,
+    }),
+};
+
+export const usageApi = {
+  summary: (days) =>
+    consoleRequest(`/console-api/v1/usage/summary?days=${days}`),
+  timeseries: (days) =>
+    consoleRequest(`/console-api/v1/usage/timeseries?days=${days}`),
+  breakdown: (days) =>
+    consoleRequest(`/console-api/v1/usage/breakdown?days=${days}`),
+};
+
+export const requestLogsApi = {
+  list: (filters = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        query.set(key, String(value));
+      }
+    });
+    return consoleRequest(`/console-api/v1/request-logs?${query}`);
+  },
+  get: (id) =>
+    consoleRequest(`/console-api/v1/request-logs/${encodeURIComponent(id)}`),
+  exportUrl: (filters = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        query.set(key, String(value));
+      }
+    });
+    return `/console-api/v1/request-logs/export.csv?${query}`;
+  },
 };

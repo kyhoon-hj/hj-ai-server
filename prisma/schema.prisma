@@ -72,6 +72,12 @@ enum ConsoleWorksMembershipRole {
   MEMBER
 }
 
+enum ConsoleUsageReservationState {
+  RESERVED
+  SETTLED
+  UNCERTAIN
+}
+
 model TestTable {
   id        Int      @id @default(autoincrement())
   name      String
@@ -129,9 +135,10 @@ model ConsoleOrganization {
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   lastSyncedAt        DateTime                  @map("last_synced_at")
 
-  memberships ConsoleMembership[]
-  apps        ConsoleAppOwnership[]
-  auditEvents SecurityAuditEvent[]
+  memberships       ConsoleMembership[]
+  apps              ConsoleAppOwnership[]
+  auditEvents       SecurityAuditEvent[]
+  usageReservations ConsoleUsageReservation[]
 
   @@index([status])
   @@map("console_organization")
@@ -193,6 +200,37 @@ model ConsoleAppOwnership {
   @@index([organizationId])
   @@index([createdByIdentityId])
   @@map("console_app_ownership")
+}
+
+model ConsoleUsageReservation {
+  id               String                       @id @default(uuid()) @db.Uuid
+  organizationId   String?                      @map("organization_id") @db.Uuid
+  appcode          String
+  periodKey        String                       @map("period_key") @db.VarChar(7)
+  operationKeyHash String                       @unique @map("operation_key_hash") @db.VarChar(64)
+  operationScope   String                       @default("legacy") @map("operation_scope") @db.VarChar(128)
+  tokensReservedAt DateTime?                    @map("tokens_reserved_at")
+  reservedRequests Int                          @default(1) @map("reserved_requests")
+  reservedTokens   Int                          @default(0) @map("reserved_tokens")
+  actualTokens     Int?                         @map("actual_tokens")
+  state            ConsoleUsageReservationState @default(RESERVED)
+  usageLogSource   String?                      @map("usage_log_source") @db.VarChar(32)
+  usageLogId       String?                      @map("usage_log_id") @db.Uuid
+  recoveryRequests Int                          @default(0) @map("recovery_requests")
+  recoveryTokens   Int                          @default(0) @map("recovery_tokens")
+  recoveryKey      String?                      @unique @map("recovery_key") @db.Uuid
+  recoveryHash     String?                      @map("recovery_hash") @db.VarChar(64)
+  completedAt      DateTime?                    @map("completed_at")
+  createdAt        DateTime                     @default(now()) @map("created_at")
+  updatedAt        DateTime                     @updatedAt @map("updated_at")
+
+  organization ConsoleOrganization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([usageLogSource, usageLogId])
+  @@index([state, updatedAt, id])
+  @@index([appcode, periodKey, state])
+  @@index([organizationId, periodKey, state])
+  @@map("console_usage_reservation")
 }
 
 model SecurityAuditEvent {

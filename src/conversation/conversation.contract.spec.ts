@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { UsageQuotaService } from '../usage-quota/usage-quota.service';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { Test } from '@nestjs/testing';
@@ -73,6 +75,22 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
     void _args;
     return Promise.resolve({});
   });
+  const quota = {
+    begin: jest.fn().mockResolvedValue({ id: 'reservation' }),
+    reserveTokens: jest.fn().mockResolvedValue(undefined),
+    settle: jest.fn().mockResolvedValue(undefined),
+    markUncertain: jest.fn().mockResolvedValue(undefined),
+    recordUsage: jest.fn(
+      (
+        _reservation: unknown,
+        write: (tx: Prisma.TransactionClient) => Promise<unknown>,
+      ) =>
+        write({
+          bedrockSearchLog: { create: log },
+          familyConversationMetric: { create: familyMetric },
+        } as unknown as Prisma.TransactionClient),
+    ),
+  };
   const settings = {
     FRAME_CONVERSATION_APPCODES: 'zinframe-test',
     FRAME_CONVERSATION_MODEL_ID: 'fixture-model',
@@ -97,6 +115,7 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
 
   beforeEach(async () => {
     send.mockReset().mockResolvedValue(output);
+    Object.values(quota).forEach((mock) => mock.mockClear());
     log.mockClear();
     familyMetric.mockClear();
     searchFamily.mockReset().mockResolvedValue(familyEvidence);
@@ -107,6 +126,7 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
       controllers: [ConversationController],
       providers: [
         ConversationService,
+        { provide: UsageQuotaService, useValue: quota },
         AppkeyGuard,
         {
           provide: FamilyKnowledgeSearchService,
@@ -158,6 +178,20 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
       .post('/conversation/v1/turns')
       .set('appkey', key)
       .send(body as object);
+
+  it.each(['frame-family-v1', 'frame-family-rag-v1'] as const)(
+    'transfers the request to the %s log before settlement',
+    async (policyVersion) => {
+      await post({ ...fixture(), policyVersion }).expect(200);
+      expect(quota.recordUsage).toHaveBeenCalledTimes(1);
+      expect(quota.recordUsage.mock.calls[0][0]).toEqual({ id: 'reservation' });
+      const sink = policyVersion === 'frame-family-v1' ? log : familyMetric;
+      expect(sink).toHaveBeenCalledTimes(1);
+      expect(sink.mock.invocationCallOrder[0]).toBeLessThan(
+        quota.settle.mock.invocationCallOrder[0],
+      );
+    },
+  );
 
   it('v2 accepts fresh server facts as data, omits content logs and retains only a replay tombstone', async () => {
     const dto = {
@@ -612,4 +646,20 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
       jest.useRealTimers();
     }
   });
+  it.each(['frame-family-v1', 'frame-family-rag-v1'] as const)(
+    'retains unmeasured %s usage and scopes the operation to the conversation',
+    async (policyVersion) => {
+      send.mockResolvedValue({ ...output, usage: undefined });
+      await post({ ...fixture(), policyVersion }).expect(200);
+      expect(quota.settle).not.toHaveBeenCalled();
+      expect(quota.markUncertain).toHaveBeenCalledWith({ id: 'reservation' });
+      expect(quota.begin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operationScope: expect.stringMatching(
+            /^conversation:[0-9a-f]{64}$/,
+          ) as unknown,
+        }),
+      );
+    },
+  );
 });

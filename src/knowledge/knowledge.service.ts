@@ -1,5 +1,10 @@
+import {
+  estimateGenerationTokens,
+  measuredTokenCount,
+} from '../usage-quota/usage-quota-policy';
 import { createHash, randomUUID } from 'node:crypto';
 import { omitConversationContent } from '../common/content-log-policy';
+import { operationalErrorCode } from '../common/errors/operational-error-code';
 import { loadBuildIdentity, sha256Text } from '../common/execution-identity';
 import {
   BadRequestException,
@@ -7,6 +12,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -62,6 +68,10 @@ import {
   getAwsRequestTimeoutMs,
   runAwsRequest,
 } from '../common/aws/aws-request-control';
+import {
+  type UsageQuotaReservation,
+  UsageQuotaService,
+} from '../usage-quota/usage-quota.service';
 
 const KNOWLEDGE_FILE_STATUS = {
   uploaded: 'uploaded',
@@ -113,6 +123,7 @@ export class KnowledgeService {
     private readonly documentParserService: DocumentParserService,
     private readonly chunkingService: ChunkingService,
     private readonly embeddingService: EmbeddingService,
+    @Optional() private readonly usageQuota?: UsageQuotaService,
   ) {
     this.requestTimeoutMs = getAwsRequestTimeoutMs(this.configService);
     this.bedrockClient = new BedrockRuntimeClient({
@@ -909,9 +920,15 @@ export class KnowledgeService {
         sourceSha256: sha256Text(JSON.stringify(source)),
       })),
     };
-    await this.ensureMonthlyTokenBudget(appContext);
+    const quotaReservation =
+      (await this.usageQuota?.begin({
+        appcode,
+        operationKey: requestId ?? randomUUID(),
+        operationScope: 'knowledge.answer',
+      })) ?? null;
     let matches: KnowledgeMatch[] = [];
     let stage = 'retrieval';
+    let generationInvoked = false;
     let result: ConverseCommandOutput;
     try {
       matches = await measure('retrievalMs', () =>
@@ -938,23 +955,28 @@ export class KnowledgeService {
         const latencyMs = Date.now() - startedAt;
 
         stage = 'persistence';
-        await this.createQueryLog({
-          appcode,
-          question: dto.query,
-          response,
-          matchedChunkIds: [],
-          modelId,
-          embeddingModel,
-          responsetime: latencyMs,
-          requestId,
-          execution: {
-            ...execution,
-            answerStatus: 'insufficient_evidence',
-            modelInvoked: false,
-            citedSourceIndexes: [],
-            stopReason: null,
+        await this.createQueryLog(
+          {
+            appcode,
+            question: dto.query,
+            response,
+            matchedChunkIds: [],
+            modelId,
+            embeddingModel,
+            responsetime: latencyMs,
+            totaltokens: 0,
+            requestId,
+            execution: {
+              ...execution,
+              answerStatus: 'insufficient_evidence',
+              modelInvoked: false,
+              citedSourceIndexes: [],
+              stopReason: null,
+            },
           },
-        });
+          quotaReservation,
+        );
+        await this.finishUsageQuota(quotaReservation, 'settled', 0);
 
         return {
           query: dto.query,
@@ -981,7 +1003,16 @@ export class KnowledgeService {
       }
 
       stage = 'generation';
-      execution.promptSha256 = sha256Text(this.createRagPrompt(dto, matches));
+      const prompt = this.createRagPrompt(dto, matches);
+      execution.promptSha256 = sha256Text(prompt);
+      await this.usageQuota?.reserveTokens(
+        quotaReservation,
+        estimateGenerationTokens(
+          inferenceConfig.maxTokens,
+          system + RAG_ANSWER_INSTRUCTION + prompt,
+        ),
+      );
+      generationInvoked = true;
       result = await measure('generationMs', () =>
         runAwsRequest(
           (abortSignal) =>
@@ -993,7 +1024,7 @@ export class KnowledgeService {
                     role: 'user',
                     content: [
                       {
-                        text: this.createRagPrompt(dto, matches),
+                        text: prompt,
                       },
                     ],
                   },
@@ -1014,28 +1045,40 @@ export class KnowledgeService {
     } catch (error) {
       if (stage === 'persistence') throw error;
       execution.sdk = { scope: stage, ...readAwsAttempts(error) };
+      let failureLogged = false;
       try {
-        await this.createQueryLog({
-          appcode,
-          question: dto.query,
-          modelId,
-          embeddingModel,
-          matchedChunkIds: matches.map((match) => match.id),
-          requestId,
-          responsetime: Date.now() - startedAt,
-          execution: {
-            ...execution,
-            answerStatus: 'request_failed',
-            failedStage: stage,
-            generationAttempted: stage === 'generation',
-            aborted: parentSignal?.aborted ?? false,
+        await this.createQueryLog(
+          {
+            appcode,
+            question: dto.query,
+            modelId,
+            embeddingModel,
+            matchedChunkIds: matches.map((match) => match.id),
+            requestId,
+            responsetime: Date.now() - startedAt,
+            totaltokens: generationInvoked ? undefined : 0,
+            execution: {
+              ...execution,
+              answerStatus: 'request_failed',
+              errorCode: operationalErrorCode(error),
+              failedStage: stage,
+              generationAttempted: stage === 'generation',
+              aborted: parentSignal?.aborted ?? false,
+            },
           },
-        });
+          quotaReservation,
+        );
+        failureLogged = true;
       } catch {
         this.logger.error(
           'Knowledge failure execution record could not be persisted.',
         );
       }
+      await this.finishUsageQuota(
+        quotaReservation,
+        generationInvoked || !failureLogged ? 'uncertain' : 'settled',
+        0,
+      );
       throw error;
     }
 
@@ -1050,26 +1093,39 @@ export class KnowledgeService {
     const response = decision.answer;
     const latencyMs = Date.now() - startedAt;
 
-    await this.createQueryLog({
-      appcode,
-      question: dto.query,
-      response,
-      matchedChunkIds: matches.map((match) => match.id),
-      modelId,
-      embeddingModel,
-      responsetime: latencyMs,
-      inputtokens: result.usage?.inputTokens,
-      outputtokens: result.usage?.outputTokens,
-      totaltokens: result.usage?.totalTokens,
-      requestId,
-      execution: {
-        ...execution,
-        answerStatus: decision.answerStatus,
-        modelInvoked: true,
-        stopReason: result.stopReason ?? null,
-        citedSourceIndexes: decision.sourceIndexes,
-      },
-    });
+    try {
+      await this.createQueryLog(
+        {
+          appcode,
+          question: dto.query,
+          response,
+          matchedChunkIds: matches.map((match) => match.id),
+          modelId,
+          embeddingModel,
+          responsetime: latencyMs,
+          inputtokens: result.usage?.inputTokens,
+          outputtokens: result.usage?.outputTokens,
+          totaltokens: measuredTokenCount(result.usage?.totalTokens),
+          requestId,
+          execution: {
+            ...execution,
+            answerStatus: decision.answerStatus,
+            modelInvoked: true,
+            stopReason: result.stopReason ?? null,
+            citedSourceIndexes: decision.sourceIndexes,
+          },
+        },
+        quotaReservation,
+      );
+    } catch (error) {
+      await this.finishUsageQuota(quotaReservation, 'uncertain');
+      throw error;
+    }
+    await this.finishUsageQuota(
+      quotaReservation,
+      'settled',
+      measuredTokenCount(result.usage?.totalTokens),
+    );
 
     return {
       query: dto.query,
@@ -1474,33 +1530,19 @@ ${dto.query}`;
     };
   }
 
-  private async ensureMonthlyTokenBudget(appInfo: KnowledgeAppContext) {
-    if (!appInfo.monthlyTokenLimit) {
-      return;
-    }
-
-    const startOfMonth = new Date();
-    startOfMonth.setUTCDate(1);
-    startOfMonth.setUTCHours(0, 0, 0, 0);
-
-    const aggregate = await this.prisma.knowledgeQueryLog.aggregate({
-      where: {
-        appcode: appInfo.appcode,
-        createdAt: {
-          gte: startOfMonth,
-        },
-      },
-      _sum: {
-        totaltokens: true,
-      },
-    });
-
-    const usedTokens = aggregate._sum.totaltokens ?? 0;
-
-    if (usedTokens >= appInfo.monthlyTokenLimit) {
-      throw new BadRequestException(
-        `월 token 사용 한도 ${appInfo.monthlyTokenLimit}를 초과했습니다.`,
-      );
+  private async finishUsageQuota(
+    reservation: UsageQuotaReservation | null,
+    state: 'settled' | 'uncertain',
+    actualTokens?: number,
+  ) {
+    try {
+      if (state === 'settled' && actualTokens !== undefined) {
+        await this.usageQuota?.settle(reservation, actualTokens);
+      } else {
+        await this.usageQuota?.markUncertain(reservation);
+      }
+    } catch {
+      this.logger.error('Usage quota reservation could not be finalized.');
     }
   }
 
@@ -1514,44 +1556,51 @@ ${dto.query}`;
     return text || JSON.stringify(result.output ?? {});
   }
 
-  private createQueryLog(data: {
-    appcode: string;
-    question: string;
-    response?: string;
-    matchedChunkIds?: string[];
-    modelId?: string;
-    embeddingModel?: string;
-    responsetime?: number;
-    inputtokens?: number;
-    outputtokens?: number;
-    totaltokens?: number;
-    requestId?: string;
-    execution?: Prisma.InputJsonObject;
-  }) {
-    return this.prisma.knowledgeQueryLog.create({
-      data: {
-        appcode: data.appcode,
-        question: omitConversationContent(data.appcode)
-          ? '[CONTENT_OMITTED]'
-          : data.question,
-        response: omitConversationContent(data.appcode)
-          ? undefined
-          : data.response,
-        matchedChunkIds: omitConversationContent(data.appcode)
-          ? []
-          : (data.matchedChunkIds ?? []),
-        modelId: data.modelId,
-        embeddingModel: data.embeddingModel,
-        responsetime: data.responsetime,
-        inputtokens: data.inputtokens,
-        outputtokens: data.outputtokens,
-        totaltokens: data.totaltokens,
-        requestId: data.requestId,
-        execution: omitConversationContent(data.appcode)
-          ? undefined
-          : data.execution,
-      },
-    });
+  private createQueryLog(
+    data: {
+      appcode: string;
+      question: string;
+      response?: string;
+      matchedChunkIds?: string[];
+      modelId?: string;
+      embeddingModel?: string;
+      responsetime?: number;
+      inputtokens?: number;
+      outputtokens?: number;
+      totaltokens?: number;
+      requestId?: string;
+      execution?: Prisma.InputJsonObject;
+    },
+    reservation: UsageQuotaReservation | null,
+  ) {
+    const write = (transaction: Prisma.TransactionClient) =>
+      transaction.knowledgeQueryLog.create({
+        data: {
+          appcode: data.appcode,
+          question: omitConversationContent(data.appcode)
+            ? '[CONTENT_OMITTED]'
+            : data.question,
+          response: omitConversationContent(data.appcode)
+            ? undefined
+            : data.response,
+          matchedChunkIds: omitConversationContent(data.appcode)
+            ? []
+            : (data.matchedChunkIds ?? []),
+          modelId: data.modelId,
+          embeddingModel: data.embeddingModel,
+          responsetime: data.responsetime,
+          inputtokens: data.inputtokens,
+          outputtokens: data.outputtokens,
+          totaltokens: data.totaltokens,
+          requestId: data.requestId,
+          execution: omitConversationContent(data.appcode)
+            ? undefined
+            : data.execution,
+        },
+      });
+    return this.usageQuota
+      ? this.usageQuota.recordUsage(reservation, write, 'knowledge')
+      : write(this.prisma);
   }
 
   private resolveFilters(

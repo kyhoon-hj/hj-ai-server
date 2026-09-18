@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { KnowledgeService } from './knowledge.service';
 
@@ -49,6 +50,21 @@ describe('KnowledgeService provider contract', () => {
         key === 'BEDROCK_MODEL_ID' ? 'model-v1' : undefined,
       ),
     };
+    const quota = {
+      begin: jest.fn().mockResolvedValue({ id: 'reservation' }),
+      reserveTokens: jest.fn().mockResolvedValue(undefined),
+      settle: jest.fn().mockResolvedValue(undefined),
+      markUncertain: jest.fn().mockResolvedValue(undefined),
+      recordUsage: jest.fn(
+        (
+          _reservation: unknown,
+          write: (tx: Prisma.TransactionClient) => Promise<unknown>,
+        ) =>
+          write({
+            knowledgeQueryLog: { create: queryLogCreate },
+          } as unknown as Prisma.TransactionClient),
+      ),
+    };
     const service = new KnowledgeService(
       config as unknown as ConfigService,
       prisma as never,
@@ -56,6 +72,7 @@ describe('KnowledgeService provider contract', () => {
       {} as never,
       {} as never,
       embeddingService as never,
+      quota as never,
     );
     const bedrockSend = jest.fn().mockResolvedValue({
       output: {
@@ -86,6 +103,7 @@ describe('KnowledgeService provider contract', () => {
       queryLogCreate,
       embeddingService,
       bedrockSend,
+      quota,
       getCapturedQuery: () => capturedQuery,
       getLoggedRequestId: () => loggedRequestId,
     };
@@ -94,7 +112,7 @@ describe('KnowledgeService provider contract', () => {
   it.each(['answer', 'no-answer', 'generation-error'])(
     'omits Frame content at the query log sink for %s',
     async (mode) => {
-      const { service, bedrockSend, queryLogCreate } = createService();
+      const { service, bedrockSend, queryLogCreate, quota } = createService();
       if (mode === 'generation-error')
         bedrockSend.mockRejectedValueOnce(new Error('private provider detail'));
       const result = service.createRagResponse(
@@ -103,6 +121,10 @@ describe('KnowledgeService provider contract', () => {
       );
       if (mode === 'generation-error') await expect(result).rejects.toThrow();
       else await result;
+      expect(quota.recordUsage).toHaveBeenCalledTimes(1);
+      expect(quota.recordUsage.mock.calls[0][0]).toEqual({ id: 'reservation' });
+      if (mode === 'generation-error')
+        expect(quota.markUncertain).toHaveBeenCalledWith({ id: 'reservation' });
       const data = queryLogCreate.mock.calls[0][0].data;
       expect(data).toMatchObject({
         question: '[CONTENT_OMITTED]',
@@ -507,6 +529,7 @@ describe('KnowledgeService provider contract', () => {
         requestId: 'failure-id',
         execution: {
           answerStatus: 'request_failed',
+          errorCode: 'REQUEST_FAILED',
           failedStage: stage,
           modelId: 'model-v1',
           generationAttempted: stage === 'generation',
@@ -599,5 +622,34 @@ describe('KnowledgeService provider contract', () => {
     const query = getCapturedQuery() as { values: unknown[] };
     expect(query.values).toContain('APP_A');
     expect(query.values).not.toContain('APP_B');
+  });
+  it('retains uncertain quota when the provider did not report total tokens', async () => {
+    const { service, bedrockSend, quota } = createService();
+    bedrockSend.mockResolvedValue({
+      output: { message: { content: [{ text: 'answer' }] } },
+      stopReason: 'end_turn',
+    });
+    await service.createRagResponse(
+      { query: 'question', strict: false },
+      'SUPPORT',
+    );
+    expect(quota.markUncertain).toHaveBeenCalledWith({ id: 'reservation' });
+    expect(quota.settle).not.toHaveBeenCalled();
+    expect(quota.begin).toHaveBeenCalledWith(
+      expect.objectContaining({ operationScope: 'knowledge.answer' }),
+    );
+  });
+
+  it('records known zero generation tokens for no-answer without invoking the model', async () => {
+    const { service, bedrockSend, quota, queryLogCreate } = createService();
+    await service.createRagResponse(
+      { query: 'question', strict: true },
+      'SUPPORT',
+    );
+    expect(bedrockSend).not.toHaveBeenCalled();
+    expect(queryLogCreate.mock.calls[0][0].data).toMatchObject({
+      totaltokens: 0,
+    });
+    expect(quota.settle).toHaveBeenCalledWith({ id: 'reservation' }, 0);
   });
 });

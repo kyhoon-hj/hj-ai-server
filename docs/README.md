@@ -1,5 +1,15 @@
 # HJ AI Server 문서
 
+- [HJ AI Console 전체 마일스톤·현재 단계](HJ_AI_CONSOLE_MILESTONES.md)
+- [Console 월 한도 적용 정책](HJ_AI_CONSOLE_QUOTA_POLICY.md)
+- [Console 월 한도 예약 복구 운영 절차](HJ_AI_CONSOLE_USAGE_RECOVERY_RUNBOOK.md)
+- [HJ AI Console 구현 진행 현황](HJ_AI_CONSOLE_PROGRESS_2026-09-13.md)
+- [HJ-Works 연계 AI Console 구축 계획](HJ_WORKS_AI_CONSOLE_IMPLEMENTATION_PLAN.md)
+
+- [솔루션 서비스 개발자 매뉴얼](../manual/DEVELOPER_GUIDE.md)
+- [외부 연동 API 명세서](../manual/API_SPECIFICATION.md)
+- [외부 개발자 문서 배포 기준 — 내부 관리용](EXTERNAL_DOCUMENTATION_POLICY.md)
+
 - [Family RAG 비활성 운영 배포 (2026-09-10)](PRODUCTION_FAMILY_RAG_DEPLOYMENT_2026-09-10.md)
 
 - [Family RAG 격리 PostgreSQL 통합 검증 (2026-09-10)](FAMILY_RAG_INTEGRATION_VALIDATION_2026-09-10.md)

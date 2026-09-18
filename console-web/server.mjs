@@ -91,6 +91,15 @@ async function proxyConsoleApi(request, response, aiServerOrigin) {
       ...(upstream.headers.get('set-cookie')
         ? { 'set-cookie': upstream.headers.get('set-cookie') }
         : {}),
+      ...(upstream.headers.get('content-disposition')
+        ? { 'content-disposition': upstream.headers.get('content-disposition') }
+        : {}),
+      ...(upstream.headers.get('x-export-row-count')
+        ? { 'x-export-row-count': upstream.headers.get('x-export-row-count') }
+        : {}),
+      ...(upstream.headers.get('x-export-truncated')
+        ? { 'x-export-truncated': upstream.headers.get('x-export-truncated') }
+        : {}),
     });
     response.end(payload);
   } catch (error) {
@@ -114,6 +123,89 @@ async function proxyConsoleApi(request, response, aiServerOrigin) {
   }
 }
 
+function singleHeader(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+async function proxyPlaygroundAnswer(request, response, aiServerOrigin) {
+  if (request.method !== 'POST') {
+    response.writeHead(405, {
+      allow: 'POST',
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    response.end(
+      JSON.stringify({
+        code: 'METHOD_NOT_ALLOWED',
+        message: 'Playground 답변 실행은 POST 요청만 허용합니다.',
+      }),
+    );
+    return;
+  }
+
+  const appkey = singleHeader(request.headers['x-console-playground-appkey']);
+  if (!appkey) {
+    response.writeHead(400, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    response.end(
+      JSON.stringify({
+        code: 'PLAYGROUND_APPKEY_REQUIRED',
+        message: '실행할 API Key를 입력하세요.',
+      }),
+    );
+    return;
+  }
+
+  const target = new URL('/knowledge/answers', aiServerOrigin);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const body = await readRequestBody(request);
+    const upstream = await fetch(target, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        appkey,
+        'x-correlation-id': request.headers['x-correlation-id'] ?? randomUUID(),
+      },
+      body,
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    const payload = Buffer.from(await upstream.arrayBuffer());
+    response.writeHead(upstream.status, {
+      'content-type':
+        upstream.headers.get('content-type') ?? 'application/json',
+      'cache-control': 'no-store',
+      ...(upstream.headers.get('x-correlation-id')
+        ? { 'x-correlation-id': upstream.headers.get('x-correlation-id') }
+        : {}),
+    });
+    response.end(payload);
+  } catch (error) {
+    const timedOut = error?.name === 'AbortError';
+    response.writeHead(timedOut ? 504 : 502, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    response.end(
+      JSON.stringify({
+        code: timedOut
+          ? 'PLAYGROUND_UPSTREAM_TIMEOUT'
+          : 'PLAYGROUND_UPSTREAM_UNAVAILABLE',
+        message: timedOut
+          ? '답변 생성 시간이 초과되었습니다.'
+          : 'AI Server에 연결할 수 없습니다.',
+      }),
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function createConsoleWebServer(options = {}) {
   const aiServerOrigin =
     options.aiServerOrigin ??
@@ -123,6 +215,11 @@ export function createConsoleWebServer(options = {}) {
     const url = new URL(request.url ?? '/', 'http://console.local');
     if (url.pathname.startsWith('/console-api/')) {
       await proxyConsoleApi(request, response, aiServerOrigin);
+      return;
+    }
+
+    if (url.pathname === '/console-playground-api/knowledge/answers') {
+      await proxyPlaygroundAnswer(request, response, aiServerOrigin);
       return;
     }
 

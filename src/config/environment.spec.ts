@@ -126,6 +126,24 @@ describe('validateEnvironment', () => {
     );
   });
 
+  it('Console fixture identity는 명시적인 development 환경에서만 허용한다', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        ENABLE_CONSOLE_DEV_IDENTITY: 'true',
+      }),
+    ).toThrow(/ENABLE_CONSOLE_DEV_IDENTITY may only be true/);
+
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'development',
+        ENABLE_CONSOLE_DEV_IDENTITY: 'true',
+      }),
+    ).toMatchObject({ ENABLE_CONSOLE_DEV_IDENTITY: 'true' });
+  });
+
   it('Family RAG allowlist는 wildcard 없는 정확한 appcode만 허용한다', () => {
     expect(() =>
       validateEnvironment({

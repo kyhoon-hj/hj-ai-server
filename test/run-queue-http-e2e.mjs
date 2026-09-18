@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const source = new URL(process.env.DATABASE_URL ?? '');
+const usageQuota = process.argv.includes('--usage-quota');
 const liveAws = process.argv.includes('--live-aws');
 const liveNetwork = process.argv.includes('--live-network');
 const compiledSoak = process.argv.includes('--multiprocess-soak-compiled');
@@ -36,6 +37,7 @@ function run(relativePath, args) {
         ...process.env,
         DATABASE_URL: target.toString(),
         RUN_QUEUE_HTTP_E2E: 'true',
+        RUN_USAGE_QUOTA_DB: usageQuota ? 'true' : 'false',
         RUN_KNOWLEDGE_FAULT_E2E: 'true',
         KNOWLEDGE_INDEX_WORKER_ENABLED: 'true',
         KNOWLEDGE_INDEX_RETRY_DELAY_MS: '100',
@@ -51,7 +53,7 @@ function run(relativePath, args) {
         RAG_EVAL_DATASET: repeatRag ? 'repeatability' : adversarialRag ? 'adversarial' : extendedRag ? 'extended' : 'golden',
       },
       stdio: 'inherit',
-      timeout: ragQuality ? 660000 : multiprocessSoak ? 480000 : liveAws || liveNetwork || extendedLoad ? 300000 : 120000,
+      timeout: usageQuota ? 180000 : ragQuality ? 660000 : multiprocessSoak ? 480000 : liveAws || liveNetwork || extendedLoad ? 300000 : 120000,
     },
   );
   if (result.error || result.status !== 0)
@@ -76,7 +78,9 @@ try {
   }
   console.log(`Created isolated database: ${database}`);
   run('../node_modules/prisma/build/index.js', ['migrate', 'deploy']);
-  if (multiprocessSoak) {
+  if (usageQuota) {
+    run('../node_modules/jest/bin/jest.js', ['--config', './test/jest-e2e.json', '--runInBand', 'usage-quota-db.e2e-spec.ts']);
+  } else if (multiprocessSoak) {
     run(compiledSoak ? '../work/soak-build/test/multiprocess-soak.js' : './multiprocess-soak.ts', []);
   } else if (ragQuality) {
     run('../node_modules/jest/bin/jest.js', [

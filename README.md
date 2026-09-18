@@ -2,6 +2,11 @@
 
 NestJS server for AWS Bedrock with Prisma configured for PostgreSQL.
 
+## External documentation
+
+- [솔루션 서비스 개발자 매뉴얼](manual/DEVELOPER_GUIDE.md)
+- [외부 연동 API 명세서](manual/API_SPECIFICATION.md)
+
 ## Setup
 
 ```bash

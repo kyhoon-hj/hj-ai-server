@@ -1,7 +1,7 @@
 # HJ-Works 연계 AI Console 구축 계획
 
 작성일: 2026-09-11  
-변경일: 2026-09-13
+변경일: 2026-09-18
 대상 서비스: HJ AI Server, HJ-Works, HJ AI Console  
 목표 주소: `https://ai.hjshub.com/console`  
 상태: 기능 우선 구현 순서 확정, `CON-WORKS-01` 인증 조사 완료,
@@ -9,6 +9,12 @@
 
 현재 구현 결과와 검증 내역은 [HJ AI Console 구현 진행 현황](HJ_AI_CONSOLE_PROGRESS_2026-09-13.md)에
 정리한다.
+
+2026-09-18 검토 이후 실행 순서·현재 단계·완료 판정은
+[전체 마일스톤](HJ_AI_CONSOLE_MILESTONES.md)을 기준으로 관리한다.
+현재는 **M2 사용량·요청 로그·운영 지표 일치 — 대기(0/5, M1 완료)**다. 아래 단계 번호와 `CON-*` ID는
+기존 설계 추적용으로 유지하며, 실제 실행은 M1 한도 → M2 집계·로그 → M3 통합 검증·CI →
+M4 홈·알림·감사 → M5 지식 → M6 SSO → M7 운영 공개 순서를 따른다.
 
 > 2026-09-11 조사 결과 HJ-Works는 범용 OIDC Provider가 아니라 Firebase 기반 Works
 > 플랫폼 세션과 60초·1회용 서비스 인가 코드 교환 계약을 제공한다. AI Console MVP는
@@ -472,7 +478,8 @@ flag를 비활성 상태로 유지한다.
   — 독립 Console Web/BFF, 검색·상태 필터, 생성 modal, 상세 수정과 반응형 상태 UX 완료
 - [x] `CON-WEB-03` key 일회성 표시·회전·폐기 UX
   — metadata 조회, 발급·회전 설정, 저장 확인 후 DOM 폐기와 개별 폐기 확인 UX 완료
-- [ ] `CON-WEB-04` Playground와 빠른 시작 예제
+- [x] `CON-WEB-04` Playground와 빠른 시작 예제
+  — 실제 지식 답변 호출, request ID·출처·지연 표시와 cURL·JavaScript·Python 예제 완료
 
 완료 기준: Admin fixture가 앱을 생성하고 key를 한 번 확인한 뒤 실제 `/v1` 호출을
 성공시키며, Developer·Viewer fixture의 허용·거부 계약이 자동 검증된다.
@@ -480,12 +487,18 @@ flag를 비활성 상태로 유지한다.
 ### 단계 2. 사용량과 운영 가시성
 
 - [ ] `CON-SRV-10` 요청·token·embedding 집계 schema 또는 query 확정
+  — 기본 집계 구현. M2에서 로그와의 범위 일치·실패 계측·embedding 집계 범위 보완 및 원본 대조 필요
 - [ ] `CON-SRV-11` summary·timeseries·breakdown API
+  — 7·30·90일·일별·앱별 집계 구현. M2에서 월 한도 사용률·p50/p95·차원별 집계 보완 필요
 - [ ] `CON-SRV-12` 조직 범위 request log 목록·상세 API
-- [ ] `CON-SRV-13` 월 한도와 원자적 예약·정산 정책
+  — 기본 목록·상세 구현. M2에서 Family 대화·Bedrock request ID/실패·endpoint 필터 보완 필요
+- [x] `CON-SRV-13` 월 한도와 원자적 예약·정산 정책
+  — M1-01~05 완료. 격리 PostgreSQL 집계·다중 프로세스 경합·복구 16개 및 관련 API 회귀 254개 통과. 운영 DB 반영은 M7.
 - [ ] `CON-SRV-14` 임계치 알림 event와 중복 방지
 - [ ] `CON-WEB-05` 홈 dashboard와 사용량 차트
+  — 사용량 dashboard·차트 완료, 홈 요약 화면은 잔여
 - [ ] `CON-WEB-06` 요청 로그, 오류 상세와 CSV export
+  — 기본 화면·metadata-only CSV·5,000행 제한 구현. M2~M3에서 로그 범위·필터 확장과 브라우저 통합 검증 필요
 
 완료 기준: 집계 합계가 원본 실행 기록과 일치하고, tenant 교차 조회가 실패하며,
 명시적 0과 미측정 값이 구분된다.

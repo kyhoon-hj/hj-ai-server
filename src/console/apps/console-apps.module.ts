@@ -5,10 +5,15 @@ import { ConsoleSecurityModule } from '../security/console-security.module';
 import { ConsoleAppsController } from './console-apps.controller';
 import { ConsoleAppsService } from './console-apps.service';
 import { ConsoleCredentialsService } from './console-credentials.service';
+import { ConsoleDevelopmentFixtureService } from './console-development-fixture.service';
 
 @Module({
   imports: [PrismaModule, AppInfoModule, ConsoleSecurityModule],
   controllers: [ConsoleAppsController],
-  providers: [ConsoleAppsService, ConsoleCredentialsService],
+  providers: [
+    ConsoleAppsService,
+    ConsoleCredentialsService,
+    ConsoleDevelopmentFixtureService,
+  ],
 })
 export class ConsoleAppsModule {}

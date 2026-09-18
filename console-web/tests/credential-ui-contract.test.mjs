@@ -30,4 +30,8 @@ test('폐기는 별도 확인 dialog를 거친다', () => {
   assert.match(documentSource, /id="revoke-dialog"/);
   assert.match(appSource, /openRevokeDialog/);
   assert.match(appSource, /credentialsApi\.revoke/);
+  assert.match(appSource, /playgroundApi\.answer/);
+  assert.match(appSource, /\/console\/apps\/\$\{app\.id\}\/playground/);
+  assert.match(appSource, /입력 Key 저장 안 함/);
+  assert.doesNotMatch(appSource, /localStorage|sessionStorage/);
 });

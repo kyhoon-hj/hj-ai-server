@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  estimateGenerationTokens,
+  measuredTokenCount,
+} from '../usage-quota/usage-quota-policy';
+import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { omitConversationContent } from '../common/content-log-policy';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -9,8 +15,13 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
   ConverseCommandOutput,
+  ConverseCommandInput,
 } from '@aws-sdk/client-bedrock-runtime';
 
+import {
+  UsageQuotaService,
+  UsageQuotaReservation,
+} from '../usage-quota/usage-quota.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConverseDto } from './dto/converse.dto';
 import { readAwsAttempts } from '../common/aws/aws-attempts';
@@ -35,6 +46,7 @@ const GENERAL_ANSWER_SYSTEM_PROMPT = `너는 고객지원 시스템의 일반 �
 
 @Injectable()
 export class BedrockService {
+  private readonly logger = new Logger(BedrockService.name);
   private readonly bedrockClient: BedrockClient;
   private readonly client: BedrockRuntimeClient;
   private readonly requestTimeoutMs: number;
@@ -42,6 +54,7 @@ export class BedrockService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly usageQuota: UsageQuotaService,
   ) {
     this.unsetBlankAwsOptionalEnvVars();
 
@@ -112,6 +125,8 @@ export class BedrockService {
     dto: ConverseDto,
     appcode: string,
     parentSignal?: AbortSignal,
+    requestId?: string,
+    operationScope = 'bedrock.converse',
   ) {
     const modelId =
       dto.modelId ?? this.configService.get<string>('BEDROCK_MODEL_ID');
@@ -122,44 +137,33 @@ export class BedrockService {
       );
     }
 
-    const searchAt = new Date();
     const startedAt = Date.now();
 
-    const result = await runAwsRequest(
-      (abortSignal) =>
-        this.client.send(
-          new ConverseCommand({
-            modelId,
-            messages: [
-              {
-                role: 'user',
-                content: [{ text: dto.message }],
-              },
-            ],
-            system: dto.system ? [{ text: dto.system }] : undefined,
-            inferenceConfig: {
-              maxTokens: dto.maxTokens ?? 1024,
-              temperature: dto.temperature ?? 0.7,
-            },
-          }),
-          { abortSignal },
-        ),
-      { timeoutMs: this.requestTimeoutMs, parentSignal },
+    const result = await this.generateWithQuota(
+      {
+        modelId,
+        messages: [
+          {
+            role: 'user',
+            content: [{ text: dto.message }],
+          },
+        ],
+        system: dto.system ? [{ text: dto.system }] : undefined,
+        inferenceConfig: {
+          maxTokens: dto.maxTokens ?? 1024,
+          temperature: dto.temperature ?? 0.7,
+        },
+      },
+      appcode,
+      dto.message,
+      requestId ?? randomUUID(),
+      operationScope,
+      parentSignal,
     );
 
     const latencyMs = Date.now() - startedAt;
     const text = this.extractText(result);
     const usage = result.usage;
-
-    await this.createSearchLog({
-      appcode,
-      searchword: dto.message,
-      searchat: searchAt,
-      responsetime: latencyMs,
-      inputtokens: usage?.inputTokens,
-      outputtokens: usage?.outputTokens,
-      totaltokens: usage?.totalTokens,
-    });
 
     return {
       modelId,
@@ -174,11 +178,14 @@ export class BedrockService {
     dto: TextResponseDto,
     appcode: string,
     parentSignal?: AbortSignal,
+    requestId?: string,
   ) {
     const result = await this.converse(
       { message: dto.message },
       appcode,
       parentSignal,
+      requestId,
+      'bedrock.text-response',
     );
 
     return {
@@ -200,26 +207,26 @@ export class BedrockService {
     }
 
     const startedAt = Date.now();
-    const result = await runAwsRequest(
-      (abortSignal) =>
-        this.client.send(
-          new ConverseCommand({
-            modelId,
-            messages: [
-              {
-                role: 'user',
-                content: [{ text: dto.query.trim() }],
-              },
-            ],
-            system: [{ text: GENERAL_ANSWER_SYSTEM_PROMPT }],
-            inferenceConfig: {
-              maxTokens: 500,
-              temperature: 0.1,
-            },
-          }),
-          { abortSignal },
-        ),
-      { timeoutMs: this.requestTimeoutMs, parentSignal },
+    const result = await this.generateWithQuota(
+      {
+        modelId,
+        messages: [
+          {
+            role: 'user',
+            content: [{ text: dto.query.trim() }],
+          },
+        ],
+        system: [{ text: GENERAL_ANSWER_SYSTEM_PROMPT }],
+        inferenceConfig: {
+          maxTokens: 500,
+          temperature: 0.1,
+        },
+      },
+      appInfo.appcode,
+      dto.query,
+      requestId ?? randomUUID(),
+      'bedrock.general-answers',
+      parentSignal,
     );
     const hasText = Boolean(
       result.output?.message?.content?.some(
@@ -234,16 +241,6 @@ export class BedrockService {
         '담당자 확인이 필요한 질문입니다.'
       : rawResponse;
     const latencyMs = Date.now() - startedAt;
-
-    await this.createSearchLog({
-      appcode: appInfo.appcode,
-      searchword: dto.query,
-      searchat: new Date(),
-      responsetime: latencyMs,
-      inputtokens: result.usage?.inputTokens,
-      outputtokens: result.usage?.outputTokens,
-      totaltokens: result.usage?.totalTokens,
-    });
 
     return {
       query: dto.query,
@@ -261,6 +258,82 @@ export class BedrockService {
     };
   }
 
+  private async generateWithQuota(
+    input: ConverseCommandInput,
+    appcode: string,
+    searchword: string,
+    operationKey: string,
+    operationScope: string,
+    parentSignal?: AbortSignal,
+  ) {
+    const reservation = await this.usageQuota.begin({
+      appcode,
+      operationKey,
+      operationScope,
+    });
+    const searchat = new Date();
+    const startedAt = Date.now();
+    let invoked = false;
+    try {
+      const prompt =
+        (input.system ?? []).map((block) => block.text ?? '').join('') +
+        (input.messages ?? [])
+          .flatMap((message) =>
+            (message.content ?? []).map((block) => block.text ?? ''),
+          )
+          .join('');
+      await this.usageQuota.reserveTokens(
+        reservation,
+        estimateGenerationTokens(
+          input.inferenceConfig?.maxTokens ?? 1024,
+          prompt,
+        ),
+      );
+      const result = await runAwsRequest(
+        (abortSignal) => {
+          invoked = true;
+          return this.client.send(new ConverseCommand(input), { abortSignal });
+        },
+        { timeoutMs: this.requestTimeoutMs, parentSignal },
+      );
+      await this.createSearchLog(
+        {
+          appcode,
+          searchword,
+          searchat,
+          responsetime: Date.now() - startedAt,
+          inputtokens: result.usage?.inputTokens,
+          outputtokens: result.usage?.outputTokens,
+          totaltokens: measuredTokenCount(result.usage?.totalTokens),
+        },
+        reservation,
+      );
+      await this.finishUsageQuota(
+        reservation,
+        measuredTokenCount(result.usage?.totalTokens),
+      );
+      return result;
+    } catch (error) {
+      await this.finishUsageQuota(reservation, invoked ? undefined : 0);
+      throw error;
+    }
+  }
+
+  private async finishUsageQuota(
+    reservation: UsageQuotaReservation | null,
+    actualTokens?: number,
+  ) {
+    try {
+      if (actualTokens === undefined) {
+        await this.usageQuota.markUncertain(reservation);
+      } else {
+        await this.usageQuota.settle(reservation, actualTokens);
+      }
+    } catch {
+      this.logger.error('Usage quota reservation could not be finalized.');
+    }
+  }
+
   private extractText(result: ConverseCommandOutput) {
     const content = result.output?.message?.content ?? [];
     const text = content
@@ -271,20 +344,25 @@ export class BedrockService {
     return text || JSON.stringify(result.output ?? {});
   }
 
-  private createSearchLog(data: {
-    appcode: string;
-    searchword: string;
-    searchat: Date;
-    responsetime: number;
-    inputtokens?: number;
-    outputtokens?: number;
-    totaltokens?: number;
-  }) {
-    return this.prisma.bedrockSearchLog.create({
-      data: omitConversationContent(data.appcode)
-        ? { ...data, searchword: '[CONTENT_OMITTED]' }
-        : data,
-    });
+  private createSearchLog(
+    data: {
+      appcode: string;
+      searchword: string;
+      searchat: Date;
+      responsetime: number;
+      inputtokens?: number;
+      outputtokens?: number;
+      totaltokens?: number;
+    },
+    reservation: UsageQuotaReservation | null,
+  ) {
+    const write = (transaction: Prisma.TransactionClient) =>
+      transaction.bedrockSearchLog.create({
+        data: omitConversationContent(data.appcode)
+          ? { ...data, searchword: '[CONTENT_OMITTED]' }
+          : data,
+      });
+    return this.usageQuota.recordUsage(reservation, write, 'bedrock');
   }
 
   private unsetBlankAwsOptionalEnvVars() {
