@@ -96,12 +96,13 @@ export const playgroundApi = {
 };
 
 export const usageApi = {
-  summary: (days) =>
-    consoleRequest(`/console-api/v1/usage/summary?days=${days}`),
-  timeseries: (days) =>
-    consoleRequest(`/console-api/v1/usage/timeseries?days=${days}`),
-  breakdown: (days) =>
-    consoleRequest(`/console-api/v1/usage/breakdown?days=${days}`),
+  monthly: () => consoleRequest('/console-api/v1/usage/monthly'),
+  summary: (days, endpoint = '') =>
+    consoleRequest(`/console-api/v1/usage/summary?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`),
+  timeseries: (days, endpoint = '') =>
+    consoleRequest(`/console-api/v1/usage/timeseries?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`),
+  breakdown: (days, endpoint = '') =>
+    consoleRequest(`/console-api/v1/usage/breakdown?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`),
 };
 
 export const requestLogsApi = {

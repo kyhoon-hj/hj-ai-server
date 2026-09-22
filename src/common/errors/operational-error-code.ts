@@ -25,7 +25,12 @@ export function operationalErrorCode(error: unknown): string {
     if (typeof response === 'object' && response !== null) {
       const code = (response as { code?: unknown }).code;
       if (typeof code === 'string' && SAFE_CODE.test(code)) return code;
+      const message = (response as { message?: unknown }).message;
+      if (typeof message === 'string' && SAFE_CODE.test(message))
+        return message;
     }
+    if (typeof response === 'string' && SAFE_CODE.test(response))
+      return response;
   }
 
   const name = typeof record.name === 'string' ? record.name : '';

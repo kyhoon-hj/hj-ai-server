@@ -24,6 +24,7 @@ const identityFixture = (): ConsoleIdentityContext => ({
 describe('Console usage HTTP contract', () => {
   let app: INestApplication;
   let identity = identityFixture();
+  const monthly = jest.fn().mockResolvedValue({ period: { timezone: 'UTC' } });
   const summary = jest.fn().mockResolvedValue({ requestCount: 0 });
   const timeseries = jest.fn().mockResolvedValue({ points: [] });
   const breakdown = jest.fn().mockResolvedValue({ apps: [] });
@@ -31,6 +32,7 @@ describe('Console usage HTTP contract', () => {
   beforeEach(async () => {
     identity = identityFixture();
     summary.mockClear();
+    monthly.mockClear();
     timeseries.mockClear();
     breakdown.mockClear();
     const module = await Test.createTestingModule({
@@ -39,7 +41,7 @@ describe('Console usage HTTP contract', () => {
       providers: [
         {
           provide: ConsoleUsageService,
-          useValue: { summary, timeseries, breakdown },
+          useValue: { summary, timeseries, breakdown, monthly },
         },
       ],
     })
@@ -66,9 +68,21 @@ describe('Console usage HTTP contract', () => {
       .get('/console-api/v1/usage/breakdown?days=90')
       .expect(200);
 
-    expect(summary).toHaveBeenCalledWith(identity, 30);
-    expect(timeseries).toHaveBeenCalledWith(identity, 7);
-    expect(breakdown).toHaveBeenCalledWith(identity, 90);
+    expect(summary).toHaveBeenCalledWith(
+      identity,
+      30,
+      expect.objectContaining({ days: 30 }),
+    );
+    expect(timeseries).toHaveBeenCalledWith(
+      identity,
+      7,
+      expect.objectContaining({ days: 7 }),
+    );
+    expect(breakdown).toHaveBeenCalledWith(
+      identity,
+      90,
+      expect.objectContaining({ days: 90 }),
+    );
   });
 
   it('rejects unsupported ranges before querying usage', async () => {
@@ -76,6 +90,33 @@ describe('Console usage HTTP contract', () => {
       .get('/console-api/v1/usage/summary?days=14')
       .expect(400);
     expect(summary).not.toHaveBeenCalled();
+  });
+
+  it('validates dimensions and protects the monthly endpoint', async () => {
+    await request(app.getHttpServer() as Server)
+      .get('/console-api/v1/usage/monthly')
+      .expect(200);
+    expect(monthly).toHaveBeenCalledWith(identity);
+    await request(app.getHttpServer() as Server)
+      .get('/console-api/v1/usage/summary?endpoint=invalid')
+      .expect(400);
+    await request(app.getHttpServer() as Server)
+      .get(
+        '/console-api/v1/usage/summary?endpoint=%2Fconversation%2Fv1%2Fturns&status=unknown',
+      )
+      .expect(200);
+    expect(summary).toHaveBeenCalledWith(
+      identity,
+      30,
+      expect.objectContaining({
+        endpoint: '/conversation/v1/turns',
+        status: 'unknown',
+      }),
+    );
+    identity = { ...identity, permissions: [] };
+    await request(app.getHttpServer() as Server)
+      .get('/console-api/v1/usage/monthly')
+      .expect(403);
   });
 
   it('requires usage:read permission', async () => {

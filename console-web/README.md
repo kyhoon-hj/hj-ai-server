@@ -28,3 +28,11 @@ npm run start:console-web
 ```powershell
 npm run test:console-web
 ```
+
+저장소 루트의 `npm run verify`도 Console Web 검사를 실행합니다. Quality Gate CI는
+동일한 명령과 `npm run test:console-web-gate`를 실행합니다.
+
+`test:console-web-gate`는 `work/`의 임시 복사본에 실패 테스트를 추가하여 Web 실패가
+`verify`의 실패로 전파되고 이후 검사가 중단되는지 확인합니다. 이 시험에서 build·typecheck·
+lint·서버 검사는 성공 stub이며, 실제 검증은 원본의 `npm run verify`가 담당합니다.
+임시 복사본은 실행 종료 시 삭제됩니다. 이 검사는 브라우저 E2E를 대신하지 않습니다.

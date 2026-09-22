@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import {
+  consoleUsageEvents,
+  ConsoleUsageFilters,
+} from './console-usage-events';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { ConsoleIdentityContext } from '../security/console-identity-context';
 
@@ -13,6 +17,8 @@ type UsageAggregateRow = {
   tokenMeasuredRequests: number;
   averageLatencyMs: number | null;
   maximumLatencyMs: number | null;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
   latencyMeasuredRequests: number;
   successfulRequests: number;
   failedRequests: number;
@@ -31,6 +37,8 @@ type UsageSeriesRow = {
   totalTokens: number;
   tokenMeasuredRequests: number;
   averageLatencyMs: number | null;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
   latencyMeasuredRequests: number;
   successfulRequests: number;
   failedRequests: number;
@@ -54,7 +62,12 @@ type UsageSeriesPoint = {
   date: string;
   requestCount: number;
   tokens: { value: number | null; measuredRequests: number };
-  latency: { averageMs: number | null; measuredRequests: number };
+  latency: {
+    averageMs: number | null;
+    p50Ms: number | null;
+    p95Ms: number | null;
+    measuredRequests: number;
+  };
   outcome: {
     successfulRequests: number;
     failedRequests: number;
@@ -68,29 +81,44 @@ type UsageSeriesPoint = {
 export class ConsoleUsageService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async summary(identity: ConsoleIdentityContext, days: number) {
+  async summary(
+    identity: ConsoleIdentityContext,
+    days: number,
+    filters: ConsoleUsageFilters = {},
+  ) {
     const scope = await this.scope(identity, days);
-    const row = scope.apps.length
-      ? (
-          await this.prisma.$queryRaw<UsageAggregateRow[]>(
-            this.summaryQuery(scope.appcodes, scope.from, scope.to),
-          )
-        )[0]
-      : undefined;
+    const row = (
+      await this.prisma.$queryRaw<UsageAggregateRow[]>(
+        this.summaryQuery(
+          identity.organizationId,
+          scope.from,
+          scope.to,
+          filters,
+        ),
+      )
+    )[0];
     return {
       period: this.period(scope.from, scope.to, days),
+      embeddingScope: this.embeddingScope(filters),
       appCount: scope.apps.length,
       ...this.metrics(row),
     };
   }
 
-  async timeseries(identity: ConsoleIdentityContext, days: number) {
+  async timeseries(
+    identity: ConsoleIdentityContext,
+    days: number,
+    filters: ConsoleUsageFilters = {},
+  ) {
     const scope = await this.scope(identity, days);
-    const rows = scope.apps.length
-      ? await this.prisma.$queryRaw<UsageSeriesRow[]>(
-          this.timeseriesQuery(scope.appcodes, scope.from, scope.to),
-        )
-      : [];
+    const rows = await this.prisma.$queryRaw<UsageSeriesRow[]>(
+      this.timeseriesQuery(
+        identity.organizationId,
+        scope.from,
+        scope.to,
+        filters,
+      ),
+    );
     const byDate = new Map(rows.map((row) => [row.date, row]));
     const points: UsageSeriesPoint[] = [];
     for (
@@ -109,6 +137,8 @@ export class ConsoleUsageService {
             row?.latencyMeasuredRequests && row.averageLatencyMs !== null
               ? Math.round(Number(row.averageLatencyMs))
               : null,
+          p50Ms: row?.p50LatencyMs == null ? null : Number(row.p50LatencyMs),
+          p95Ms: row?.p95LatencyMs == null ? null : Number(row.p95LatencyMs),
           measuredRequests: Number(row?.latencyMeasuredRequests ?? 0),
         },
         outcome: this.outcome(row),
@@ -117,26 +147,55 @@ export class ConsoleUsageService {
     }
     return {
       period: this.period(scope.from, scope.to, days),
+      embeddingScope: this.embeddingScope(filters),
       points,
     };
   }
 
-  async breakdown(identity: ConsoleIdentityContext, days: number) {
+  async breakdown(
+    identity: ConsoleIdentityContext,
+    days: number,
+    filters: ConsoleUsageFilters = {},
+  ) {
     const scope = await this.scope(identity, days);
-    const rows = scope.apps.length
-      ? await this.prisma.$queryRaw<UsageBreakdownRow[]>(
-          this.breakdownQuery(scope.appcodes, scope.from, scope.to),
-        )
-      : [];
+    const rows = await this.prisma.$queryRaw<UsageBreakdownRow[]>(
+      this.breakdownQuery(
+        identity.organizationId,
+        scope.from,
+        scope.to,
+        filters,
+      ),
+    );
     const byAppcode = new Map(rows.map((row) => [row.appcode, row]));
+    const historical = rows
+      .filter((row) => !scope.apps.some((app) => app.appcode === row.appcode))
+      .map((row) => ({ id: null, appname: row.appcode, appcode: row.appcode }));
+    const dimensions = await this.prisma.$queryRaw<
+      Array<UsageAggregateRow & { dimension: string; value: string }>
+    >(
+      this.dimensionsQuery(
+        identity.organizationId,
+        scope.from,
+        scope.to,
+        filters,
+      ),
+    );
     return {
       period: this.period(scope.from, scope.to, days),
-      apps: scope.apps.map((app) => ({
-        id: app.id,
-        appname: app.appname,
-        appcode: app.appcode,
-        ...this.metrics(byAppcode.get(app.appcode)),
+      embeddingScope: this.embeddingScope(filters),
+      dimensions: dimensions.map((row) => ({
+        dimension: row.dimension,
+        value: row.value,
+        ...this.metrics(row),
       })),
+      apps: [...scope.apps, ...historical]
+        .filter((app) => !filters.appcode || app.appcode === filters.appcode)
+        .map((app) => ({
+          id: app.id,
+          appname: app.appname,
+          appcode: app.appcode,
+          ...this.metrics(byAppcode.get(app.appcode)),
+        })),
     };
   }
 
@@ -160,52 +219,41 @@ export class ConsoleUsageService {
     return { apps, appcodes: apps.map((app) => app.appcode), from, to };
   }
 
-  private events(appcodes: string[], from: Date, to: Date) {
-    const values = Prisma.join(
-      appcodes.map((appcode) => Prisma.sql`(${appcode})`),
-    );
-    return Prisma.sql`
-      WITH owned_apps(appcode) AS (VALUES ${values}),
-      usage_events AS (
-        SELECT log.appcode, log.searchat AS occurred_at,
-               log.responsetime, log.inputtokens, log.outputtokens, log.totaltokens,
-               'success'::text AS outcome_status
-        FROM bedrock_search_log log
-        JOIN owned_apps owned ON owned.appcode = log.appcode
-        WHERE log.searchat >= ${from} AND log.searchat < ${to}
-        UNION ALL
-        SELECT log.appcode, log.created_at AS occurred_at,
-               log.responsetime, log.inputtokens, log.outputtokens, log.totaltokens,
-               CASE WHEN log.execution->>'answerStatus' = 'request_failed' THEN 'failed'
-                    WHEN log.execution->>'answerStatus' IS NOT NULL THEN 'success'
-                    ELSE NULL END AS outcome_status
-        FROM knowledge_query_log log
-        JOIN owned_apps owned ON owned.appcode = log.appcode
-        WHERE log.created_at >= ${from} AND log.created_at < ${to}
-        UNION ALL
-        SELECT metric.appcode, metric.created_at AS occurred_at,
-               metric.latency_ms AS responsetime,
-               metric.input_tokens AS inputtokens,
-               metric.output_tokens AS outputtokens,
-               metric.total_tokens AS totaltokens,
-               CASE WHEN metric.status = 'SUCCEEDED' THEN 'success'
-                    WHEN metric.status = 'FAILED' THEN 'failed'
-                    ELSE NULL END AS outcome_status
-        FROM family_conversation_metric metric
-        JOIN owned_apps owned ON owned.appcode = metric.appcode
-        WHERE metric.created_at >= ${from} AND metric.created_at < ${to}
-      ),
+  private events(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    filters: ConsoleUsageFilters = {},
+  ) {
+    // Embeddings are a separate Family operation ledger, not generation requests/tokens.
+    const embeddingFilter =
+      filters.endpoint || filters.modelId || filters.status
+        ? Prisma.sql`AND false`
+        : Prisma.empty;
+    const appFilter = filters.appcode
+      ? Prisma.sql`AND usage.appcode = ${filters.appcode}`
+      : Prisma.empty;
+    return Prisma.sql`${consoleUsageEvents(organizationId, from, to, filters)},
+      usage_events AS (SELECT *, CASE WHEN status = 'unknown' THEN NULL ELSE status END AS outcome_status FROM request_events),
       embedding_events AS (
         SELECT usage.appcode, usage.created_at AS occurred_at,
                usage.kind::text AS kind, usage.state::text AS state
         FROM family_embedding_usage usage
-        JOIN owned_apps owned ON owned.appcode = usage.appcode
-        WHERE usage.created_at >= ${from} AND usage.created_at < ${to}
+        JOIN appinfo app ON app.appcode = usage.appcode
+        JOIN console_app_ownership ownership ON ownership.app_info_id = app.id
+        WHERE ownership.organization_id = ${organizationId}::uuid
+          AND usage.created_at >= ${from} AND usage.created_at < ${to}
+          ${embeddingFilter} ${appFilter}
       )`;
   }
 
-  private summaryQuery(appcodes: string[], from: Date, to: Date) {
-    return Prisma.sql`${this.events(appcodes, from, to)}
+  private summaryQuery(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    filters: ConsoleUsageFilters = {},
+  ) {
+    return Prisma.sql`${this.events(organizationId, from, to, filters)}
       SELECT COUNT(*)::int AS "requestCount",
              COALESCE(SUM(inputtokens), 0)::float8 AS "inputTokens",
              COUNT(inputtokens)::int AS "inputMeasuredRequests",
@@ -215,6 +263,8 @@ export class ConsoleUsageService {
              COUNT(totaltokens)::int AS "tokenMeasuredRequests",
              AVG(responsetime)::float8 AS "averageLatencyMs",
              MAX(responsetime)::float8 AS "maximumLatencyMs",
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY responsetime)::float8 AS "p50LatencyMs",
+             percentile_cont(0.95) WITHIN GROUP (ORDER BY responsetime)::float8 AS "p95LatencyMs",
              COUNT(responsetime)::int AS "latencyMeasuredRequests",
              COUNT(*) FILTER (WHERE outcome_status = 'success')::int AS "successfulRequests",
              COUNT(*) FILTER (WHERE outcome_status = 'failed')::int AS "failedRequests",
@@ -228,14 +278,21 @@ export class ConsoleUsageService {
       FROM usage_events`;
   }
 
-  private timeseriesQuery(appcodes: string[], from: Date, to: Date) {
-    return Prisma.sql`${this.events(appcodes, from, to)},
+  private timeseriesQuery(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    filters: ConsoleUsageFilters = {},
+  ) {
+    return Prisma.sql`${this.events(organizationId, from, to, filters)},
       request_days AS (
-        SELECT TO_CHAR(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+        SELECT TO_CHAR(occurred_at, 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS request_count,
                COALESCE(SUM(totaltokens), 0)::float8 AS total_tokens,
                COUNT(totaltokens)::int AS token_measured_requests,
                AVG(responsetime)::float8 AS average_latency_ms,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY responsetime)::float8 AS p50_latency_ms,
+               percentile_cont(0.95) WITHIN GROUP (ORDER BY responsetime)::float8 AS p95_latency_ms,
                COUNT(responsetime)::int AS latency_measured_requests,
                COUNT(*) FILTER (WHERE outcome_status = 'success')::int AS successful_requests,
                COUNT(*) FILTER (WHERE outcome_status = 'failed')::int AS failed_requests,
@@ -243,7 +300,7 @@ export class ConsoleUsageService {
         FROM usage_events GROUP BY date
       ),
       embedding_days AS (
-        SELECT TO_CHAR(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+        SELECT TO_CHAR(occurred_at, 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS operations,
                COUNT(*) FILTER (WHERE kind = 'INDEX')::int AS index_operations,
                COUNT(*) FILTER (WHERE kind = 'SEARCH')::int AS search_operations,
@@ -260,6 +317,7 @@ export class ConsoleUsageService {
              COALESCE(requests.total_tokens, 0)::float8 AS "totalTokens",
              COALESCE(requests.token_measured_requests, 0)::int AS "tokenMeasuredRequests",
              requests.average_latency_ms::float8 AS "averageLatencyMs",
+             requests.p50_latency_ms AS "p50LatencyMs", requests.p95_latency_ms AS "p95LatencyMs",
              COALESCE(requests.latency_measured_requests, 0)::int AS "latencyMeasuredRequests",
              COALESCE(requests.successful_requests, 0)::int AS "successfulRequests",
              COALESCE(requests.failed_requests, 0)::int AS "failedRequests",
@@ -276,8 +334,13 @@ export class ConsoleUsageService {
       ORDER BY days.date`;
   }
 
-  private breakdownQuery(appcodes: string[], from: Date, to: Date) {
-    return Prisma.sql`${this.events(appcodes, from, to)},
+  private breakdownQuery(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    filters: ConsoleUsageFilters = {},
+  ) {
+    return Prisma.sql`${this.events(organizationId, from, to, filters)},
       request_apps AS (
       SELECT appcode, COUNT(*)::int AS "requestCount",
              COALESCE(SUM(inputtokens), 0)::float8 AS "inputTokens",
@@ -288,6 +351,8 @@ export class ConsoleUsageService {
              COUNT(totaltokens)::int AS "tokenMeasuredRequests",
              AVG(responsetime)::float8 AS "averageLatencyMs",
              MAX(responsetime)::float8 AS "maximumLatencyMs",
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY responsetime)::float8 AS "p50LatencyMs",
+             percentile_cont(0.95) WITHIN GROUP (ORDER BY responsetime)::float8 AS "p95LatencyMs",
              COUNT(responsetime)::int AS "latencyMeasuredRequests",
              COUNT(*) FILTER (WHERE outcome_status = 'success')::int AS "successfulRequests",
              COUNT(*) FILTER (WHERE outcome_status = 'failed')::int AS "failedRequests",
@@ -311,7 +376,7 @@ export class ConsoleUsageService {
              COALESCE(requests."outputMeasuredRequests", 0)::int AS "outputMeasuredRequests",
              COALESCE(requests."totalTokens", 0)::float8 AS "totalTokens",
              COALESCE(requests."tokenMeasuredRequests", 0)::int AS "tokenMeasuredRequests",
-             requests."averageLatencyMs", requests."maximumLatencyMs",
+             requests."averageLatencyMs", requests."maximumLatencyMs", requests."p50LatencyMs", requests."p95LatencyMs",
              COALESCE(requests."latencyMeasuredRequests", 0)::int AS "latencyMeasuredRequests",
              COALESCE(requests."successfulRequests", 0)::int AS "successfulRequests",
              COALESCE(requests."failedRequests", 0)::int AS "failedRequests",
@@ -324,6 +389,201 @@ export class ConsoleUsageService {
              COALESCE(embeddings."embeddingUncertainOperations", 0)::int AS "embeddingUncertainOperations"
       FROM request_apps requests FULL JOIN embedding_apps embeddings USING (appcode)
       ORDER BY appcode`;
+  }
+
+  private dimensionsQuery(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    filters: ConsoleUsageFilters,
+  ) {
+    return Prisma.sql`${this.events(organizationId, from, to, filters)}
+      SELECT CASE WHEN GROUPING(endpoint) = 0 THEN 'endpoint'
+                  WHEN GROUPING(model_id) = 0 THEN 'model' ELSE 'status' END AS dimension,
+             CASE WHEN GROUPING(endpoint) = 0 THEN endpoint
+                  WHEN GROUPING(model_id) = 0 THEN COALESCE(model_id, 'unknown') ELSE status END AS value,
+             COUNT(*)::int AS "requestCount",
+             COALESCE(SUM(inputtokens), 0)::float8 AS "inputTokens",
+             COUNT(inputtokens)::int AS "inputMeasuredRequests",
+             COALESCE(SUM(outputtokens), 0)::float8 AS "outputTokens",
+             COUNT(outputtokens)::int AS "outputMeasuredRequests",
+             COALESCE(SUM(totaltokens), 0)::float8 AS "totalTokens",
+             COUNT(totaltokens)::int AS "tokenMeasuredRequests",
+             AVG(responsetime)::float8 AS "averageLatencyMs",
+             MAX(responsetime)::float8 AS "maximumLatencyMs",
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY responsetime)::float8 AS "p50LatencyMs",
+             percentile_cont(0.95) WITHIN GROUP (ORDER BY responsetime)::float8 AS "p95LatencyMs",
+             COUNT(responsetime)::int AS "latencyMeasuredRequests",
+             COUNT(*) FILTER (WHERE status = 'success')::int AS "successfulRequests",
+             COUNT(*) FILTER (WHERE status = 'failed')::int AS "failedRequests",
+             COUNT(*) FILTER (WHERE status <> 'unknown')::int AS "outcomeMeasuredRequests"
+      FROM usage_events
+      GROUP BY GROUPING SETS ((endpoint), (model_id), (status))
+      ORDER BY dimension, value`;
+  }
+
+  async monthly(identity: ConsoleIdentityContext) {
+    const now = new Date();
+    const periodKey = now.toISOString().slice(0, 7);
+    const from = new Date(`${periodKey}-01T00:00:00.000Z`);
+    const end = new Date(from);
+    end.setUTCMonth(end.getUTCMonth() + 1);
+    return this.prisma.$transaction(
+      async (tx) => {
+        const organization = await tx.consoleOrganization.findUniqueOrThrow({
+          where: { id: identity.organizationId },
+        });
+        const [rows, pending, ownerships] = await Promise.all([
+          tx.$queryRaw<UsageAggregateRow[]>(
+            this.summaryQuery(identity.organizationId, from, end),
+          ),
+          tx.consoleUsageReservation.findMany({
+            where: {
+              organizationId: identity.organizationId,
+              periodKey,
+              state: { in: ['RESERVED', 'UNCERTAIN'] },
+            },
+            select: {
+              appcode: true,
+              reservedRequests: true,
+              reservedTokens: true,
+            },
+          }),
+          tx.consoleAppOwnership.findMany({
+            where: { organizationId: identity.organizationId },
+            select: {
+              appInfo: {
+                select: {
+                  id: true,
+                  appcode: true,
+                  appname: true,
+                  monthlyTokenLimit: true,
+                },
+              },
+            },
+          }),
+        ]);
+        const row = rows[0];
+        const reservedRequests = pending.reduce(
+          (sum, item) => sum + item.reservedRequests,
+          0,
+        );
+        const reservedTokens = pending.reduce(
+          (sum, item) => sum + item.reservedTokens,
+          0,
+        );
+        const appRows = await tx.$queryRaw<UsageBreakdownRow[]>(
+          this.breakdownQuery(identity.organizationId, from, end),
+        );
+        // App quotas span organization transfers. Do not expose another
+        // organization's usage or claim that this organization's subtotal is
+        // the app's complete remaining allowance.
+        const otherOrganizationReservations =
+          await tx.consoleUsageReservation.findMany({
+            where: {
+              appcode: { in: ownerships.map(({ appInfo }) => appInfo.appcode) },
+              periodKey,
+              OR: [
+                { organizationId: { not: identity.organizationId } },
+                { organizationId: null },
+              ],
+            },
+            select: { appcode: true },
+            distinct: ['appcode'],
+          });
+        return {
+          period: {
+            key: periodKey,
+            from: from.toISOString(),
+            to: end.toISOString(),
+            asOf: now.toISOString(),
+            timezone: 'UTC',
+          },
+          embeddingScope: this.embeddingScope({}),
+          ...this.metrics(row),
+          limits: {
+            requests: this.limitMetric(
+              organization.monthlyRequestLimit,
+              Number(row?.requestCount ?? 0),
+              reservedRequests,
+              0,
+            ),
+            tokens: this.limitMetric(
+              organization.monthlyTokenLimit,
+              Number(row?.totalTokens ?? 0),
+              reservedTokens,
+              Number(row?.requestCount ?? 0) -
+                Number(row?.tokenMeasuredRequests ?? 0),
+            ),
+          },
+          apps: ownerships.map(({ appInfo: app }) => {
+            const appRow = appRows.find((item) => item.appcode === app.appcode);
+            const organizationChanged = otherOrganizationReservations.some(
+              (item) => item.appcode === app.appcode,
+            );
+            return {
+              id: app.id,
+              appcode: app.appcode,
+              appname: app.appname,
+              tokens: this.limitMetric(
+                app.monthlyTokenLimit,
+                Number(appRow?.totalTokens ?? 0),
+                pending
+                  .filter((item) => item.appcode === app.appcode)
+                  .reduce((sum, item) => sum + item.reservedTokens, 0),
+                Number(appRow?.requestCount ?? 0) -
+                  Number(appRow?.tokenMeasuredRequests ?? 0),
+                organizationChanged,
+              ),
+            };
+          }),
+          management: {
+            organization:
+              'platform-admin: console_organization (approved configuration procedure; no Console edit API)',
+            app: 'platform-admin: PATCH /app-info/:id monthlyTokenLimit',
+          },
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
+  private limitMetric(
+    limit: number | null,
+    used: number,
+    reserved: number,
+    unmeasuredRequests: number,
+    organizationChanged = false,
+  ) {
+    const committed = used + reserved;
+    return {
+      limit,
+      used,
+      reserved,
+      committed,
+      unmeasuredRequests,
+      remaining:
+        limit === null || unmeasuredRequests > 0 || organizationChanged
+          ? null
+          : Math.max(0, limit - committed),
+      utilizationPercent:
+        limit === null ||
+        limit === 0 ||
+        unmeasuredRequests > 0 ||
+        organizationChanged
+          ? null
+          : Math.round((committed / limit) * 10_000) / 100,
+      state:
+        limit === null
+          ? 'unlimited'
+          : organizationChanged
+            ? 'organization-changed'
+            : unmeasuredRequests > 0
+              ? 'unmeasured'
+              : committed >= limit
+                ? 'exhausted'
+                : 'available',
+    };
   }
 
   private metrics(row?: UsageAggregateRow) {
@@ -346,10 +606,34 @@ export class ConsoleUsageService {
           row?.latencyMeasuredRequests && row.maximumLatencyMs !== null
             ? Number(row.maximumLatencyMs)
             : null,
+        p50Ms: row?.p50LatencyMs == null ? null : Number(row.p50LatencyMs),
+        p95Ms: row?.p95LatencyMs == null ? null : Number(row.p95LatencyMs),
         measuredRequests: Number(row?.latencyMeasuredRequests ?? 0),
+      },
+      measurement: {
+        tokenUnmeasuredRequests:
+          Number(row?.requestCount ?? 0) -
+          Number(row?.tokenMeasuredRequests ?? 0),
+        outcomeUnmeasuredRequests:
+          Number(row?.requestCount ?? 0) -
+          Number(row?.outcomeMeasuredRequests ?? 0),
+        successRateDenominator: 'measured-outcomes',
       },
       outcome: this.outcome(row),
       embeddings: this.embeddingMetrics(row),
+    };
+  }
+
+  private embeddingScope(filters: ConsoleUsageFilters) {
+    return {
+      source: 'family_embedding_usage',
+      unit: 'operations',
+      ownership: 'current-organization',
+      generationTotalsIncluded: false,
+      otherEmbeddingPaths: 'unmeasured',
+      filteredOut: Boolean(
+        filters.endpoint || filters.modelId || filters.status,
+      ),
     };
   }
 

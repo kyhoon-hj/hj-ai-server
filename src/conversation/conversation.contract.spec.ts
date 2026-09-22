@@ -344,7 +344,16 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
     expect(searchFamily).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
     expect(log).not.toHaveBeenCalled();
-    expect(familyMetric).not.toHaveBeenCalled();
+    expect(familyMetric).toHaveBeenCalledTimes(1);
+    expect(familyMetric.mock.calls[0][0].data).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'FAMILY_EVIDENCE_STALE',
+      failureStage: 'validation',
+      totalTokens: 15,
+    });
+    expect(JSON.stringify(familyMetric.mock.calls)).not.toMatch(
+      /private family body|fixture-key/,
+    );
   });
 
   it('fails closed for RAG policy when its feature or app capability is disabled', async () => {
@@ -431,7 +440,16 @@ describe('Frame conversation v1 contract (no live AWS)', () => {
     );
     expect(send).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
-    expect(familyMetric).not.toHaveBeenCalled();
+    expect(familyMetric).toHaveBeenCalledTimes(1);
+    expect(familyMetric.mock.calls[0][0].data).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'CONVERSATION_PROVIDER_CONFIGURATION',
+      failureStage: 'retrieval',
+      totalTokens: 0,
+    });
+    expect(JSON.stringify(familyMetric.mock.calls)).not.toMatch(
+      /private family body|fixture-key/,
+    );
   });
 
   it('keeps v1 and v2 independent from Family RAG search', async () => {

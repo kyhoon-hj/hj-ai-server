@@ -245,14 +245,19 @@ export class UsageQuotaRecoveryService {
     if (source === 'bedrock') {
       const log = await tx.bedrockSearchLog.findUnique({
         where: { id },
-        select: { appcode: true, searchat: true, totaltokens: true },
+        select: {
+          appcode: true,
+          searchat: true,
+          totaltokens: true,
+          requestId: true,
+        },
       });
       return (
         log && {
           appcode: log.appcode,
           at: log.searchat,
           tokens: log.totaltokens,
-          requestId: null,
+          requestId: log.requestId ?? null,
         }
       );
     }

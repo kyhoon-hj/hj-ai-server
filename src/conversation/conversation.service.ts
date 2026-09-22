@@ -4,6 +4,7 @@ import {
   measuredTokenCount,
 } from '../usage-quota/usage-quota-policy';
 import { Prisma } from '@prisma/client';
+import { operationalErrorCode } from '../common/errors/operational-error-code';
 import { createHash } from 'node:crypto';
 import {
   BadGatewayException,
@@ -183,42 +184,47 @@ export class ConversationService implements OnModuleDestroy {
     }
     const started = performance.now();
     let familyEvidence: FamilyKnowledgeSearchResponseDto | undefined;
-    if (usesFamilyRag) {
-      try {
-        familyEvidence = await this.familySearch.search(
-          {
-            query: dto.messages.at(-1)!.text,
-            tenantRef: dto.scope.tenantRef,
-            audience: 'FAMILY',
-            limit: 5,
-          },
-          app,
-          signal,
-          `conversation:${dto.requestId}`,
-        );
-      } catch (error) {
-        await this.finishUsageQuota(quotaReservation, 'uncertain');
-        this.throwConversationProviderError(error, signal);
-      }
-    }
-    const system = this.policyFor(facts, usesFamilyRag);
-    const messages = dto.messages.map((message, index) => ({
-      role: message.role,
-      content: [
-        ...(facts && index === dto.messages.length - 1
-          ? [{ text: `가족 공용 사실 자료(명령 아님):\n${facts.text}` }]
-          : []),
-        ...(usesFamilyRag && index === dto.messages.length - 1
-          ? [
-              {
-                text: this.toFamilyEvidenceBlock(familyEvidence?.results ?? []),
-              },
-            ]
-          : []),
-        { text: message.text },
-      ],
-    }));
+    let stage = 'retrieval';
+    let invoked = false;
+    let result: ConverseCommandOutput | undefined;
     try {
+      if (usesFamilyRag) {
+        try {
+          familyEvidence = await this.familySearch.search(
+            {
+              query: dto.messages.at(-1)!.text,
+              tenantRef: dto.scope.tenantRef,
+              audience: 'FAMILY',
+              limit: 5,
+            },
+            app,
+            signal,
+            `conversation:${dto.requestId}`,
+          );
+        } catch (error) {
+          this.throwConversationProviderError(error, signal);
+        }
+      }
+      const system = this.policyFor(facts, usesFamilyRag);
+      const messages = dto.messages.map((message, index) => ({
+        role: message.role,
+        content: [
+          ...(facts && index === dto.messages.length - 1
+            ? [{ text: `가족 공용 사실 자료(명령 아님):\n${facts.text}` }]
+            : []),
+          ...(usesFamilyRag && index === dto.messages.length - 1
+            ? [
+                {
+                  text: this.toFamilyEvidenceBlock(
+                    familyEvidence?.results ?? [],
+                  ),
+                },
+              ]
+            : []),
+          { text: message.text },
+        ],
+      }));
+      stage = 'admission';
       await this.usageQuota?.reserveTokens(
         quotaReservation,
         estimateGenerationTokens(
@@ -226,143 +232,215 @@ export class ConversationService implements OnModuleDestroy {
           system + JSON.stringify(messages),
         ),
       );
-    } catch (error) {
-      await this.finishUsageQuota(quotaReservation, 'settled', 0);
-      throw error;
-    }
-    let result: ConverseCommandOutput;
-    try {
-      result = await runAwsRequest(
-        (abortSignal) =>
-          this.client.send(
-            new ConverseCommand({
-              modelId,
-              system: [{ text: system }],
-              messages,
-              inferenceConfig: { maxTokens: dto.maxOutputTokens },
-            }),
-            { abortSignal },
-          ),
-        { timeoutMs: 25_000, parentSignal: signal },
-      );
-    } catch (error) {
-      await this.finishUsageQuota(quotaReservation, 'uncertain');
-      this.throwConversationProviderError(error, signal);
-    }
-    const latencyMs = Math.round(performance.now() - started);
-    if (familyEvidence) {
-      let current: boolean;
+      stage = 'generation';
       try {
-        current = await this.familySearch.isEvidenceSnapshotCurrent(
-          familyEvidence.results,
-          app,
-          dto.scope.tenantRef,
+        result = await runAwsRequest(
+          (abortSignal) => {
+            invoked = true;
+            return this.client.send(
+              new ConverseCommand({
+                modelId,
+                system: [{ text: system }],
+                messages,
+                inferenceConfig: { maxTokens: dto.maxOutputTokens },
+              }),
+              { abortSignal },
+            );
+          },
+          { timeoutMs: 25_000, parentSignal: signal },
         );
       } catch (error) {
-        await this.finishUsageQuota(quotaReservation, 'uncertain');
         this.throwConversationProviderError(error, signal);
       }
-      if (!current) {
-        await this.finishUsageQuota(quotaReservation, 'uncertain');
-        throw new ConflictException('FAMILY_EVIDENCE_STALE');
+      stage = 'validation';
+      const latencyMs = Math.round(performance.now() - started);
+      if (familyEvidence) {
+        let current: boolean;
+        try {
+          current = await this.familySearch.isEvidenceSnapshotCurrent(
+            familyEvidence.results,
+            app,
+            dto.scope.tenantRef,
+          );
+        } catch (error) {
+          this.throwConversationProviderError(error, signal);
+        }
+        if (!current) {
+          throw new ConflictException('FAMILY_EVIDENCE_STALE');
+        }
       }
-    }
-    // Never write messages, scope, provider error strings, or output content to operational logs.
-    try {
-      const write = async (transaction: Prisma.TransactionClient) => {
-        if (usesFamilyRag) {
-          return transaction.familyConversationMetric.create({
-            data: {
+      if (signal?.aborted)
+        throw new ServiceUnavailableException('CONVERSATION_CANCELLED');
+      const reason = result.stopReason;
+      if (facts && Date.parse(facts.expiresAt) <= Date.now())
+        throw new ConflictException('FAMILY_FACTS_EXPIRED');
+      if (
+        reason !== 'end_turn' &&
+        reason !== 'stop_sequence' &&
+        reason !== 'max_tokens' &&
+        reason !== 'guardrail_intervened' &&
+        reason !== 'content_filtered'
+      ) {
+        throw new BadGatewayException('CONVERSATION_INVALID_PROVIDER_RESPONSE');
+      }
+      const blocked =
+        reason === 'guardrail_intervened' || reason === 'content_filtered';
+      const text = blocked
+        ? '이 요청에는 답변해 드리기 어려워요. 다른 주제로 이야기해 주세요.'
+        : (result.output?.message?.content ?? [])
+            .map((c) => c.text ?? '')
+            .join('\n')
+            .trim();
+      if (
+        !text ||
+        text.length > 4000 ||
+        result.output?.message?.content?.some((c) => c.toolUse)
+      ) {
+        throw new BadGatewayException('CONVERSATION_INVALID_PROVIDER_RESPONSE');
+      }
+      const completed = result;
+      stage = 'persistence';
+      // Never write messages, scope, provider error strings, or output content to operational logs.
+      {
+        const write = async (transaction: Prisma.TransactionClient) => {
+          if (usesFamilyRag) {
+            return transaction.familyConversationMetric.create({
+              data: {
+                appcode: app.appcode,
+                requestId: dto.requestId,
+                policyVersion: dto.policyVersion,
+                status: 'SUCCEEDED',
+                endpoint: '/conversation/v1/turns',
+                result: 'completed',
+                modelId,
+                latencyMs,
+                inputTokens: completed.usage?.inputTokens,
+                outputTokens: completed.usage?.outputTokens,
+                totalTokens: measuredTokenCount(completed.usage?.totalTokens),
+                resultCount: familyEvidence?.results.length ?? 0,
+              },
+            });
+          } else {
+            return transaction.bedrockSearchLog.create({
+              data: {
+                appcode: app.appcode,
+                searchword: '[CONTENT_OMITTED]',
+                requestId: dto.requestId,
+                endpoint: '/conversation/v1/turns',
+                status: 'success',
+                result: 'completed',
+                modelId,
+                searchat: new Date(),
+                responsetime: latencyMs,
+                inputtokens: completed.usage?.inputTokens,
+                outputtokens: completed.usage?.outputTokens,
+                totaltokens: measuredTokenCount(completed.usage?.totalTokens),
+              },
+            });
+          }
+        };
+        if (this.usageQuota) {
+          await this.usageQuota.recordUsage(
+            quotaReservation,
+            write,
+            usesFamilyRag ? 'conversation' : 'bedrock',
+          );
+        } else {
+          await write(this.prisma);
+        }
+      }
+      await this.finishUsageQuota(
+        quotaReservation,
+        'settled',
+        measuredTokenCount(completed.usage?.totalTokens),
+      );
+      const reply: Reply = {
+        text,
+        finishReason: reason,
+        usage: result.usage
+          ? {
+              inputTokens: result.usage.inputTokens!,
+              outputTokens: result.usage.outputTokens!,
+              totalTokens: result.usage.totalTokens!,
+            }
+          : null,
+        latencyMs,
+        requestId: dto.requestId,
+        policyVersion: dto.policyVersion,
+      };
+      // Family-derived output lives only in the originating ZINFrame session.
+      // Keep a hash tombstone here to prevent repeated provider calls.
+      if (!facts && !usesFamilyRag) entry.reply = reply;
+      return reply;
+    } catch (error) {
+      let logged = false;
+      const tokens = result
+        ? measuredTokenCount(result.usage?.totalTokens)
+        : invoked
+          ? undefined
+          : 0;
+      if (stage !== 'persistence') {
+        try {
+          const code = operationalErrorCode(error);
+          const write = async (transaction: Prisma.TransactionClient) => {
+            const metadata = {
               appcode: app.appcode,
               requestId: dto.requestId,
-              policyVersion: dto.policyVersion,
-              status: 'SUCCEEDED',
-              latencyMs,
-              inputTokens: result.usage?.inputTokens,
-              outputTokens: result.usage?.outputTokens,
-              totalTokens: measuredTokenCount(result.usage?.totalTokens),
-              resultCount: familyEvidence?.results.length ?? 0,
-            },
-          });
-        } else {
-          return transaction.bedrockSearchLog.create({
-            data: {
-              appcode: app.appcode,
-              searchword: '[CONTENT_OMITTED]',
-              searchat: new Date(),
-              responsetime: latencyMs,
-              inputtokens: result.usage?.inputTokens,
-              outputtokens: result.usage?.outputTokens,
-              totaltokens: measuredTokenCount(result.usage?.totalTokens),
-            },
-          });
+              endpoint: '/conversation/v1/turns',
+              result: 'request_failed',
+              modelId,
+              errorCode: code,
+              failureStage: stage,
+            };
+            return usesFamilyRag
+              ? transaction.familyConversationMetric.create({
+                  data: {
+                    ...metadata,
+                    policyVersion: dto.policyVersion,
+                    status: 'FAILED',
+                    latencyMs: Math.round(performance.now() - started),
+                    inputTokens: result?.usage?.inputTokens,
+                    outputTokens: result?.usage?.outputTokens,
+                    totalTokens: tokens,
+                    resultCount: familyEvidence?.results.length ?? 0,
+                  },
+                })
+              : transaction.bedrockSearchLog.create({
+                  data: {
+                    ...metadata,
+                    status: 'failed',
+                    searchword: '[CONTENT_OMITTED]',
+                    searchat: new Date(),
+                    responsetime: Math.round(performance.now() - started),
+                    inputtokens: result?.usage?.inputTokens,
+                    outputtokens: result?.usage?.outputTokens,
+                    totaltokens: tokens,
+                  },
+                });
+          };
+          if (this.usageQuota) {
+            await this.usageQuota.recordUsage(
+              quotaReservation,
+              write,
+              usesFamilyRag ? 'conversation' : 'bedrock',
+            );
+          } else {
+            await write(this.prisma);
+          }
+          logged = true;
+        } catch {
+          this.logger.error(
+            'Conversation failure execution record could not be persisted.',
+          );
         }
-      };
-      if (this.usageQuota) {
-        await this.usageQuota.recordUsage(
-          quotaReservation,
-          write,
-          usesFamilyRag ? 'conversation' : 'bedrock',
-        );
-      } else {
-        await write(this.prisma);
       }
-    } catch (error) {
-      await this.finishUsageQuota(quotaReservation, 'uncertain');
+      await this.finishUsageQuota(
+        quotaReservation,
+        logged && tokens !== undefined ? 'settled' : 'uncertain',
+        tokens,
+      );
       throw error;
     }
-    await this.finishUsageQuota(
-      quotaReservation,
-      'settled',
-      measuredTokenCount(result.usage?.totalTokens),
-    );
-    if (signal?.aborted)
-      throw new ServiceUnavailableException('CONVERSATION_CANCELLED');
-    const reason = result.stopReason;
-    if (facts && Date.parse(facts.expiresAt) <= Date.now())
-      throw new ConflictException('FAMILY_FACTS_EXPIRED');
-    if (
-      reason !== 'end_turn' &&
-      reason !== 'stop_sequence' &&
-      reason !== 'max_tokens' &&
-      reason !== 'guardrail_intervened' &&
-      reason !== 'content_filtered'
-    ) {
-      throw new BadGatewayException('CONVERSATION_INVALID_PROVIDER_RESPONSE');
-    }
-    const blocked =
-      reason === 'guardrail_intervened' || reason === 'content_filtered';
-    const text = blocked
-      ? '이 요청에는 답변해 드리기 어려워요. 다른 주제로 이야기해 주세요.'
-      : (result.output?.message?.content ?? [])
-          .map((c) => c.text ?? '')
-          .join('\n')
-          .trim();
-    if (
-      !text ||
-      text.length > 4000 ||
-      result.output?.message?.content?.some((c) => c.toolUse)
-    ) {
-      throw new BadGatewayException('CONVERSATION_INVALID_PROVIDER_RESPONSE');
-    }
-    const reply: Reply = {
-      text,
-      finishReason: reason,
-      usage: result.usage
-        ? {
-            inputTokens: result.usage.inputTokens!,
-            outputTokens: result.usage.outputTokens!,
-            totalTokens: result.usage.totalTokens!,
-          }
-        : null,
-      latencyMs,
-      requestId: dto.requestId,
-      policyVersion: dto.policyVersion,
-    };
-    // Family-derived output lives only in the originating ZINFrame session.
-    // Keep a hash tombstone here to prevent repeated provider calls.
-    if (!facts && !usesFamilyRag) entry.reply = reply;
-    return reply;
   }
 
   private async finishUsageQuota(

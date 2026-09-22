@@ -124,7 +124,12 @@ describe('ConsoleUsageService', () => {
       date: '2026-09-08',
       requestCount: 0,
       tokens: { value: null, measuredRequests: 0 },
-      latency: { averageMs: null, measuredRequests: 0 },
+      latency: {
+        averageMs: null,
+        p50Ms: null,
+        p95Ms: null,
+        measuredRequests: 0,
+      },
       outcome: {
         successfulRequests: 0,
         failedRequests: 0,
@@ -188,7 +193,7 @@ describe('ConsoleUsageService', () => {
     });
   });
 
-  it('avoids raw usage queries when the organization owns no apps', async () => {
+  it('queries historical attribution even when the organization owns no current apps', async () => {
     const { service, findMany, queryRaw } = fixture([]);
     findMany.mockResolvedValueOnce([]);
 
@@ -197,7 +202,7 @@ describe('ConsoleUsageService', () => {
       requestCount: 0,
       tokens: { total: { value: null, measuredRequests: 0 } },
     });
-    expect(queryRaw).not.toHaveBeenCalled();
+    expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('uses the request and embedding ledgers as the aggregate sources', async () => {

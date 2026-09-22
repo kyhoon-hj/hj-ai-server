@@ -200,6 +200,32 @@ describe('BedrockService general answer contract', () => {
         expect(quota.settle).not.toHaveBeenCalled();
       });
 
+      it('persists safe failure metadata once without provider error text', async () => {
+        const { invoke, send, logCreate } = setup();
+        send.mockRejectedValue(
+          Object.assign(new Error('private provider payload'), {
+            name: 'ThrottlingException',
+          }),
+        );
+        await expect(invoke()).rejects.toThrow('private provider payload');
+        expect(logCreate).toHaveBeenCalledTimes(1);
+        expect(logCreate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              status: 'failed',
+              result: 'request_failed',
+              errorCode: 'UPSTREAM_THROTTLED',
+              failureStage: 'generation',
+              requestId: expect.any(String) as string,
+              modelId: 'model-v1',
+            }) as unknown,
+          }),
+        );
+        expect(JSON.stringify(logCreate.mock.calls)).not.toContain(
+          'private provider payload',
+        );
+      });
+
       it('supports unlimited applications without a reservation', async () => {
         const { invoke, quota, send } = setup();
         quota.begin.mockResolvedValue(null);

@@ -1,6 +1,6 @@
 # HJ AI Console 전체 마일스톤
 
-작성일·최종 갱신일: 2026-09-18
+작성일: 2026-09-18 · 최종 갱신일: 2026-09-21
 
 대상: HJ_AI_Server의 Console API, Console Web/BFF 및 관련 사용량 처리
 
@@ -8,20 +8,20 @@
 
 ## 1. 현재 진행 단계
 
-> **[Console M2 | 사용량·요청 로그·운영 지표 일치 | 대기 | 0/5]**
+> **[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 1/5]**
 >
-> 현재 착수 대상: `M2-01` 생성 경로 공통 요청 로그 계약과 성공/실패 기록.
+> 현재 착수 대상: `M3-02` 조직 2개·역할별 실제 DB/HTTP 권한·격리 검증.
 >
-> 직전 완료: `M1-05` 실제 PostgreSQL 별도 연결/프로세스 한도·중복·복구 검증. M1 완료.
+> 직전 완료: `M3-01` Console Web 기본 verify/CI 연결과 실패 전파 검증.
 >
-> 전체: **8개 중 2개 마일스톤 완료**, 잔여 실행 작업 **5/35 완료**.
+> 전체: **8개 중 3개 마일스톤 완료**, 잔여 실행 작업 **11/35 완료**.
 >
 > 현재 알려진 차단 사유: 없음. M6에는 HJ-Works 계약 공동 확정이 필요함.
 >
-> 이번 변경 범위: M1-05 격리 PostgreSQL 다중 연결/프로세스·집계·복구 통합 검증.
+> 이번 변경 범위: M3-01 Console Web 기본 verify/CI 연결과 실패 전파 검증.
 
 ```text
-M0 완료 → M1 완료 → M2 대기·현재 → M3 대기 → M4 대기 → M5 대기 → M6 대기 → M7 대기
+M0 완료 → M1 완료 → M2 완료 → M3 진행 중·현재 → M4 대기 → M5 대기 → M6 대기 → M7 대기
 기준선     월 한도       집계·로그  통합검증   홈·알림    지식관리   SSO       운영공개
 ```
 
@@ -61,8 +61,8 @@ Playground 등의 구현은 재사용하며, 아래 잔여 작업과 공개 전 
 | --- | --- | --- | --- | --- | --- |
 | M0 | 현황·검증 기준선 확정 | 완료 | 3/3 | 없음 | 기존 단계 0~2 검토 |
 | M1 | 월 한도 적용·예약·정산 정합성 | 완료 | 5/5 | M0 | CON-SRV-13 |
-| M2 | 사용량·요청 로그·운영 지표 일치 | 대기 | 0/5 | M1 | CON-SRV-10~12, CON-WEB-06 보완 |
-| M3 | DB·브라우저 통합 검증과 CI | 대기 | 0/5 | M1, M2 | 테스트 전략 §14, CON-OPS-05 일부 |
+| M2 | 사용량·요청 로그·운영 지표 일치 | 완료 | 5/5 | M1 | CON-SRV-10~12, CON-WEB-06 보완 |
+| M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 1/5 | M1, M2 | 테스트 전략 §14, CON-OPS-05 일부 |
 | M4 | 홈·임계치 알림·감사 조회 | 대기 | 0/5 | M2, M3 | CON-SRV-14, CON-WEB-05, 감사 조회 잔여 |
 | M5 | 조직 범위 지식 관리 | 대기 | 0/5 | M3, M4 | CON-SRV-15~16, CON-WEB-07~08 |
 | M6 | HJ-Works 인증·권한·세션 통합 | 대기 | 0/5 | M5, Works 공동 계약 확정 | CON-WORKS-02~05, CON-SRV-02·04, CON-WEB-01 |
@@ -93,22 +93,22 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 장애 후 예약 상태를 설명·복구할 수 있다. 추정 토큰과 실제 토큰의 허용 오차·초과 정책을
 명시하고 시험한다. mock의 직렬화 결과만으로 DB 동시성 통과를 선언하지 않는다.
 
-### M2. 사용량·요청 로그·운영 지표 일치 — 대기 (0/5)
+### M2. 사용량·요청 로그·운영 지표 일치 — 완료 (5/5)
 
-- [ ] `M2-01` Bedrock·지식·Family 대화의 요청 ID, endpoint, 결과, 오류 코드 공통 계약과 성공/실패 기록 구현.
-- [ ] `M2-02` Family 대화를 요청 로그·상세·CSV에 포함하고 사용량에서 요청 로그까지 추적 가능하게 연결. 기존 기록의 미측정 상태 처리.
-- [ ] `M2-03` UTC 이번 달 사용량·한도·잔여량·사용률 API를 추가하고 최근 7/30/90일 조회와 구분. 한도 설정 주체와 관리 경로 명시.
-- [ ] `M2-04` p50/p95, endpoint/model/status별 집계·endpoint 필터 및 embedding 집계 범위 확정·구현. 누락 계측과 실제 0 구분.
-- [ ] `M2-05` 동일 DB fixture의 원본·summary·timeseries·breakdown·로그·CSV 대조, 조직 격리·cursor·행 제한 회귀 검증.
+- [x] `M2-01` Bedrock·지식·Family 대화의 요청 ID, endpoint, 결과, 오류 코드 공통 계약과 성공/실패 기록 구현.
+- [x] `M2-02` Family 대화를 요청 로그·상세·CSV에 포함하고 사용량에서 요청 로그까지 추적 가능하게 연결. 기존 기록의 미측정 상태 처리.
+- [x] `M2-03` UTC 이번 달 사용량·한도·잔여량·사용률 API를 추가하고 최근 7/30/90일 조회와 구분. 한도 설정 주체와 관리 경로 명시.
+- [x] `M2-04` p50/p95, endpoint/model/status별 집계·endpoint 필터 및 embedding 집계 범위 확정·구현. 누락 계측과 실제 0 구분.
+- [x] `M2-05` 동일 DB fixture의 원본·summary·timeseries·breakdown·로그·CSV 대조, 조직 격리·cursor·행 제한 회귀 검증.
   - M1-03 복구 원장(recoveryRequests/recoveryTokens)과 원래 로그의 중복 없는 집계·조회 연결도 포함한다.
   - M1-04 예약 승인 월·조직 귀속과 미측정 정책을 일반 Console 집계·로그·CSV에 동기화한다.
 
 완료 기준: 동일 기간·대상·결과 정책에서 집계 수치가 원본과 일치한다. 성공률의 분모와
 미측정 비율을 설명할 수 있고, 최근 30일을 이번 달 한도로 오인하는 화면이 없다.
 
-### M3. 통합 검증과 CI — 대기 (0/5)
+### M3. 통합 검증과 CI — 진행 중 (1/5)
 
-- [ ] `M3-01` `test:console-web`을 기본 `verify`/CI 실행에 포함하고 Web 실패가 품질 검사를 실패시키는지 확인.
+- [x] `M3-01` `test:console-web`을 기본 `verify`/CI 실행에 포함하고 Web 실패가 품질 검사를 실패시키는지 확인.
 - [ ] `M3-02` 조직 2개·역할별 DB fixture를 마련하고 앱·키·사용량·로그의 HTTP 허용/거부 계약 및 production fixture 차단 검증.
 - [ ] `M3-03` 앱 생성 → 키 발급 → 실제 API 계약 호출 → 사용량·로그 확인 및 키 회전/grace/폐기 브라우저 E2E 구현·실행. provider 대체 여부 명시.
 - [ ] `M3-04` 한도 초과·DB 실패·중복 요청·cursor·CSV 제한 등 M1/M2 회귀를 반복 실행할 수 있는 격리 환경과 CI/별도 실행 경로에 연결.
@@ -195,8 +195,8 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 문서 정합성 검사와 대상 문서 `git diff --check`는 Pass다. 애플리케이션 코드는 변경하지
 않았으며 이번 문서 작업에서는 서버·Web 테스트를 재실행하지 않았다.
 
-다음 실행 범위는 `M2-01` Bedrock·지식·Family 대화 공통 요청 로그 계약과 성공/실패 기록이다.
-M2는 대기 상태이며 운영 DB 변경·배포는 수행하지 않았다.
+다음 실행 범위는 `M3-02` 조직·역할별 실제 DB/HTTP 검증이다.
+M2는 완료했으며 M3는 진행 중(1/5)이다. 운영 DB 변경·배포는 수행하지 않았다.
 
 
 ### M1-01 적용 계약 및 검증 — 2026-09-18
@@ -395,3 +395,82 @@ M1-01~05 체크리스트와 완료 기준을 충족하여 M1 완료(5/5). 다음
 | 날짜 | 변경 | 근거·검증 | 다음 작업 |
 | --- | --- | --- | --- |
 | 2026-09-18 | M1-05 및 M1 완료, M2 대기 0/5로 전환 | 실제 PostgreSQL 16개·관련 회귀 254개·타입·린트·빌드 Pass | M2-01 공통 요청 로그 계약·성공/실패 기록 |
+
+
+### M2-01~05 사용량·요청 로그·운영 지표 일치 — 2026-09-18
+
+[Console M2 | 사용량·요청 로그·운영 지표 일치 | 완료 | 5/5]
+
+계약: [Console 사용량·로그 계약](HJ_AI_CONSOLE_USAGE_CONTRACT.md).
+- M2-01: Bedrock 생성·Family 대화 성공/실패의 요청 ID·endpoint·결과·오류 코드·모델 기록.
+  Family 응답 검증 뒤 성공 기록, 생성 전 실패 0·생성 후 미측정 구분, 지식 UUID fallback과 저장 실패 예약 보존.
+- M2-02: 공통 요청 SQL로 Family·복구 목록/상세/CSV 포함. 원본 시각·집계 시각·복구 근거 노출,
+  과거 미계측 결과 unknown 유지, 사용량에서 조건별 로그로 이동.
+- M2-03: UTC monthly API와 확정/예약/한도/잔여/사용률, 관리자 설정 주체·경로 명시.
+  최근 기간과 이번 달 UI 분리. 조직 이동 앱의 타 조직 소계 비노출·잔여 한도 불확실 표시.
+- M2-04: summary/일별/앱별/endpoint·model·status별 p50/p95, 공통 필터와 embedding 집계 범위 명시.
+- M2-05: 실제 PostgreSQL 동일 fixture의 원본·summary·timeseries·breakdown·목록·상세·CSV·quota 대조.
+  연결 복구 token 보충·유실 복구 1건·RELEASE 제외·승인 월/조직·미측정 정책 일치 확인.
+
+신규 migration: `20260918120000_add_console_request_metadata`. 기존 로그 metadata는 null 보존.
+환경: Windows 로컬 작업본, localhost PostgreSQL. 각 실행이 무작위 격리 DB를 생성하고
+24개 migration을 적용한 뒤 해당 DB만 삭제했다. 운영/원본 DB 업무 데이터는 변경하지 않았다.
+
+| 실행 명령 | 결과 | 범위·제약 |
+| --- | --- | --- |
+| `npm run prisma:generate` | Pass | 로컬 Prisma client 생성 |
+| `npx prisma validate` | Pass | schema 검증 |
+| `npm run typecheck` | Pass | 첫 실행 SDK optional 필드·비동기 union 콜백 타입 오류 수정 후 통과 |
+| `npm run lint:check` | Pass | 서버·test TypeScript, 경고 없음 |
+| `npm run build` | Pass | Prisma generate·Nest build·build stamp |
+| `npm run test:console-usage-db` | Pass — 1 suite / 8 tests | 실 DB 집계·복구·조직 이동·월 경계·cursor·CSV 5,000행·한도 |
+| `npm run test:usage-quota-db` | Pass — 1 suite / 16 tests | M1 다중 연결/프로세스·복구·HTTP 회귀. 실패 로그 추가에 맞춰 SETTLE_LOG 복구 계약 검사 |
+| `npm run test:ci -- --testPathPatterns='bedrock|usage-quota|knowledge.contract|conversation|console|operational-error-code|admin-api-key.guard'` | Pass — 24 suites / 268 tests | provider/Prisma mock 및 Nest HTTP guard·DTO 회귀 |
+| `npm run test:console-web` | Pass — 24 tests | BFF/API·기존 소스 계약 및 실제 markup 함수 VM 렌더·필터/링크·미측정/0 표시 |
+| `git diff --check` 및 문서 정합성 검사 | Pass | 신규 파일 공백, 관련 문서 4개 상대 링크 20개, M2 5/5·M3 대기·전체 10/35 일치 |
+
+실 DB 대조 표본: 요청 5, 확인 token 80, token 측정 4, 성공 2/실패 1/결과 미측정 2,
+성공률 66.67%, p50 250ms/p95 385ms. 연결 복구 40 token은 원본 1건에만 반영하고
+유실 복구 10 token은 결과 미측정 1건으로 반영했다. 원본·CSV·quota와 동일했다.
+추가로 월 경계 뒤 완료된 로그의 승인 월 귀속, 현재 소유 앱이 없는 이전 조직의 조회,
+타 조직 직접 ID 거부, 동일 시각 소스 혼합 cursor, 5,001건 중 CSV 5,000건 제한을 확인했다.
+
+미실행: 실제 AWS·브라우저 E2E·운영 DB migration/rehearsal·배포. Web VM 렌더는 브라우저
+레이아웃·사용자 여정 검증을 대체하지 않는다. M3에서 CI 연결·브라우저/HTTP 통합을 진행한다.
+Embedding은 Family operation만 측정하며 일반 지식 embedding은 미측정으로 명시했다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-18 | M2-01~05 완료(5/5), M3 대기(0/5)로 전환 | 위 실 DB 8+16개, 서버 268개, Web 24개·타입·린트·schema·빌드 Pass | M3-01 Console Web 기본 verify/CI 연결 |
+
+
+### M3-01 Console Web 품질 검사 연결 — 2026-09-21
+
+[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 1/5]
+
+원인: CI가 실행하는 루트 `verify`에 Console Web이 빠져 Web 실패가 품질 검사를 막지 못했다.
+`package.json`의 verify를 build → typecheck → lint:check → test:ci → test:console-web →
+test:demo 순서로 연결했다. `.github/workflows/quality-gate.yml`은 기존 verify 실행을 유지하고
+`test:console-web-gate` 실패 전파 검사 단계를 추가했다. 신규 의존성은 없다.
+
+`scripts/check-console-web-gate.mjs`는 저장소 내부 `work/console-web-gate-*` 임시 복사본에서
+실제 verify 명령·Console Web 테스트를 사용하고 Web 실패 1건을 주입한다. 이 음성 검증의
+build/typecheck/lint/서버 단계만 성공 stub으로 대체하며, verify의 종료 코드 1과 이후 demo
+단계 미실행을 확인한다. 임시 디렉터리는 종료 시 삭제한다. 원본 테스트는 변경하지 않는다.
+
+환경: Windows 로컬, Node v24.15.0 / npm 11.12.1. 기준 HEAD
+`e3a6bc80efa569c9d58340ba373e72d0fe3737c9`에 기존 M2 미커밋 변경과 이번 M3-01을 포함한 작업본.
+
+| 실행 명령 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run verify` | Pass | build·typecheck·lint:check, 서버 62 suites/497 tests, Console Web 24 tests, demo 56 tests |
+| `npm run test:console-web-gate` | Pass | 주입한 Web 실패가 verify exit 1로 전파, 후속 단계 중단, 임시 복사본 삭제 확인 |
+| `git diff --check` 및 문서 정합성 검사 | Pass | 현재 단계·체크리스트·11/35·관련 문서 링크 검사 |
+
+위 결과는 로컬 실행이다. GitHub Actions 원격 실행·push·실제 DB·브라우저 E2E·AWS·운영 배포는
+이번 M3-01에서 수행하지 않았다. 전체 verify 통과만으로 M3-02~05를 완료 처리하지 않는다.
+다음은 M3-02이며 M3-02~05는 미착수다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-21 | M3-01 완료, M3 진행 중 1/5 | 전체 verify 및 Web 실패 전파 검증 Pass | M3-02 조직·역할별 실제 DB/HTTP 검증 |

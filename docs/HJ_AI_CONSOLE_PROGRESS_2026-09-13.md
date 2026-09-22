@@ -2,16 +2,18 @@
 
 작성일: 2026-09-13
 
-최종 갱신일: 2026-09-18
+최종 갱신일: 2026-09-21
 
 대상 프로젝트: HJ AI Server
 
 기준 계획: [HJ-Works 연계 AI Console 구축 계획](HJ_WORKS_AI_CONSOLE_IMPLEMENTATION_PLAN.md)
 
-현재 단계: **[Console M2 | 사용량·요청 로그·운영 지표 일치 | 대기 | 0/5]**
+현재 단계: **[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 1/5]**
 
 단계 상태·완료 기준·검증 이력의 기준 문서: [전체 마일스톤](HJ_AI_CONSOLE_MILESTONES.md).
 M1-01~05 생성 API 연결·요청 중복 제거·예약 복구·경계 정책과 실제 PostgreSQL 검증을 완료했다. 검증 근거는 전체 마일스톤의 작업별 기록, 운영 절차는 [예약 복구 runbook](HJ_AI_CONSOLE_USAGE_RECOVERY_RUNBOOK.md)을 참조한다.
+
+M2-01~05 공통 로그·복구 귀속·월 지표·차원별 집계·CSV 정합성과 격리 PostgreSQL 검증을 완료했다. [사용량·로그 계약](HJ_AI_CONSOLE_USAGE_CONTRACT.md)을 따른다.
 
 ## 1. 작업 목표와 구현 순서
 
@@ -45,12 +47,12 @@ M4 홈·알림·감사 조회 → M5 지식 관리 → M6 HJ-Works 로그인·�
 | `CON-WEB-02` | 완료 | 독립 Console Web/BFF, 앱 검색·상태 필터·생성·상세 수정, 반응형 화면 구현 |
 | `CON-WEB-03` | 완료 | credential metadata, 최초 발급·회전·개별 폐기, 원문 key 일회성 표시·복사·저장 확인 UX 구현 |
 | `CON-WEB-04` | 완료 | 실제 지식 답변 Playground와 request ID·출처·지연 및 cURL·JavaScript·Python 예제 구현 |
-| `CON-SRV-10` | 구현·보완 필요(M2) | 기본 통합 집계 구현. 로그와의 범위 일치·실패 계측·embedding 집계 범위 검증 잔여 |
-| `CON-SRV-11` | 구현·보완 필요(M2) | 7·30·90일·일별·앱별 집계 구현. 월 사용률·p50/p95·차원별 집계 잔여 |
-| `CON-SRV-12` | 구현·보완 필요(M2) | 목록·상세·cursor 구현. Family 로그와 Bedrock request ID·실패 기록·endpoint 필터 잔여 |
+| `CON-SRV-10` | 완료(M2) | 공통 요청 SQL·복구/승인 월/조직 귀속·실패 계측·Family embedding 범위 확정, 실 DB 원본 대조 |
+| `CON-SRV-11` | 완료(M2) | 최근 기간과 UTC 월 한도 API 분리, p50/p95·endpoint/model/status별 집계·공통 필터 |
+| `CON-SRV-12` | 완료(M2) | Family·복구 목록/상세, Bedrock request ID·실패·endpoint/model/status 필터와 cursor 실 DB 검증 |
 | `CON-SRV-13` | 완료(M1) | 예약·정산·복구·경계 정책 및 격리 PostgreSQL 16개, 관련 회귀 254개 통과. 운영 반영은 M7 |
 | `CON-WEB-05` | 일부 완료 | 사용량 카드·일별 차트·앱별 표 완료, Console 홈 요약 화면 잔여 |
-| `CON-WEB-06` | 구현·보완 필요(M2~M3) | 요청 로그·오류 상세·CSV 구현. 로그 범위·필터 확장과 브라우저 통합 검증 잔여 |
+| `CON-WEB-06` | 구현 완료·M3 검증 잔여 | Family/복구/CSV·필터·월/기간 분리·usage→로그 링크와 VM 렌더 검증 완료. 브라우저 E2E는 M3 |
 
 ## 3. Console API 현황
 
@@ -66,9 +68,10 @@ M4 홈·알림·감사 조회 → M5 지식 관리 → M6 HJ-Works 로그인·�
 | `POST` | `/apps/:id/credentials` | 최초 credential 발급과 원문 일회성 반환 |
 | `POST` | `/apps/:id/credentials/rotate` | credential 회전과 제한된 grace 적용 |
 | `DELETE` | `/apps/:id/credentials/:credentialId` | 지정 credential 폐기 |
+| `GET` | `/usage/monthly` | UTC 이번 달 확정·예약·한도·잔여량·사용률 |
 | `GET` | `/usage/summary` | 요청·token·embedding·성공률·지연 합계 조회 |
 | `GET` | `/usage/timeseries` | UTC 일별 사용량 조회 |
-| `GET` | `/usage/breakdown` | 조직 소유 앱별 사용량 조회 |
+| `GET` | `/usage/breakdown` | 조직 귀속 앱·endpoint·model·status별 사용량 조회 |
 | `GET` | `/request-logs` | 요청 로그 필터·cursor 목록 조회 |
 | `GET` | `/request-logs/:logId` | 원문을 제외한 요청 실행 상세 조회 |
 | `GET` | `/request-logs/export.csv` | 최대 5,000행 metadata CSV 내보내기 |
@@ -85,8 +88,9 @@ credential은 발급 또는 회전 응답에서 한 번만 반환하며 저장�
 - `20260912100000_extend_console_audit_actor`: Console·Works 감사 actor와 session hash
 - `20260913100000_add_console_credential_metadata`: credential 식별자, 발급자와 사용 시각 metadata
 - `20260917100000_add_console_usage_reservation`: 월 한도 예약·정산·불확실 상태 원장
-- `20260918100000_add_usage_reservation_recovery`: 로그 참조·복구 계수·멱등 key와 제약 (실제 DB 적용 미실행)
-- `20260918110000_add_usage_reservation_policy`: operation 범위·0토큰 예약 식별·연결 실측 예약 보정 (실제 DB 적용 미실행)
+- `20260918100000_add_usage_reservation_recovery`: 로그 참조·복구 계수·멱등 key와 제약 (격리 PostgreSQL 적용 검증 완료)
+- `20260918110000_add_usage_reservation_policy`: operation 범위·0토큰 예약 식별·연결 실측 예약 보정 (격리 PostgreSQL 적용 검증 완료)
+- `20260918120000_add_console_request_metadata`: Bedrock·Family 요청 metadata (격리 PostgreSQL 적용 검증 완료)
 
 마이그레이션 파일과 Prisma schema는 준비됐지만 운영 데이터베이스에는 아직 적용하지
 않았다. 이는 기존 기록이며 이번 검토에서 운영 DB를 조회하지 않았다. 운영 적용은
@@ -136,7 +140,7 @@ Console Web/BFF는 현재 Node.js 기본 모듈과 정적 SPA만 사용하며 �
 
 실제 DB 동시성, 브라우저 E2E, 운영 DB migration과 HJ-Works 실계정 SSO는 이번 검토에서
 미실행이다. 한도 테스트는 mock 직렬화이며 실제 DB 다중 프로세스 보장을 검증하지 않는다.
-기본 `verify`/CI에는 Console Web 검사가 아직 포함되지 않아 M3에서 연결한다.
+2026-09-21 M3-01에서 기본 `verify`/CI에 Console Web 검사를 연결했다. 실패 주입 검증도 CI에 추가했다. 아래 과거 검사 기록과 최신 실행 결과는 구분한다.
 
 ### 7.2 이전 기록(2026-09-18 재검증 아님)
 
@@ -158,11 +162,11 @@ Console Web/BFF는 현재 Node.js 기본 모듈과 정적 SPA만 사용하며 �
 
 ## 8. 남은 작업과 다음 단계
 
-즉시 다음 작업은 **M2-01 생성 경로 공통 요청 로그 계약과 성공/실패 기록**이다.
+즉시 다음 작업은 **M3-02 조직 2개·역할별 실제 DB/HTTP 권한·격리 검증**이다.
 `CON-SRV-14` 알림보다 한도·집계·로그 정합성 보완을 먼저 수행한다.
 
 1. M1: 완료. 실제 DB 검증 근거와 제한은 마일스톤 M1-05 기록 참조.
-2. M2~M3: 사용량·요청 로그·월 지표 일치, 통합 검증과 Console Web CI 연결.
+2. M2 완료. M3-01 완료. M3-02~05: DB·브라우저 통합 검증과 격리 회귀 실행 경로 연결·최종 검증.
 3. M4: 임계치 알림, 홈 요약, 조직 감사 조회.
 4. M5: 조직 범위 지식 파일 업로드·색인·재시도·게시·보관.
 5. M6: HJ-Works 계약 확정, 로그인·세션·로그아웃 최종 통합.
@@ -170,3 +174,21 @@ Console Web/BFF는 현재 Node.js 기본 모듈과 정적 SPA만 사용하며 �
 
 `CON-WORKS-02`는 코드와 fixture 검증은 끝났지만 HJ-Works 측 공동 승인이 남아 있다.
 로그인 통합 단계에 들어가기 전에 해당 계약과 역할·event 계약을 최종 확정해야 한다.
+
+
+### M2 검증 추가 기록 — 2026-09-18
+
+로컬 작업본 기준 `test:console-usage-db` 8개와 `test:usage-quota-db` 16개(격리 실 PostgreSQL),
+관련 서버 24 suites/268개, `test:console-web` 24개, typecheck/lint:check/build 및 Prisma validate Pass.
+Web에는 VM markup 렌더 시험이 포함되며 이번 M2 변경의 브라우저·AWS·운영 검증은 미실행이다.
+신규 migration `20260918120000_add_console_request_metadata`는 격리 DB에만 적용했다.
+전체 상세·제약은 마일스톤 M2-01~05 기록 참조. 과거 브라우저 기록을 이번 변경의 검증으로 사용하지 않는다.
+
+
+### M3-01 검증 추가 기록 — 2026-09-21
+
+`npm run verify`: Pass (build/typecheck/lint:check, 서버 497개, Console Web 24개, demo 56개).
+`npm run test:console-web-gate`: Pass (임시 복사본에서 주입 실패 → verify exit 1, 이후 검사 중단).
+CI workflow는 verify와 실패 전파 검사를 실행하도록 연결했다. 신규 의존성은 없다.
+Windows/Node 24.15.0/npm 11.12.1, HEAD e3a6bc80에 M2·M3-01 미커밋 변경을 포함한 작업본이다.
+원격 GitHub Actions·DB·브라우저 E2E·AWS·배포는 이번 작업에서 미실행. 자세한 근거는 마일스톤 M3-01 참조.

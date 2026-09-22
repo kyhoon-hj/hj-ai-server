@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { consoleUsageEvents } from '../usage/console-usage-events';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { ConsoleIdentityContext } from '../security/console-identity-context';
 import type { ExportConsoleRequestLogsDto } from './dto/export-console-request-logs.dto';
@@ -11,12 +12,16 @@ import type { ListConsoleRequestLogsDto } from './dto/list-console-request-logs.
 
 type RequestLogRow = {
   logId: string;
-  source: 'knowledge' | 'bedrock';
+  source: 'knowledge' | 'bedrock' | 'conversation' | 'recovery';
   appcode: string;
   occurredAt: Date;
+  originalAt?: Date;
+  reservationId?: string | null;
+  recovered?: boolean;
+  tokenSource?: string;
   requestId: string | null;
   endpoint: string;
-  status: 'success' | 'failed';
+  status: 'success' | 'failed' | 'unknown';
   result: string;
   failureStage: string | null;
   errorCode: string | null;
@@ -50,14 +55,15 @@ export class ConsoleRequestLogsService {
       Date.UTC(
         to.getUTCFullYear(),
         to.getUTCMonth(),
-        to.getUTCDate() - query.days + 1,
+        query.period === 'month' ? 1 : to.getUTCDate() - query.days + 1,
       ),
     );
-    const rows = apps.length
-      ? await this.prisma.$queryRaw<RequestLogRow[]>(
-          this.listQuery(apps, from, to, query, cursor),
-        )
-      : [];
+    if (query.period === 'month') {
+      to.setTime(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
+    }
+    const rows = await this.prisma.$queryRaw<RequestLogRow[]>(
+      this.listQuery(identity.organizationId, apps, from, to, query, cursor),
+    );
     const hasMore = rows.length > query.limit;
     const page = rows.slice(0, query.limit);
     return {
@@ -65,6 +71,7 @@ export class ConsoleRequestLogsService {
         from: from.toISOString(),
         to: to.toISOString(),
         days: query.days,
+        kind: query.period ?? 'rolling',
       },
       items: page.map((row) => this.toListItem(row, apps)),
       nextCursor: hasMore
@@ -74,15 +81,15 @@ export class ConsoleRequestLogsService {
   }
 
   async findOne(logId: string, identity: ConsoleIdentityContext) {
-    if (!/^(knowledge|bedrock):[0-9a-f-]{36}$/i.test(logId)) {
+    if (
+      !/^(knowledge|bedrock|conversation|recovery):[0-9a-f-]{36}$/i.test(logId)
+    ) {
       throw new NotFoundException('요청 로그를 찾을 수 없습니다.');
     }
     const apps = await this.ownedApps(identity.organizationId);
-    const rows = apps.length
-      ? await this.prisma.$queryRaw<RequestLogRow[]>(
-          this.detailQuery(apps, logId),
-        )
-      : [];
+    const rows = await this.prisma.$queryRaw<RequestLogRow[]>(
+      this.detailQuery(identity.organizationId, logId),
+    );
     const row = rows[0];
     if (!row) throw new NotFoundException('요청 로그를 찾을 수 없습니다.');
     return {
@@ -107,21 +114,23 @@ export class ConsoleRequestLogsService {
       Date.UTC(
         to.getUTCFullYear(),
         to.getUTCMonth(),
-        to.getUTCDate() - query.days + 1,
+        query.period === 'month' ? 1 : to.getUTCDate() - query.days + 1,
       ),
     );
-    const rows = apps.length
-      ? await this.prisma.$queryRaw<RequestLogRow[]>(
-          this.listQuery(
-            apps,
-            from,
-            to,
-            { ...query, limit: CSV_EXPORT_ROW_LIMIT },
-            undefined,
-            CSV_EXPORT_ROW_LIMIT + 1,
-          ),
-        )
-      : [];
+    if (query.period === 'month') {
+      to.setTime(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
+    }
+    const rows = await this.prisma.$queryRaw<RequestLogRow[]>(
+      this.listQuery(
+        identity.organizationId,
+        apps,
+        from,
+        to,
+        { ...query, limit: CSV_EXPORT_ROW_LIMIT },
+        undefined,
+        CSV_EXPORT_ROW_LIMIT + 1,
+      ),
+    );
     const page = rows.slice(0, CSV_EXPORT_ROW_LIMIT);
     const header = [
       'occurredAt',
@@ -139,6 +148,11 @@ export class ConsoleRequestLogsService {
       'totalTokens',
       'modelId',
       'embeddingModel',
+      'logId',
+      'originalAt',
+      'reservationId',
+      'tokenSource',
+      'recovered',
     ];
     const lines = page.map((row) => {
       const item = this.toListItem(row, apps);
@@ -158,6 +172,11 @@ export class ConsoleRequestLogsService {
         item.tokens.total,
         item.modelId,
         item.embeddingModel,
+        item.id,
+        item.originalAt,
+        item.reservationId,
+        item.tokenSource,
+        item.recovered,
       ]
         .map((value) => this.csvCell(value))
         .join(',');
@@ -183,56 +202,8 @@ export class ConsoleRequestLogsService {
     return ownerships.map((ownership) => ownership.appInfo);
   }
 
-  private events(apps: OwnedApp[], from?: Date, to?: Date) {
-    const values = Prisma.join(apps.map((app) => Prisma.sql`(${app.appcode})`));
-    const knowledgeRange =
-      from && to
-        ? Prisma.sql`WHERE log.created_at >= ${from} AND log.created_at < ${to}`
-        : Prisma.empty;
-    const bedrockRange =
-      from && to
-        ? Prisma.sql`WHERE log.searchat >= ${from} AND log.searchat < ${to}`
-        : Prisma.empty;
-    return Prisma.sql`
-      WITH owned_apps(appcode) AS (VALUES ${values}),
-      request_events AS (
-        SELECT 'knowledge:' || log.id::text AS log_id,
-               'knowledge'::text AS source, log.appcode,
-               log.created_at AS occurred_at, log.request_id,
-               '/knowledge/answers'::text AS endpoint,
-               CASE WHEN log.execution->>'answerStatus' = 'request_failed'
-                 THEN 'failed' ELSE 'success' END AS status,
-               COALESCE(log.execution->>'answerStatus', 'completed') AS result,
-               log.execution->>'failedStage' AS failure_stage,
-               log.execution->>'errorCode' AS error_code,
-               log.model_id, log.embedding_model, log.responsetime,
-               log.inputtokens, log.outputtokens, log.totaltokens,
-               CASE WHEN jsonb_typeof(log.matched_chunk_ids) = 'array'
-                 THEN jsonb_array_length(log.matched_chunk_ids) ELSE 0 END AS matched_chunk_count,
-               (log.question <> '[CONTENT_OMITTED]' OR log.response IS NOT NULL) AS content_stored,
-               log.execution
-        FROM knowledge_query_log log
-        JOIN owned_apps owned ON owned.appcode = log.appcode
-        ${knowledgeRange}
-        UNION ALL
-        SELECT 'bedrock:' || log.id::text AS log_id,
-               'bedrock'::text AS source, log.appcode,
-               log.searchat AS occurred_at, NULL::text AS request_id,
-               '/bedrock'::text AS endpoint, 'success'::text AS status,
-               'completed'::text AS result, NULL::text AS failure_stage,
-               NULL::text AS error_code,
-               NULL::text AS model_id, NULL::text AS embedding_model,
-               log.responsetime, log.inputtokens, log.outputtokens, log.totaltokens,
-               0 AS matched_chunk_count,
-               (log.searchword <> '[CONTENT_OMITTED]') AS content_stored,
-               NULL::jsonb AS execution
-        FROM bedrock_search_log log
-        JOIN owned_apps owned ON owned.appcode = log.appcode
-        ${bedrockRange}
-      )`;
-  }
-
   private listQuery(
+    organizationId: string,
     apps: OwnedApp[],
     from: Date,
     to: Date,
@@ -241,6 +212,7 @@ export class ConsoleRequestLogsService {
     rowLimit = query.limit + 1,
   ) {
     const filters: Prisma.Sql[] = [];
+    if (query.appcode) filters.push(Prisma.sql`appcode = ${query.appcode}`);
     if (query.status) filters.push(Prisma.sql`status = ${query.status}`);
     if (query.requestId) {
       filters.push(Prisma.sql`request_id = ${query.requestId.trim()}`);
@@ -258,9 +230,10 @@ export class ConsoleRequestLogsService {
     const where = filters.length
       ? Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}`
       : Prisma.empty;
-    return Prisma.sql`${this.events(apps, from, to)}
+    return Prisma.sql`${consoleUsageEvents(organizationId, from, to, { ...query, appcode: query.appId ? apps[0]?.appcode : query.appcode })}
       SELECT log_id AS "logId", source, appcode,
-             occurred_at AS "occurredAt", request_id AS "requestId", endpoint,
+             occurred_at AS "occurredAt", original_at AS "originalAt",
+             reservation_id AS "reservationId", recovered, token_source AS "tokenSource", request_id AS "requestId", endpoint,
              status, result, failure_stage AS "failureStage", error_code AS "errorCode",
              model_id AS "modelId",
              embedding_model AS "embeddingModel", responsetime AS "responseTimeMs",
@@ -272,10 +245,11 @@ export class ConsoleRequestLogsService {
       LIMIT ${rowLimit}`;
   }
 
-  private detailQuery(apps: OwnedApp[], logId: string) {
-    return Prisma.sql`${this.events(apps)}
+  private detailQuery(organizationId: string, logId: string) {
+    return Prisma.sql`${consoleUsageEvents(organizationId)}
       SELECT log_id AS "logId", source, appcode,
-             occurred_at AS "occurredAt", request_id AS "requestId", endpoint,
+             occurred_at AS "occurredAt", original_at AS "originalAt",
+             reservation_id AS "reservationId", recovered, token_source AS "tokenSource", request_id AS "requestId", endpoint,
              status, result, failure_stage AS "failureStage", error_code AS "errorCode",
              model_id AS "modelId",
              embedding_model AS "embeddingModel", responsetime AS "responseTimeMs",
@@ -295,6 +269,12 @@ export class ConsoleRequestLogsService {
         ? { id: app.id, appname: app.appname, appcode: app.appcode }
         : { id: null, appname: row.appcode, appcode: row.appcode },
       occurredAt: new Date(row.occurredAt).toISOString(),
+      originalAt: new Date(row.originalAt ?? row.occurredAt).toISOString(),
+      reservationId: row.reservationId ?? null,
+      recovered: row.recovered ?? false,
+      tokenSource:
+        row.tokenSource ??
+        (row.totalTokens === null ? 'unmeasured' : 'measured'),
       requestId: row.requestId,
       endpoint: row.endpoint,
       status: row.status,
@@ -320,6 +300,7 @@ export class ConsoleRequestLogsService {
     const allowed = [
       'schemaVersion',
       'promptVersion',
+      'policyVersion',
       'modelInvoked',
       'stopReason',
       'failedStage',
@@ -368,7 +349,9 @@ export class ConsoleRequestLogsService {
         !cursor.occurredAt ||
         Number.isNaN(new Date(cursor.occurredAt).getTime()) ||
         !cursor.logId ||
-        !/^(knowledge|bedrock):[0-9a-f-]{36}$/i.test(cursor.logId)
+        !/^(knowledge|bedrock|conversation|recovery):[0-9a-f-]{36}$/i.test(
+          cursor.logId,
+        )
       ) {
         throw new Error('invalid cursor');
       }

@@ -43,6 +43,7 @@ const state = {
   credentialAppId: null,
   revokeCredentialId: null,
   usageDays: 30,
+  usageEndpoint: '',
   requestLogs: [],
   requestLogApps: [],
   requestLogFilters: {
@@ -51,6 +52,10 @@ const state = {
     status: '',
     requestId: '',
     errorCode: '',
+    endpoint: '',
+    modelId: '',
+    appcode: '',
+    period: '',
   },
   requestLogNextCursor: null,
 };
@@ -281,7 +286,23 @@ function metricValue(measurement, suffix = '') {
     : `${Number(measurement.value).toLocaleString()}${suffix}`;
 }
 
-function usageMarkup(summary, timeseries, breakdown) {
+const endpoints = ['/bedrock/converse', '/bedrock/text-response', '/bedrock/general-answers', '/knowledge/answers', '/conversation/v1/turns', '/bedrock', 'unknown'];
+function endpointOptions(selected) {
+  return '<option value="">모든 Endpoint</option>' + endpoints.map((value) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${value}</option>`).join('');
+}
+function logsLink(filters, label = '요청 로그 보기') {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== '' && value != null));
+  return `<a href="/console/request-logs?${escapeHtml(query.toString())}" data-link>${escapeHtml(label)}</a>`;
+}
+function monthlyUsageMarkup(monthly) {
+  const metric = (label, value) => `<div class="summary-card"><span>${label}</span><strong>${value.used.toLocaleString()}</strong><small>예약 ${value.reserved.toLocaleString()} · 한도 ${value.limit === null ? '무제한' : value.limit.toLocaleString()}<br>잔여 ${value.remaining === null ? (value.limit === null ? '무제한' : '미측정') : value.remaining.toLocaleString()} · 사용률 ${value.utilizationPercent === null ? '—' : `${value.utilizationPercent}%`}${value.limit === 0 ? ' · 사용 불가(0 한도)' : ''}${value.unmeasuredRequests ? ` · ${value.unmeasuredRequests}건 미측정` : ''}</small></div>`;
+  return `<section class="panel"><div class="credentials-intro"><div><h2>이번 달 사용량·한도 (UTC ${escapeHtml(monthly.period.key)})</h2><p>승인 월 기준 사용량입니다. 진행 중 예약은 별도 표시하며 사용률에 포함합니다. ${logsLink({ period: 'month' })}</p></div></div><div class="summary-grid">${metric('월 요청', monthly.limits.requests)}${metric('월 Token', monthly.limits.tokens)}</div><p class="muted-copy">한도 변경은 플랫폼 관리자에게 요청하세요. 조직 한도는 승인된 설정 절차로, 앱 한도는 관리자 앱 설정에서 관리합니다.</p>${monthly.apps.length ? `<div class="table-scroll"><table class="app-table"><thead><tr><th>앱</th><th>Token 사용 / 예약</th><th>한도 / 잔여</th></tr></thead><tbody>${monthly.apps.map((app) => `<tr><td>${escapeHtml(app.appname)} ${logsLink({ period: 'month', appId: app.id })}</td><td>${app.tokens.used} / ${app.tokens.reserved}</td><td>${app.tokens.limit ?? '무제한'} / ${app.tokens.remaining ?? (app.tokens.limit === null ? '무제한' : app.tokens.state === 'organization-changed' ? '조직 이동 · 관리자 확인' : '미측정')}</td></tr>`).join('')}</tbody></table></div>` : ''}</section>`;
+}
+function dimensionsMarkup(breakdown) {
+  return `<section class="panel"><h2>Endpoint · 모델 · 결과별 사용량</h2><div class="table-scroll"><table class="app-table"><thead><tr><th>구분</th><th>대상</th><th>요청</th><th>Token</th><th>p50 / p95 (ms)</th></tr></thead><tbody>${(breakdown.dimensions ?? []).map((item) => `<tr><td>${escapeHtml(item.dimension)}</td><td>${logsLink({ days: state.usageDays, endpoint: state.usageEndpoint, [item.dimension === 'model' ? 'modelId' : item.dimension]: item.value }, item.value)}</td><td>${item.requestCount}</td><td>${metricValue(item.tokens.total)}</td><td>${item.latency.p50Ms ?? '미측정'} / ${item.latency.p95Ms ?? '미측정'}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+
+function usageMarkup(summary, timeseries, breakdown, monthly) {
   const maxRequests = Math.max(
     1,
     ...timeseries.points.map((point) => point.requestCount),
@@ -295,15 +316,17 @@ function usageMarkup(summary, timeseries, breakdown) {
   const rows = breakdown.apps
     .map(
       (app) =>
-        `<tr><td><div class="app-name"><span class="app-glyph">◇</span><span><strong>${escapeHtml(app.appname)}</strong><small class="mono">${escapeHtml(app.appcode)}</small></span></div></td><td>${app.requestCount.toLocaleString()}</td><td>${metricValue(app.tokens.total)}</td><td>${app.embeddings.operations.toLocaleString()}</td><td>${app.latency.averageMs === null ? '미측정' : `${app.latency.averageMs.toLocaleString()} ms`}</td></tr>`,
+        `<tr><td><div class="app-name"><span class="app-glyph">◇</span><span><strong>${escapeHtml(app.appname)}</strong><small class="mono">${escapeHtml(app.appcode)}</small></span></div></td><td>${logsLink({ days: state.usageDays, appcode: app.appcode, endpoint: state.usageEndpoint }, app.requestCount.toLocaleString())}</td><td>${metricValue(app.tokens.total)}</td><td>${app.embeddings.operations.toLocaleString()}</td><td>${app.latency.averageMs === null ? '미측정' : `${app.latency.averageMs.toLocaleString()} ms`}</td></tr>`,
     )
     .join('');
   const unmeasuredTokens =
     summary.requestCount - summary.tokens.total.measuredRequests;
-  return `<div class="page-heading"><div><p class="eyebrow">USAGE</p><h1>사용량</h1><p>조직 소유 앱의 요청, token, embedding과 응답 지연을 확인합니다.</p></div><label class="range-select"><span>조회 기간</span><select id="usage-range"><option value="7" ${state.usageDays === 7 ? 'selected' : ''}>최근 7일</option><option value="30" ${state.usageDays === 30 ? 'selected' : ''}>최근 30일</option><option value="90" ${state.usageDays === 90 ? 'selected' : ''}>최근 90일</option></select></label></div>
+  return `<div class="page-heading"><div><p class="eyebrow">USAGE</p><h1>사용량</h1><p>조직 소유 앱의 요청, token, embedding과 응답 지연을 확인합니다.</p></div><label class="range-select"><span>조회 기간</span><select id="usage-range"><option value="7" ${state.usageDays === 7 ? 'selected' : ''}>최근 7일</option><option value="30" ${state.usageDays === 30 ? 'selected' : ''}>최근 30일</option><option value="90" ${state.usageDays === 90 ? 'selected' : ''}>최근 90일</option></select></label><label class="range-select"><span>Endpoint</span><select id="usage-endpoint">${endpointOptions(state.usageEndpoint)}</select></label></div>
+    ${monthlyUsageMarkup(monthly)}<h2>최근 ${state.usageDays}일 운영 지표</h2><p>성공률 = 성공 / 결과 측정 요청 (${summary.outcome.measuredRequests}건). 결과 미측정 ${summary.measurement.outcomeUnmeasuredRequests}건. ${logsLink({ days: state.usageDays, endpoint: state.usageEndpoint })}</p>
     <div class="summary-grid usage-summary"><div class="summary-card highlight"><span>전체 요청</span><strong>${summary.requestCount.toLocaleString()}</strong><small>${summary.appCount.toLocaleString()} applications</small></div><div class="summary-card"><span>성공률</span><strong>${summary.outcome.successRate === null ? '미측정' : `${summary.outcome.successRate.toLocaleString()}%`}</strong><small>${summary.outcome.measuredRequests.toLocaleString()} measured requests</small></div><div class="summary-card"><span>총 Token</span><strong>${metricValue(summary.tokens.total)}</strong><small>${unmeasuredTokens ? `${unmeasuredTokens.toLocaleString()}건 미측정` : 'all measured'}</small></div><div class="summary-card"><span>Embedding</span><strong>${summary.embeddings.operations.toLocaleString()}</strong><small>index ${summary.embeddings.indexOperations.toLocaleString()} · search ${summary.embeddings.searchOperations.toLocaleString()}</small></div><div class="summary-card"><span>평균 지연</span><strong>${summary.latency.averageMs === null ? '미측정' : `${summary.latency.averageMs.toLocaleString()} ms`}</strong><small>${summary.latency.measuredRequests.toLocaleString()} measured requests</small></div></div>
+    <p>지연 p50 ${summary.latency.p50Ms ?? '미측정'} ms · p95 ${summary.latency.p95Ms ?? '미측정'} ms. Embedding은 Family INDEX/SEARCH 작업 수만 별도 집계하며 생성 요청·Token에 합산하지 않습니다. 그 외 embedding 경로는 미측정입니다. Endpoint 필터 사용 시 별도 embedding 집계는 제외됩니다.</p>${dimensionsMarkup(breakdown)}
     <section class="panel usage-chart-panel"><div class="credentials-intro"><div><h2>일별 요청</h2><p>UTC 날짜를 기준으로 집계합니다. 요청이 없는 날은 0으로 표시됩니다.</p></div><span class="security-chip">질문 원문 제외</span></div><div class="usage-chart" role="img" aria-label="일별 요청 수 막대 차트">${chart}</div></section>
-    <section class="panel usage-breakdown"><div class="credentials-intro"><div><h2>앱별 사용량</h2><p>현재 조직이 소유한 앱만 집계합니다.</p></div></div>${rows ? `<div class="table-scroll"><table class="app-table"><thead><tr><th>애플리케이션</th><th>요청</th><th>Token</th><th>Embedding</th><th>평균 지연</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state"><div class="state-copy"><h2>집계할 앱이 없습니다</h2><p>앱을 생성하고 API 요청을 실행하면 사용량이 표시됩니다.</p></div></div>'}</section>`;
+    <section class="panel usage-breakdown"><div class="credentials-intro"><div><h2>앱별 사용량</h2><p>요청 승인 당시 조직 귀속을 적용합니다. 예약 없는 과거 기록은 현재 소유 조직 기준입니다.</p></div></div>${rows ? `<div class="table-scroll"><table class="app-table"><thead><tr><th>애플리케이션</th><th>요청</th><th>Token</th><th>Embedding</th><th>평균 지연</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state"><div class="state-copy"><h2>집계할 앱이 없습니다</h2><p>앱을 생성하고 API 요청을 실행하면 사용량이 표시됩니다.</p></div></div>'}</section>`;
 }
 
 async function renderUsage() {
@@ -311,12 +334,13 @@ async function renderUsage() {
   document.title = '사용량 · HJ AI Console';
   view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">USAGE</p><h1>사용량</h1><p>조직 소유 앱의 사용량을 집계하고 있습니다.</p></div></div>${loadingMarkup()}`;
   try {
-    const [summary, timeseries, breakdown] = await Promise.all([
-      usageApi.summary(state.usageDays),
-      usageApi.timeseries(state.usageDays),
-      usageApi.breakdown(state.usageDays),
+    const [summary, timeseries, breakdown, monthly] = await Promise.all([
+      usageApi.summary(state.usageDays, state.usageEndpoint),
+      usageApi.timeseries(state.usageDays, state.usageEndpoint),
+      usageApi.breakdown(state.usageDays, state.usageEndpoint),
+      usageApi.monthly(),
     ]);
-    view.innerHTML = usageMarkup(summary, timeseries, breakdown);
+    view.innerHTML = usageMarkup(summary, timeseries, breakdown, monthly);
   } catch (error) {
     view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">USAGE</p><h1>사용량</h1></div></div><div class="panel">${errorMarkup(error, 'reload-usage')}</div>`;
   }
@@ -327,7 +351,7 @@ function requestLogListMarkup() {
   const rows = state.requestLogs
     .map(
       (log) =>
-        `<tr tabindex="0" data-log-id="${escapeHtml(log.id)}"><td><strong>${formatDate(log.occurredAt, true)}</strong><small class="mono">${escapeHtml(log.requestId ?? 'Request ID 미측정')}</small></td><td><strong>${escapeHtml(log.app.appname)}</strong><small class="mono">${escapeHtml(log.app.appcode)}</small></td><td><span class="mono">${escapeHtml(log.endpoint)}</span><small>${log.source === 'knowledge' ? '지식 답변' : 'Bedrock 호출'}</small></td><td><span class="status ${log.status === 'success' ? '' : 'danger'}">${log.status === 'success' ? '성공' : '실패'}</span><small>${escapeHtml(log.errorCode ?? log.result)}</small></td><td>${log.latencyMs === null ? '미측정' : `${Number(log.latencyMs).toLocaleString()} ms`}</td><td>${log.tokens.total === null ? '미측정' : Number(log.tokens.total).toLocaleString()}</td><td class="row-arrow">›</td></tr>`,
+        `<tr tabindex="0" data-log-id="${escapeHtml(log.id)}"><td><strong>${formatDate(log.occurredAt, true)}</strong><small class="mono">${escapeHtml(log.requestId ?? 'Request ID 미측정')}</small></td><td><strong>${escapeHtml(log.app.appname)}</strong><small class="mono">${escapeHtml(log.app.appcode)}</small></td><td><span class="mono">${escapeHtml(log.endpoint)}</span><small>${({ knowledge: '지식 답변', conversation: 'Family 대화', recovery: '사용량 복구', bedrock: '생성 호출' })[log.source] ?? '미측정'}</small></td><td><span class="status ${log.status === 'failed' ? 'danger' : ''}">${log.status === 'success' ? '성공' : log.status === 'failed' ? '실패' : '미측정'}</span><small>${escapeHtml(log.errorCode ?? log.result)}</small></td><td>${log.latencyMs === null ? '미측정' : `${Number(log.latencyMs).toLocaleString()} ms`}</td><td>${log.tokens.total === null ? '미측정' : Number(log.tokens.total).toLocaleString()}</td><td class="row-arrow">›</td></tr>`,
     )
     .join('');
   const appOptions = state.requestLogApps
@@ -337,7 +361,7 @@ function requestLogListMarkup() {
     )
     .join('');
   return `<div class="page-heading"><div><p class="eyebrow">REQUEST LOGS</p><h1>요청 로그</h1><p>조직 소유 앱의 실행 결과를 원문 없이 진단합니다.</p></div><span class="security-chip">질문·응답 원문 제외</span></div>
-    <section class="panel request-log-panel"><form id="request-log-filters" class="request-log-filters"><label><span>조회 기간</span><select name="days"><option value="7" ${filters.days === 7 ? 'selected' : ''}>최근 7일</option><option value="30" ${filters.days === 30 ? 'selected' : ''}>최근 30일</option><option value="90" ${filters.days === 90 ? 'selected' : ''}>최근 90일</option></select></label><label><span>애플리케이션</span><select name="appId"><option value="">모든 앱</option>${appOptions}</select></label><label><span>상태</span><select name="status"><option value="">모든 상태</option><option value="success" ${filters.status === 'success' ? 'selected' : ''}>성공</option><option value="failed" ${filters.status === 'failed' ? 'selected' : ''}>실패</option></select></label><label class="request-id-filter"><span>Request ID</span><input name="requestId" value="${escapeHtml(filters.requestId)}" placeholder="정확한 Request ID" /></label><label><span>오류 코드</span><input name="errorCode" value="${escapeHtml(filters.errorCode)}" placeholder="UPSTREAM_TIMEOUT" /></label><div class="request-log-actions"><button class="button primary" type="submit">조회</button><a class="button secondary" href="${requestLogsApi.exportUrl(filters)}" download>CSV 내보내기</a></div></form>
+    <section class="panel request-log-panel"><form id="request-log-filters" class="request-log-filters"><label><span>조회 기간</span><select name="days"><option value="month" ${filters.period === 'month' ? 'selected' : ''}>이번 달 (UTC)</option><option value="7" ${!filters.period && filters.days === 7 ? 'selected' : ''}>최근 7일</option><option value="30" ${!filters.period && filters.days === 30 ? 'selected' : ''}>최근 30일</option><option value="90" ${!filters.period && filters.days === 90 ? 'selected' : ''}>최근 90일</option></select></label><label><span>애플리케이션</span><select name="appId"><option value="">모든 앱</option>${appOptions}</select></label><label><span>상태</span><select name="status"><option value="">모든 상태</option><option value="success" ${filters.status === 'success' ? 'selected' : ''}>성공</option><option value="failed" ${filters.status === 'failed' ? 'selected' : ''}>실패</option><option value="unknown" ${filters.status === 'unknown' ? 'selected' : ''}>미측정</option></select></label><label><span>Endpoint</span><select name="endpoint">${endpointOptions(filters.endpoint)}</select></label><label><span>모델</span><input name="modelId" value="${escapeHtml(filters.modelId)}" /></label><label><span>앱 코드</span><input name="appcode" value="${escapeHtml(filters.appcode)}" /></label><label class="request-id-filter"><span>Request ID</span><input name="requestId" value="${escapeHtml(filters.requestId)}" placeholder="정확한 Request ID" /></label><label><span>오류 코드</span><input name="errorCode" value="${escapeHtml(filters.errorCode)}" placeholder="UPSTREAM_TIMEOUT" /></label><div class="request-log-actions"><button class="button primary" type="submit">조회</button><a class="button secondary" href="${requestLogsApi.exportUrl(filters)}" download>CSV 내보내기</a></div></form>
       ${rows ? `<div class="table-scroll"><table class="app-table request-log-table"><thead><tr><th>발생 시각</th><th>애플리케이션</th><th>Endpoint</th><th>결과</th><th>지연</th><th>Token</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${state.requestLogNextCursor ? '<div class="load-more"><button class="button secondary" data-action="load-more-request-logs">더 보기</button></div>' : ''}` : '<div class="empty-state"><div class="state-copy"><div class="state-icon">≡</div><h2>조건에 맞는 요청이 없습니다</h2><p>필터를 변경하거나 앱에서 API 요청을 실행해 보세요.</p></div></div>'}
     </section>`;
 }
@@ -357,6 +381,10 @@ async function loadRequestLogs(append = false) {
 }
 
 async function renderRequestLogs() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.size) {
+    for (const key of Object.keys(state.requestLogFilters)) state.requestLogFilters[key] = key === 'days' ? Number(params.get(key) ?? 30) : (params.get(key) ?? '');
+  }
   breadcrumb.textContent = '요청 로그';
   document.title = '요청 로그 · HJ AI Console';
   view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">REQUEST LOGS</p><h1>요청 로그</h1><p>조직 범위 요청을 불러오고 있습니다.</p></div></div>${loadingMarkup()}`;
@@ -376,8 +404,8 @@ function requestLogDetailMarkup(log) {
     ? `<pre><code>${escapeHtml(JSON.stringify(log.execution, null, 2))}</code></pre>`
     : '<p class="muted-copy">수집된 실행 metadata가 없습니다.</p>';
   return `<a class="detail-back" href="/console/request-logs" data-link>← 요청 로그로 돌아가기</a>
-    <div class="credential-heading"><div class="detail-title"><span class="app-glyph">≡</span><div><p class="eyebrow">REQUEST DETAIL</p><h1>${escapeHtml(log.app.appname)}</h1><p class="mono">${escapeHtml(log.requestId ?? log.id)}</p></div></div><span class="status ${log.status === 'success' ? '' : 'danger'}">${log.status === 'success' ? '성공' : '실패'}</span></div>
-    <div class="request-log-detail-grid"><section class="panel detail-card"><h2>실행 정보</h2><dl class="request-log-metadata"><div><dt>발생 시각</dt><dd>${formatDate(log.occurredAt, true)}</dd></div><div><dt>Endpoint</dt><dd class="mono">${escapeHtml(log.endpoint)}</dd></div><div><dt>결과</dt><dd>${escapeHtml(log.result)}</dd></div><div><dt>오류 코드</dt><dd class="mono">${escapeHtml(log.errorCode ?? '—')}</dd></div><div><dt>실패 단계</dt><dd>${escapeHtml(log.failureStage ?? '—')}</dd></div><div><dt>모델</dt><dd class="mono">${escapeHtml(log.modelId ?? '미측정')}</dd></div><div><dt>Embedding 모델</dt><dd class="mono">${escapeHtml(log.embeddingModel ?? '미측정')}</dd></div><div><dt>응답 지연</dt><dd>${log.latencyMs === null ? '미측정' : `${Number(log.latencyMs).toLocaleString()} ms`}</dd></div><div><dt>검색 결과</dt><dd>${Number(log.matchedChunkCount).toLocaleString()}개</dd></div></dl></section>
+    <div class="credential-heading"><div class="detail-title"><span class="app-glyph">≡</span><div><p class="eyebrow">REQUEST DETAIL</p><h1>${escapeHtml(log.app.appname)}</h1><p class="mono">${escapeHtml(log.requestId ?? log.id)}</p></div></div><span class="status ${log.status === 'failed' ? 'danger' : ''}">${log.status === 'success' ? '성공' : log.status === 'failed' ? '실패' : '미측정'}</span></div>
+    <p>집계 귀속 시각 ${formatDate(log.occurredAt, true)} · 원본 기록 시각 ${formatDate(log.originalAt, true)} · Token 근거 ${escapeHtml(log.tokenSource)}${log.recovered ? ' · 복구 반영' : ''}</p><div class="request-log-detail-grid"><section class="panel detail-card"><h2>실행 정보</h2><dl class="request-log-metadata"><div><dt>발생 시각</dt><dd>${formatDate(log.occurredAt, true)}</dd></div><div><dt>Endpoint</dt><dd class="mono">${escapeHtml(log.endpoint)}</dd></div><div><dt>결과</dt><dd>${escapeHtml(log.result)}</dd></div><div><dt>오류 코드</dt><dd class="mono">${escapeHtml(log.errorCode ?? '—')}</dd></div><div><dt>실패 단계</dt><dd>${escapeHtml(log.failureStage ?? '—')}</dd></div><div><dt>모델</dt><dd class="mono">${escapeHtml(log.modelId ?? '미측정')}</dd></div><div><dt>Embedding 모델</dt><dd class="mono">${escapeHtml(log.embeddingModel ?? '미측정')}</dd></div><div><dt>응답 지연</dt><dd>${log.latencyMs === null ? '미측정' : `${Number(log.latencyMs).toLocaleString()} ms`}</dd></div><div><dt>검색 결과</dt><dd>${Number(log.matchedChunkCount).toLocaleString()}개</dd></div></dl></section>
       <aside><section class="panel side-card"><h3>Token</h3><div class="info-list"><div class="info-row"><span>Input</span><strong>${log.tokens.input === null ? '미측정' : Number(log.tokens.input).toLocaleString()}</strong></div><div class="info-row"><span>Output</span><strong>${log.tokens.output === null ? '미측정' : Number(log.tokens.output).toLocaleString()}</strong></div><div class="info-row"><span>Total</span><strong>${log.tokens.total === null ? '미측정' : Number(log.tokens.total).toLocaleString()}</strong></div></div></section><section class="panel side-card"><h3>콘텐츠 보호</h3><p>질문과 응답 원문은 Console API에서 반환하지 않습니다.</p><span class="security-chip">metadata only</span></section></aside>
     </div><section class="panel execution-panel"><div class="credentials-intro"><div><h2>실행 Metadata</h2><p>허용된 진단 필드만 표시합니다.</p></div></div>${execution}</section>`;
 }
@@ -558,6 +586,10 @@ view.addEventListener('change', (event) => {
     state.status = event.target.value;
     view.innerHTML = listMarkup();
   }
+  if (event.target.id === 'usage-endpoint') {
+    state.usageEndpoint = event.target.value;
+    void renderUsage();
+  }
   if (event.target.id === 'usage-range') {
     state.usageDays = Number(event.target.value);
     void renderUsage();
@@ -569,12 +601,17 @@ view.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = new FormData(event.target);
     state.requestLogFilters = {
-      days: Number(data.get('days')),
+      days: data.get('days') === 'month' ? 30 : Number(data.get('days')),
+      period: data.get('days') === 'month' ? 'month' : '',
+      endpoint: data.get('endpoint'),
+      modelId: data.get('modelId').trim(),
+      appcode: data.get('appcode').trim(),
       appId: data.get('appId'),
       status: data.get('status'),
       requestId: data.get('requestId').trim(),
       errorCode: data.get('errorCode').trim().toUpperCase(),
     };
+    window.history.replaceState({}, '', `/console/request-logs?${new URLSearchParams(Object.entries(state.requestLogFilters).filter(([, value]) => value !== ''))}`);
     view.innerHTML = `${requestLogListMarkup()}<div class="loading-overlay">조회 중…</div>`;
     try {
       await loadRequestLogs();

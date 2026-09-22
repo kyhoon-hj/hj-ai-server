@@ -19,6 +19,7 @@
     "test:ci": "jest --runInBand",
     "test:demo": "npm --prefix demo test",
     "test:console-web": "npm --prefix console-web test",
+    "test:console-web-gate": "node scripts/check-console-web-gate.mjs",
     "test:streaming-smoke": "npm --prefix demo run smoke:streaming",
     "start:validation-demo": "npm --prefix demo start",
     "start:console-web": "npm --prefix console-web start",
@@ -36,6 +37,7 @@
     "test:rag-quality-adversarial": "node test/run-queue-http-e2e.mjs --rag-quality-adversarial",
     "test:rag-quality-repeatability": "node test/run-queue-http-e2e.mjs --rag-quality-repeatability",
     "test:usage-quota-db": "node test/run-queue-http-e2e.mjs --usage-quota",
+    "test:console-usage-db": "node test/run-queue-http-e2e.mjs --console-usage",
     "test:queue-http-e2e": "node test/run-queue-http-e2e.mjs",
     "test:network-e2e": "node test/run-queue-http-e2e.mjs --network",
     "test:network-load": "node test/run-queue-http-e2e.mjs --network-load",
@@ -48,7 +50,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "db:init": "prisma migrate deploy",
-    "verify": "npm run build && npm run typecheck && npm run lint:check && npm run test:ci && npm run test:demo"
+    "verify": "npm run build && npm run typecheck && npm run lint:check && npm run test:ci && npm run test:console-web && npm run test:demo"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1073.0",

@@ -275,7 +275,15 @@ model BedrockSearchLog {
   inputtokens  Int?
   outputtokens Int?
   totaltokens  Int?
+  requestId    String?  @map("request_id")
+  endpoint     String?
+  status       String?  @db.VarChar(32)
+  result       String?  @db.VarChar(80)
+  errorCode    String?  @map("error_code") @db.VarChar(80)
+  failureStage String?  @map("failure_stage") @db.VarChar(32)
+  modelId      String?  @map("model_id")
 
+  @@index([requestId])
   @@index([appcode])
   @@index([searchat])
   @@map("bedrock_search_log")
@@ -480,6 +488,11 @@ model FamilyConversationMetric {
   outputTokens  Int?     @map("output_tokens")
   totalTokens   Int?     @map("total_tokens")
   resultCount   Int      @map("result_count")
+  endpoint      String?
+  result        String?  @db.VarChar(80)
+  errorCode     String?  @map("error_code") @db.VarChar(80)
+  failureStage  String?  @map("failure_stage") @db.VarChar(32)
+  modelId       String?  @map("model_id")
   createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([appcode, createdAt])

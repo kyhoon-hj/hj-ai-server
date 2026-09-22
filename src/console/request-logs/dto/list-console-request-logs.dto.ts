@@ -1,3 +1,4 @@
+import { CONSOLE_ENDPOINTS } from '../../usage/console-usage-events';
 import { Type } from 'class-transformer';
 import {
   IsIn,
@@ -18,12 +19,30 @@ export class ListConsoleRequestLogsDto {
   days = 30;
 
   @IsOptional()
+  @IsIn(['month'])
+  period?: 'month';
+
+  @IsOptional()
   @IsUUID()
   appId?: string;
 
   @IsOptional()
-  @IsIn(['success', 'failed'])
-  status?: 'success' | 'failed';
+  @IsString()
+  @MaxLength(200)
+  appcode?: string;
+
+  @IsOptional()
+  @IsIn(['success', 'failed', 'unknown'])
+  status?: 'success' | 'failed' | 'unknown';
+
+  @IsOptional()
+  @IsIn(CONSOLE_ENDPOINTS)
+  endpoint?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  modelId?: string;
 
   @IsOptional()
   @IsString()

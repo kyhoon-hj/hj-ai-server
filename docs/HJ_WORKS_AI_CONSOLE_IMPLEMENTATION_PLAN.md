@@ -12,7 +12,7 @@
 
 2026-09-18 검토 이후 실행 순서·현재 단계·완료 판정은
 [전체 마일스톤](HJ_AI_CONSOLE_MILESTONES.md)을 기준으로 관리한다.
-현재는 **M2 사용량·요청 로그·운영 지표 일치 — 대기(0/5, M1 완료)**다. 아래 단계 번호와 `CON-*` ID는
+현재는 **M3 DB·브라우저 통합 검증과 CI — 진행 중(1/5, M3-01 완료)**다. 아래 단계 번호와 `CON-*` ID는
 기존 설계 추적용으로 유지하며, 실제 실행은 M1 한도 → M2 집계·로그 → M3 통합 검증·CI →
 M4 홈·알림·감사 → M5 지식 → M6 SSO → M7 운영 공개 순서를 따른다.
 
@@ -486,19 +486,19 @@ flag를 비활성 상태로 유지한다.
 
 ### 단계 2. 사용량과 운영 가시성
 
-- [ ] `CON-SRV-10` 요청·token·embedding 집계 schema 또는 query 확정
-  — 기본 집계 구현. M2에서 로그와의 범위 일치·실패 계측·embedding 집계 범위 보완 및 원본 대조 필요
-- [ ] `CON-SRV-11` summary·timeseries·breakdown API
-  — 7·30·90일·일별·앱별 집계 구현. M2에서 월 한도 사용률·p50/p95·차원별 집계 보완 필요
-- [ ] `CON-SRV-12` 조직 범위 request log 목록·상세 API
-  — 기본 목록·상세 구현. M2에서 Family 대화·Bedrock request ID/실패·endpoint 필터 보완 필요
+- [x] `CON-SRV-10` 요청·token·embedding 집계 schema 또는 query 확정
+  — M2 완료. 공통 요청/복구 SQL·월/조직 귀속·실패 계측·Family embedding 범위 및 실 PostgreSQL 원본 대조.
+- [x] `CON-SRV-11` summary·timeseries·breakdown API
+  — M2 완료. 최근 7/30/90일과 UTC 월 한도 분리, p50/p95·endpoint/model/status 차원 및 공통 필터.
+- [x] `CON-SRV-12` 조직 범위 request log 목록·상세 API
+  — M2 완료. Family/복구 목록·상세·CSV, Bedrock request ID/실패·endpoint/model/status 필터와 cursor 실 DB 검증.
 - [x] `CON-SRV-13` 월 한도와 원자적 예약·정산 정책
   — M1-01~05 완료. 격리 PostgreSQL 집계·다중 프로세스 경합·복구 16개 및 관련 API 회귀 254개 통과. 운영 DB 반영은 M7.
 - [ ] `CON-SRV-14` 임계치 알림 event와 중복 방지
 - [ ] `CON-WEB-05` 홈 dashboard와 사용량 차트
   — 사용량 dashboard·차트 완료, 홈 요약 화면은 잔여
 - [ ] `CON-WEB-06` 요청 로그, 오류 상세와 CSV export
-  — 기본 화면·metadata-only CSV·5,000행 제한 구현. M2~M3에서 로그 범위·필터 확장과 브라우저 통합 검증 필요
+  — M2 구현·실 DB/VM 렌더 검증 완료. Family/복구/CSV 5,000행·월/기간 구분·로그 추적 링크 포함. 브라우저 통합 검증은 M3 잔여.
 
 완료 기준: 집계 합계가 원본 실행 기록과 일치하고, tenant 교차 조회가 실패하며,
 명시적 0과 미측정 값이 구분된다.
@@ -542,6 +542,11 @@ session 폐기 E2E가 통과하고 production에서 fixture adapter가 완전히
 배포 기록에 서명한다.
 
 ## 14. 테스트 전략
+
+2026-09-21 M3-01: 기본 `verify`/Quality Gate CI에 Console Web 검사를 포함했다. CI는
+`test:console-web-gate`도 실행하여 Web 실패의 종료 코드 전파·후속 검사 중단을 검증한다.
+로컬 전체 verify와 실패 주입 검증은 통과했으며 원격 CI 실행은 미실행이다. DB·브라우저
+통합 검증은 M3-02~05에서 진행한다.
 
 ### 14.1 계약 시험
 
@@ -636,3 +641,9 @@ HJ-Works 인증 최종 통합 전에 확정한다.
 
 기능 단계의 미확정 인증 항목은 adapter 경계 밖으로 누출하지 않는다. 단계 4 완료 전에는
 Console production feature flag를 활성화하거나 `/console-api`를 외부에 공개하지 않는다.
+
+
+M2 완료 기록(2026-09-18): [사용량·요청 로그 계약](HJ_AI_CONSOLE_USAGE_CONTRACT.md)에 결과 분모,
+미측정/0·복구·월/조직 귀속·관리 주체·embedding 범위를 확정했다. 실 PostgreSQL M2 8개/M1 회귀 16개,
+서버 268개, Web 24개 및 타입·린트·빌드·schema 검증 통과. 운영 migration·배포·실제 AWS·이번 변경의
+브라우저 검증은 수행하지 않았다. 상세 증거와 다음 M3 범위는 [마일스톤](HJ_AI_CONSOLE_MILESTONES.md) 참조.

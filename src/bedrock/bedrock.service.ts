@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { omitConversationContent } from '../common/content-log-policy';
+import { operationalErrorCode } from '../common/errors/operational-error-code';
 import { ConfigService } from '@nestjs/config';
 import {
   BedrockClient,
@@ -128,6 +129,7 @@ export class BedrockService {
     requestId?: string,
     operationScope = 'bedrock.converse',
   ) {
+    requestId ??= randomUUID();
     const modelId =
       dto.modelId ?? this.configService.get<string>('BEDROCK_MODEL_ID');
 
@@ -167,6 +169,7 @@ export class BedrockService {
 
     return {
       modelId,
+      requestId,
       response: text,
       usage,
       latencyMs,
@@ -199,6 +202,7 @@ export class BedrockService {
     requestId?: string,
     parentSignal?: AbortSignal,
   ) {
+    requestId ??= randomUUID();
     const modelId =
       appInfo.defaultModelId ??
       this.configService.get<string>('BEDROCK_MODEL_ID');
@@ -274,6 +278,12 @@ export class BedrockService {
     const searchat = new Date();
     const startedAt = Date.now();
     let invoked = false;
+    let persisting = false;
+    const metadata = {
+      requestId: operationKey,
+      endpoint: `/${operationScope.replace('.', '/')}`,
+      modelId: input.modelId,
+    };
     try {
       const prompt =
         (input.system ?? []).map((block) => block.text ?? '').join('') +
@@ -296,8 +306,12 @@ export class BedrockService {
         },
         { timeoutMs: this.requestTimeoutMs, parentSignal },
       );
+      persisting = true;
       await this.createSearchLog(
         {
+          ...metadata,
+          status: 'success',
+          result: 'completed',
           appcode,
           searchword,
           searchat,
@@ -314,6 +328,32 @@ export class BedrockService {
       );
       return result;
     } catch (error) {
+      // A persistence failure must not create a second, contradictory log.
+      if (!persisting) {
+        try {
+          await this.createSearchLog(
+            {
+              ...metadata,
+              appcode,
+              searchword,
+              searchat,
+              responsetime: Date.now() - startedAt,
+              status: 'failed',
+              result: 'request_failed',
+              errorCode: operationalErrorCode(error),
+              failureStage: invoked ? 'generation' : 'admission',
+              totaltokens: invoked ? undefined : 0,
+            },
+            reservation,
+          );
+        } catch {
+          this.logger.error(
+            'Bedrock failure execution record could not be persisted.',
+          );
+          await this.finishUsageQuota(reservation);
+          throw error;
+        }
+      }
       await this.finishUsageQuota(reservation, invoked ? undefined : 0);
       throw error;
     }
@@ -353,6 +393,13 @@ export class BedrockService {
       inputtokens?: number;
       outputtokens?: number;
       totaltokens?: number;
+      requestId: string;
+      endpoint: string;
+      status: string;
+      result: string;
+      errorCode?: string;
+      failureStage?: string;
+      modelId?: string;
     },
     reservation: UsageQuotaReservation | null,
   ) {

@@ -23,6 +23,14 @@ describe('operationalErrorCode', () => {
     [new ForbiddenException(), 'UPSTREAM_ACCESS_DENIED'],
     [new HttpException('failure', 503), 'UPSTREAM_TEMPORARILY_UNAVAILABLE'],
     [new Error('unknown'), 'REQUEST_FAILED'],
+    [
+      new HttpException('CONVERSATION_THROTTLED', 429),
+      'CONVERSATION_THROTTLED',
+    ],
+    [
+      new BadRequestException('INVALID_CONVERSATION_HISTORY'),
+      'INVALID_CONVERSATION_HISTORY',
+    ],
   ])('classifies an operational failure', (error, expected) => {
     expect(operationalErrorCode(error)).toBe(expected);
   });

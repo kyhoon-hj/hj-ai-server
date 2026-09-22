@@ -738,7 +738,21 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
       const pending = await prisma.consoleUsageReservation.findFirstOrThrow({
         where: { appcode: appInfo.appcode, state: 'UNCERTAIN' },
       });
-      const input = await command(pending.id);
+      expect(pending).toMatchObject({
+        reservedRequests: 0,
+        usageLogSource: 'bedrock',
+      });
+      expect(
+        await prisma.bedrockSearchLog.findUnique({
+          where: { id: pending.usageLogId! },
+        }),
+      ).toMatchObject({
+        status: 'failed',
+        endpoint: '/bedrock/text-response',
+        errorCode: 'REQUEST_FAILED',
+        requestId: expect.any(String) as string,
+      });
+      const input = await command(pending.id, { action: 'SETTLE_LOG' });
       const route = `/admin/v1/usage-quota/reservations/${pending.id}/reconcile`;
       await request(server).post(route).send(input).expect(401);
       await request(server)

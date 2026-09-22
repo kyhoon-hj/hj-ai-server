@@ -839,6 +839,7 @@ export class KnowledgeService {
     parentSignal?: AbortSignal,
   ) {
     const appContext = this.toKnowledgeAppContext(appInfo);
+    requestId ??= randomUUID();
     const appcode = appContext.appcode;
     const embeddingModel =
       appContext.defaultEmbeddingModelId ??
@@ -894,6 +895,7 @@ export class KnowledgeService {
     };
     const execution: { [key: string]: Prisma.InputJsonValue | null } = {
       schemaVersion: 1,
+      endpoint: '/knowledge/answers',
       build: this.buildIdentity,
       promptVersion: RAG_PROMPT_VERSION,
       systemSha256: sha256Text(system),
@@ -1043,7 +1045,10 @@ export class KnowledgeService {
         ),
       );
     } catch (error) {
-      if (stage === 'persistence') throw error;
+      if (stage === 'persistence') {
+        await this.finishUsageQuota(quotaReservation, 'uncertain');
+        throw error;
+      }
       execution.sdk = { scope: stage, ...readAwsAttempts(error) };
       let failureLogged = false;
       try {

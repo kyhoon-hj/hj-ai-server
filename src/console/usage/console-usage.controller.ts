@@ -15,6 +15,13 @@ import { ConsoleUsageRangeDto } from './dto/console-usage-range.dto';
 export class ConsoleUsageController {
   constructor(private readonly usage: ConsoleUsageService) {}
 
+  @Get('monthly')
+  @ConsolePermissions('usage:read')
+  @ApiOkResponse({ description: 'UTC 이번 달 사용량·예약·한도·잔여량' })
+  monthly(@Req() request: ConsoleRequest) {
+    return this.usage.monthly(this.identity(request));
+  }
+
   @Get('summary')
   @ConsolePermissions('usage:read')
   @ApiOkResponse({ description: '조직 범위 사용량 합계와 측정 상태' })
@@ -22,7 +29,7 @@ export class ConsoleUsageController {
     @Query() query: ConsoleUsageRangeDto,
     @Req() request: ConsoleRequest,
   ) {
-    return this.usage.summary(this.identity(request), query.days);
+    return this.usage.summary(this.identity(request), query.days, query);
   }
 
   @Get('timeseries')
@@ -32,7 +39,7 @@ export class ConsoleUsageController {
     @Query() query: ConsoleUsageRangeDto,
     @Req() request: ConsoleRequest,
   ) {
-    return this.usage.timeseries(this.identity(request), query.days);
+    return this.usage.timeseries(this.identity(request), query.days, query);
   }
 
   @Get('breakdown')
@@ -42,7 +49,7 @@ export class ConsoleUsageController {
     @Query() query: ConsoleUsageRangeDto,
     @Req() request: ConsoleRequest,
   ) {
-    return this.usage.breakdown(this.identity(request), query.days);
+    return this.usage.breakdown(this.identity(request), query.days, query);
   }
 
   private identity(request: ConsoleRequest): ConsoleIdentityContext {
