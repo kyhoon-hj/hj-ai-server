@@ -5,19 +5,29 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const source = new URL(process.env.DATABASE_URL ?? '');
-const usageQuota = process.argv.includes('--usage-quota');
-const consoleUsage = process.argv.includes('--console-usage');
+const consoleRegression = process.argv.includes('--console-regression');
+const usageQuota = consoleRegression || process.argv.includes('--usage-quota');
+const consoleUsage =
+  consoleRegression || process.argv.includes('--console-usage');
+const consoleAccess = process.argv.includes('--console-access');
 const liveAws = process.argv.includes('--live-aws');
 const liveNetwork = process.argv.includes('--live-network');
 const compiledSoak = process.argv.includes('--multiprocess-soak-compiled');
-const multiprocessSoak = compiledSoak || process.argv.includes('--multiprocess-soak');
+const multiprocessSoak =
+  compiledSoak || process.argv.includes('--multiprocess-soak');
 const extendedLoad = process.argv.includes('--network-load-extended');
 const networkLoad = extendedLoad || process.argv.includes('--network-load');
 const extendedRag = process.argv.includes('--rag-quality-extended');
 const adversarialRag = process.argv.includes('--rag-quality-adversarial');
 const repeatRag = process.argv.includes('--rag-quality-repeatability');
 const performanceBaseline = process.argv.includes('--performance-baseline');
-const ragQuality = performanceBaseline || repeatRag || adversarialRag || extendedRag || process.argv.includes('--rag-quality') || process.argv.includes('--rag-quality-v2');
+const ragQuality =
+  performanceBaseline ||
+  repeatRag ||
+  adversarialRag ||
+  extendedRag ||
+  process.argv.includes('--rag-quality') ||
+  process.argv.includes('--rag-quality-v2');
 if (!['localhost', '127.0.0.1', '[::1]'].includes(source.hostname)) {
   throw new Error('Queue HTTP E2E requires a local PostgreSQL host.');
 }
@@ -31,17 +41,26 @@ const cwd = fileURLToPath(new URL('..', import.meta.url));
 function run(relativePath, args) {
   const result = spawnSync(
     process.execPath,
-    [...(relativePath.endsWith('.ts') ? ['-r', 'ts-node/register'] : []), fileURLToPath(new URL(relativePath, import.meta.url)), ...args],
+    [
+      ...(relativePath.endsWith('.ts') ? ['-r', 'ts-node/register'] : []),
+      fileURLToPath(new URL(relativePath, import.meta.url)),
+      ...args,
+    ],
     {
       cwd,
       env: {
         ...process.env,
         DATABASE_URL: target.toString(),
+        NODE_ENV: consoleAccess ? 'production' : process.env.NODE_ENV,
+        ENABLE_CONSOLE_DEV_IDENTITY: consoleAccess
+          ? 'false'
+          : process.env.ENABLE_CONSOLE_DEV_IDENTITY,
         RUN_QUEUE_HTTP_E2E: 'true',
         RUN_USAGE_QUOTA_DB: usageQuota ? 'true' : 'false',
         RUN_CONSOLE_USAGE_DB: consoleUsage ? 'true' : 'false',
+        RUN_CONSOLE_ACCESS_DB: consoleAccess ? 'true' : 'false',
         RUN_KNOWLEDGE_FAULT_E2E: 'true',
-        KNOWLEDGE_INDEX_WORKER_ENABLED: 'true',
+        KNOWLEDGE_INDEX_WORKER_ENABLED: consoleAccess ? 'false' : 'true',
         KNOWLEDGE_INDEX_RETRY_DELAY_MS: '100',
         ADMIN_API_KEY: randomUUID(),
         RUN_AWS_LIFECYCLE_E2E: liveAws ? 'true' : 'false',
@@ -51,15 +70,39 @@ function run(relativePath, args) {
         RUN_MULTIPROCESS_SOAK: multiprocessSoak ? 'true' : 'false',
         RUN_RAG_QUALITY_E2E: ragQuality ? 'true' : 'false',
         RUN_PERFORMANCE_BASELINE: performanceBaseline ? 'true' : 'false',
-        RAG_EVAL_CORPUS: performanceBaseline || repeatRag || adversarialRag || extendedRag || process.argv.includes('--rag-quality-v2') ? 'quality-v2' : 'original',
-        RAG_EVAL_DATASET: repeatRag ? 'repeatability' : adversarialRag ? 'adversarial' : extendedRag ? 'extended' : 'golden',
+        RAG_EVAL_CORPUS:
+          performanceBaseline ||
+          repeatRag ||
+          adversarialRag ||
+          extendedRag ||
+          process.argv.includes('--rag-quality-v2')
+            ? 'quality-v2'
+            : 'original',
+        RAG_EVAL_DATASET: repeatRag
+          ? 'repeatability'
+          : adversarialRag
+            ? 'adversarial'
+            : extendedRag
+              ? 'extended'
+              : 'golden',
       },
       stdio: 'inherit',
-      timeout: usageQuota ? 180000 : ragQuality ? 660000 : multiprocessSoak ? 480000 : liveAws || liveNetwork || extendedLoad ? 300000 : 120000,
+      timeout:
+        usageQuota || consoleAccess
+          ? 180000
+          : ragQuality
+            ? 660000
+            : multiprocessSoak
+              ? 480000
+              : liveAws || liveNetwork || extendedLoad
+                ? 300000
+                : 120000,
     },
   );
   if (result.error || result.status !== 0)
-    throw new Error(`Isolated queue test subprocess failed: status=${result.status}, signal=${result.signal}, error=${result.error?.message ?? 'none'}`);
+    throw new Error(
+      `Isolated queue test subprocess failed: status=${result.status}, signal=${result.signal}, error=${result.error?.message ?? 'none'}`,
+    );
 }
 try {
   await admin.connect();
@@ -80,12 +123,42 @@ try {
   }
   console.log(`Created isolated database: ${database}`);
   run('../node_modules/prisma/build/index.js', ['migrate', 'deploy']);
-  if (consoleUsage) {
-    run('../node_modules/jest/bin/jest.js', ['--config', './test/jest-e2e.json', '--runInBand', 'console-usage-db.e2e-spec.ts']);
+  if (consoleRegression) {
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'usage-quota-db.e2e-spec.ts',
+      'console-usage-db.e2e-spec.ts',
+    ]);
+  } else if (consoleAccess) {
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'console-access-db.e2e-spec.ts',
+    ]);
+  } else if (consoleUsage) {
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'console-usage-db.e2e-spec.ts',
+    ]);
   } else if (usageQuota) {
-    run('../node_modules/jest/bin/jest.js', ['--config', './test/jest-e2e.json', '--runInBand', 'usage-quota-db.e2e-spec.ts']);
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'usage-quota-db.e2e-spec.ts',
+    ]);
   } else if (multiprocessSoak) {
-    run(compiledSoak ? '../work/soak-build/test/multiprocess-soak.js' : './multiprocess-soak.ts', []);
+    run(
+      compiledSoak
+        ? '../work/soak-build/test/multiprocess-soak.js'
+        : './multiprocess-soak.ts',
+      [],
+    );
   } else if (ragQuality) {
     run('../node_modules/jest/bin/jest.js', [
       '--config',
@@ -96,9 +169,21 @@ try {
   } else if (liveNetwork) {
     run('./aws-network-live.ts', []);
   } else if (networkLoad) {
-    run('../node_modules/jest/bin/jest.js', ['--config', './test/jest-e2e.json', '--runInBand', 'knowledge-network.e2e-spec.ts', '--testNamePattern', 'bounded load']);
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'knowledge-network.e2e-spec.ts',
+      '--testNamePattern',
+      'bounded load',
+    ]);
   } else if (process.argv.includes('--network')) {
-    run('../node_modules/jest/bin/jest.js', ['--config', './test/jest-e2e.json', '--runInBand', 'knowledge-network.e2e-spec.ts']);
+    run('../node_modules/jest/bin/jest.js', [
+      '--config',
+      './test/jest-e2e.json',
+      '--runInBand',
+      'knowledge-network.e2e-spec.ts',
+    ]);
   } else if (liveAws) {
     run('../node_modules/jest/bin/jest.js', [
       '--config',

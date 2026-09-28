@@ -81,6 +81,46 @@ type UsageSeriesPoint = {
 export class ConsoleUsageService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async alerts(identity: ConsoleIdentityContext) {
+    const now = new Date();
+    const periodKey = now.toISOString().slice(0, 7);
+    const rows = await this.prisma.consoleUsageThresholdEvent.findMany({
+      where: {
+        organizationId: identity.organizationId,
+        periodKey,
+      },
+      orderBy: [{ thresholdPercent: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        metric: true,
+        thresholdPercent: true,
+        limitValue: true,
+        observedValue: true,
+        createdAt: true,
+      },
+    });
+    return {
+      period: { key: periodKey, timezone: 'UTC', asOf: now.toISOString() },
+      channel: {
+        type: 'console-inbox',
+        deliveryMode: 'pull',
+        recipientPermission: 'usage:read',
+        redeliveryPolicy: 'idempotent-refetch',
+        deduplicationKey: 'organizationId+periodKey+metric+thresholdPercent',
+      },
+      readOnly: true,
+      items: rows.map((row) => ({
+        ...row,
+        severity:
+          row.thresholdPercent >= 100
+            ? 'critical'
+            : row.thresholdPercent >= 90
+              ? 'warning'
+              : 'notice',
+      })),
+    };
+  }
+
   async summary(
     identity: ConsoleIdentityContext,
     days: number,

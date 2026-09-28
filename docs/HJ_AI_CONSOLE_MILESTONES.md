@@ -1,6 +1,6 @@
 # HJ AI Console 전체 마일스톤
 
-작성일: 2026-09-18 · 최종 갱신일: 2026-09-21
+작성일: 2026-09-18 · 최종 갱신일: 2026-09-28
 
 대상: HJ_AI_Server의 Console API, Console Web/BFF 및 관련 사용량 처리
 
@@ -8,21 +8,21 @@
 
 ## 1. 현재 진행 단계
 
-> **[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 1/5]**
+> **[Console M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 4/5]**
 >
-> 현재 착수 대상: `M3-02` 조직 2개·역할별 실제 DB/HTTP 권한·격리 검증.
+> 다음 착수 대상: `M4-05` 임계치·감사·홈 최종 DB·브라우저 회귀 검증.
 >
-> 직전 완료: `M3-01` Console Web 기본 verify/CI 연결과 실패 전파 검증.
+> 직전 완료: `M4-04` 내부 알림함 채널·수신/재조회 정책과 상태 UX 연결.
 >
-> 전체: **8개 중 3개 마일스톤 완료**, 잔여 실행 작업 **11/35 완료**.
+> 전체: **8개 중 4개 마일스톤 완료**, 잔여 실행 작업 **19/35 완료**.
 >
 > 현재 알려진 차단 사유: 없음. M6에는 HJ-Works 계약 공동 확정이 필요함.
 >
-> 이번 변경 범위: M3-01 Console Web 기본 verify/CI 연결과 실패 전파 검증.
+> 이번 변경 범위: M4-04 사용량 알림 API·홈 알림함·부분 실패 및 상태 UX.
 
 ```text
-M0 완료 → M1 완료 → M2 완료 → M3 진행 중·현재 → M4 대기 → M5 대기 → M6 대기 → M7 대기
-기준선     월 한도       집계·로그  통합검증   홈·알림    지식관리   SSO       운영공개
+M0 완료 → M1 완료 → M2 완료 → M3 완료 → M4 진행 중 → M5 대기 → M6 대기 → M7 대기
+기준선     월 한도       집계·로그  통합검증   홈·알림       지식관리   SSO       운영공개
 ```
 
 완료 개수는 체크리스트 추적용이며 개발 공수나 제품 완성률을 뜻하지 않는다. 기존 앱·키·
@@ -62,8 +62,8 @@ Playground 등의 구현은 재사용하며, 아래 잔여 작업과 공개 전 
 | M0 | 현황·검증 기준선 확정 | 완료 | 3/3 | 없음 | 기존 단계 0~2 검토 |
 | M1 | 월 한도 적용·예약·정산 정합성 | 완료 | 5/5 | M0 | CON-SRV-13 |
 | M2 | 사용량·요청 로그·운영 지표 일치 | 완료 | 5/5 | M1 | CON-SRV-10~12, CON-WEB-06 보완 |
-| M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 1/5 | M1, M2 | 테스트 전략 §14, CON-OPS-05 일부 |
-| M4 | 홈·임계치 알림·감사 조회 | 대기 | 0/5 | M2, M3 | CON-SRV-14, CON-WEB-05, 감사 조회 잔여 |
+| M3 | DB·브라우저 통합 검증과 CI | 완료 | 5/5 | M1, M2 | 테스트 전략 §14, CON-OPS-05 일부 |
+| M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 4/5 | M2, M3 | 임계치·감사·홈 최종 회귀 잔여 |
 | M5 | 조직 범위 지식 관리 | 대기 | 0/5 | M3, M4 | CON-SRV-15~16, CON-WEB-07~08 |
 | M6 | HJ-Works 인증·권한·세션 통합 | 대기 | 0/5 | M5, Works 공동 계약 확정 | CON-WORKS-02~05, CON-SRV-02·04, CON-WEB-01 |
 | M7 | 운영 준비·pilot·공개 | 대기 | 0/5 | M0~M6 완료 | CON-OPS-01~06 |
@@ -106,23 +106,23 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 완료 기준: 동일 기간·대상·결과 정책에서 집계 수치가 원본과 일치한다. 성공률의 분모와
 미측정 비율을 설명할 수 있고, 최근 30일을 이번 달 한도로 오인하는 화면이 없다.
 
-### M3. 통합 검증과 CI — 진행 중 (1/5)
+### M3. 통합 검증과 CI — 완료 (5/5)
 
 - [x] `M3-01` `test:console-web`을 기본 `verify`/CI 실행에 포함하고 Web 실패가 품질 검사를 실패시키는지 확인.
-- [ ] `M3-02` 조직 2개·역할별 DB fixture를 마련하고 앱·키·사용량·로그의 HTTP 허용/거부 계약 및 production fixture 차단 검증.
-- [ ] `M3-03` 앱 생성 → 키 발급 → 실제 API 계약 호출 → 사용량·로그 확인 및 키 회전/grace/폐기 브라우저 E2E 구현·실행. provider 대체 여부 명시.
-- [ ] `M3-04` 한도 초과·DB 실패·중복 요청·cursor·CSV 제한 등 M1/M2 회귀를 반복 실행할 수 있는 격리 환경과 CI/별도 실행 경로에 연결.
-- [ ] `M3-05` 관련 build/typecheck/lint/서버·Web·demo 검사 결과를 기록하고 실행 환경·대상 revision 또는 작업본 기준을 문서화.
+- [x] `M3-02` 조직 2개·역할별 DB fixture를 마련하고 앱·키·사용량·로그의 HTTP 허용/거부 계약 및 production fixture 차단 검증.
+- [x] `M3-03` 앱 생성 → 키 발급 → 실제 API 계약 호출 → 사용량·로그 확인 및 키 회전/grace/폐기 브라우저 E2E 구현·실행. provider 대체 여부 명시.
+- [x] `M3-04` 한도 초과·DB 실패·중복 요청·cursor·CSV 제한 등 M1/M2 회귀를 반복 실행할 수 있는 격리 환경과 CI/별도 실행 경로에 연결.
+- [x] `M3-05` 관련 build/typecheck/lint/서버·Web·demo 검사 결과를 기록하고 실행 환경·대상 revision 또는 작업본 기준을 문서화.
 
 완료 기준: 문자열 존재 검사 외에 사용자 행동과 DB 결과를 검증한다. 자동화 범위와 별도
 통합 실행 범위를 구분하고 통과 증거를 남긴다. 이후 M4~M6 기능의 검증은 해당 단계에서 추가한다.
 
-### M4. 홈·알림·감사 조회 — 대기 (0/5)
+### M4. 홈·알림·감사 조회 — 진행 중 (4/5)
 
-- [ ] `M4-01` 월 사용량 70/90/100% 도달 event와 조직·기간·지표·임계치 기준 중복 방지 구현. 재시도·월 변경 정책 포함.
-- [ ] `M4-02` 홈에 이번 달 사용량·잔여 한도·성공률·p95·최근 오류·키 만료 표시. 지식 색인 실패는 M5에서 연결할 계약 마련.
-- [ ] `M4-03` 조직 범위 활동·보안 감사 조회 API와 화면, 권한·필터·원문 비노출 구현 및 감사 저장 실패 처리 정책 확정.
-- [ ] `M4-04` 알림 채널·수신 대상·재전송 정책 확정 및 연결. 0·무제한·미측정·읽기 전용·오류·빈 상태 UX 구현.
+- [x] `M4-01` 월 사용량 70/90/100% 도달 event와 조직·기간·지표·임계치 기준 중복 방지 구현. 재시도·월 변경 정책 포함.
+- [x] `M4-02` 홈에 이번 달 사용량·잔여 한도·성공률·p95·최근 오류·키 만료 표시. 지식 색인 실패는 M5에서 연결할 계약 마련.
+- [x] `M4-03` 조직 범위 활동·보안 감사 조회 API와 화면, 권한·필터·원문 비노출 구현 및 감사 저장 실패 처리 정책 확정.
+- [x] `M4-04` 알림 채널·수신 대상·재전송 정책 확정 및 연결. 0·무제한·미측정·읽기 전용·오류·빈 상태 UX 구현.
 - [ ] `M4-05` 임계치 동시 도달·중복 전달·월 전환, 감사 격리, 홈 탐색·모바일·키보드 사용 회귀 검증.
 
 완료 기준: 같은 임계치 알림이 정의된 범위에서 중복되지 않고 홈·상세 지표가 일치한다.
@@ -189,14 +189,18 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 | 날짜 | 변경 | 근거·검증 | 다음 작업 |
 | --- | --- | --- | --- |
 | 2026-09-18 | M0 완료, M1을 대기 상태의 현재 착수 대상으로 지정. M0~M7 및 상태 표시 규칙 수립 | §5 기준선, 문서 링크·체크리스트 정합성 검사 | M1-01 한도 적용 경로 확정·연결 |
+| 2026-09-23 | M4-01 완료, M4 진행 중 1/5 | 단위·계약 39개, 격리 PostgreSQL 17개 및 회귀 25개, 전체 verify Pass | M4-02 Console 홈 요약 지표 |
+| 2026-09-23 | M4-02 완료, M4 진행 중 2/5 | Console Web 27개, 전체 verify Pass | M4-03 조직 감사 조회 API·화면 |
+| 2026-09-28 | M4-03 완료, M4 진행 중 3/5 | 단위·HTTP 10개, Web 30개, 실 DB 5개, 전체 verify Pass | M4-04 알림 전달·상태 UX |
+| 2026-09-28 | M4-04 완료, M4 진행 중 4/5 | 단위·HTTP 11개, Web 31개, 실 DB 5개, 전체 verify Pass | M4-05 최종 DB·브라우저 회귀 |
 
 문서 작성 검증(2026-09-18): 변경 문서·지침 5개에서 상대 링크 57개와 고유 작업 ID
 38개(M0 3개, M1~M7 35개), 단계별 완료 개수·현재 단계 표시를 확인했다.
 문서 정합성 검사와 대상 문서 `git diff --check`는 Pass다. 애플리케이션 코드는 변경하지
 않았으며 이번 문서 작업에서는 서버·Web 테스트를 재실행하지 않았다.
 
-다음 실행 범위는 `M3-02` 조직·역할별 실제 DB/HTTP 검증이다.
-M2는 완료했으며 M3는 진행 중(1/5)이다. 운영 DB 변경·배포는 수행하지 않았다.
+다음 실행 범위는 `M4-05` 임계치 동시 도달·중복·월 전환, 감사 격리와 홈 탐색·모바일·
+키보드 사용 회귀 검증이다. M4는 진행 중(4/5)이다. 운영 DB 변경·배포는 수행하지 않았다.
 
 
 ### M1-01 적용 계약 및 검증 — 2026-09-18
@@ -474,3 +478,282 @@ build/typecheck/lint/서버 단계만 성공 stub으로 대체하며, verify의 
 | 날짜 | 변경 | 근거·검증 | 다음 작업 |
 | --- | --- | --- | --- |
 | 2026-09-21 | M3-01 완료, M3 진행 중 1/5 | 전체 verify 및 Web 실패 전파 검증 Pass | M3-02 조직·역할별 실제 DB/HTTP 검증 |
+
+### M3-02 조직·permission별 실제 DB/HTTP 검증 — 2026-09-23
+
+[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 2/5]
+
+`test:console-access-db`를 추가했다. 기존 격리 DB runner가 localhost의 무작위 DB를 생성하고
+24개 migration을 적용한 뒤 두 조직과 Admin·Developer·Knowledge Manager·Viewer permission
+fixture를 구성한다. Nest HTTP controller·guard와 실제 Prisma service를 연결해 앱·credential·
+사용량·요청 로그의 허용/거부 및 조직 격리를 검사하고 종료 시 해당 DB만 삭제한다.
+
+검증 범위:
+
+- 무인증 401, 비활성 identity·조직·membership 403, permission 누락 403.
+- 조직별 앱 목록 격리, 타 조직 appId 404, HTTP로 생성한 앱의 organization·actor ownership 저장.
+- credential 읽기·발급 permission 분리, 타 조직 발급 404, 원문 key 일회성 응답과 DB hash 저장,
+  목록·DB의 원문 비노출.
+- 조직별 사용량 합계와 요청 로그 격리, Viewer 로그 접근 403, 타 조직 logId 직접 접근 404,
+  질문 원문 비노출.
+- production에서 development fixture 플래그를 켜면 환경 검증 단계에서 기동을 거부하고,
+  정상 production 설정에서는 Console 무인증 요청 401 및 fixture identity·조직 DB 미생성.
+
+| 실행 명령 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-access-db` | Pass — 1 suite / 4 tests, 24 migrations | 실제 PostgreSQL·Nest HTTP·Prisma, 임시 DB 삭제 확인 |
+| `npm run test:ci -- --testPathPatterns="console\|usage-quota\|operational-error-code"` | Pass — 19 suites / 174 tests | Console·한도·오류 계약 회귀 |
+| `npm run typecheck` | Pass | 신규 통합 시험 포함 TypeScript 검사 |
+| `npm run lint:check` | Pass | 서버·test TypeScript, 경고 없음 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 62 suites/497 tests, Console Web 24, demo 56 |
+
+초기 검증에서 production 환경값의 모듈 로딩 시점 차이와 production fixture 설정의 의도된
+기동 거부를 테스트가 잘못 기대한 문제를 수정했다. 이후 3/4 통과 실행에서 요청 로그 응답의
+`app.appcode` 구조에 assertion을 맞춘 뒤 최종 4/4 통과했다. 애플리케이션 운영 코드는 변경하지 않았다.
+
+제약: 역할명에서 permission으로 변환하는 HJ-Works adapter는 M6 범위이므로 이번 시험은 동일한
+`ConsoleIdentityContext` port에 역할별 permission을 주입했다. 브라우저·실제 AWS·운영 DB·배포와
+GitHub Actions 원격 실행은 미실행이다. M3-03에서 브라우저 사용자 여정과 실제 API 호출을 검증한다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-23 | M3-02 완료, M3 진행 중 2/5 | 실제 PostgreSQL/HTTP 4개, 회귀 174개, 전체 verify Pass | M3-03 앱·키·API·사용량·로그·회전/폐기 브라우저 E2E |
+
+### M3-03 실제 브라우저 사용자 여정 검증 — 2026-09-23
+
+[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 3/5]
+
+`start:console-browser-fixture`를 추가했다. localhost PostgreSQL에 무작위 이름의 격리 DB를
+생성해 24개 migration을 적용하고, development fixture identity를 사용하는 AI Server와
+Console Web을 기동한다. 종료 시 자식 프로세스를 정리하고 정규식으로 확인한 해당 DB만 삭제한다.
+
+Playwright CLI의 headed Chromium에서 다음 사용자 여정을 실행했다.
+
+- 앱 생성 → 90일 Key 최초 발급 → Playground에서 실제 `/knowledge/answers` 호출.
+- 사용량 1건과 요청 로그·상세의 동일 Request ID, endpoint, 지연, 원문 비노출 확인.
+- 5분 grace로 Key 회전 → 이전 Key 200, 신규 Key 200 확인 → 이전 Key 폐기.
+- 폐기한 이전 Key 401, 현재 Key 200 확인. 성공 호출 4건만 사용량·요청 로그에 집계됨.
+- localStorage와 sessionStorage가 모두 비어 있고, Key 입력값은 페이지 전환 후 제거됨을 확인.
+
+지식 자료가 없는 격리 DB이므로 네 성공 호출은 검색 후 `insufficient_evidence`, token 0으로
+종료됐다. 실제 인증·검색·로그·집계 경로를 사용했으며 provider mock이나 대체 provider를
+주입하지 않았다. 검색 결과가 없어 Bedrock 생성 provider 자체는 호출되지 않았고 상세 metadata의
+`modelInvoked: false`, `generationMs: 0`으로 확인했다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run start:console-browser-fixture` + Playwright CLI | Pass | headed Chromium, 격리 PostgreSQL/AI Server/Console Web; 앱·Key·실제 API·사용량·로그·회전/grace/폐기 |
+| 브라우저 network·console | Pass | 성공 호출 4회 200, 폐기 Key 1회 의도된 401; 그 외 오류·경고 없음 |
+| 브라우저 storage | Pass | localStorage/sessionStorage 항목 없음 |
+| `node --check scripts/run-console-browser-fixture.mjs` 및 fixture 재기동·종료 | Pass | 종료 경고 없음, 임시 DB 삭제 확인 |
+| `npm run test:console-access-db` | Pass — 1 suite / 4 tests | 24 migrations, 임시 DB 삭제 확인 |
+| `npm run typecheck`, `npm run lint:check` | Pass | 현재 작업본 |
+| `npm run test:console-web` | Pass — 24 tests | Web/BFF 회귀 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 62 suites/497 tests, Console Web 24, demo 56 |
+
+브라우저 최종 사용량 화면은 `output/playwright/m3-03/m3-03-final-usage.png`에 남겼다. Key가
+포함될 수 있는 임시 snapshot·trace는 검증 후 삭제했다. 실제 AWS provider·운영 DB·원격 CI·
+운영 배포는 실행하지 않았다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-23 | M3-03 완료, M3 진행 중 3/5 | headed 브라우저 대표 여정, 성공 4회·폐기 Key 401, 저장소 비보관, 전체 verify Pass | M3-04 격리 회귀 환경·CI/별도 실행 경로 |
+
+### M3-04 M1/M2 격리 회귀 실행 경로와 CI 연결 — 2026-09-23
+
+[Console M3 | DB·브라우저 통합 검증과 CI | 진행 중 | 4/5]
+
+기존 `usage-quota-db.e2e-spec.ts` 16개와 `console-usage-db.e2e-spec.ts` 8개를 하나의
+`test:console-regression-db` 명령으로 연결했다. runner는 localhost PostgreSQL에 무작위 DB를
+한 번 만들고 24개 migration을 적용한 뒤 두 suite를 직렬 실행하며, 성공·실패와 관계없이
+이번 실행이 만든 DB만 강제 연결 종료 후 삭제한다.
+
+이 경로가 다루는 M1/M2 회귀는 다음과 같다.
+
+- 조직·앱 월 한도 경계와 0·무제한·미측정 정책, 독립 프로세스 동시 요청 한 건만 승인.
+- 동일 operation 중복 방지, 실제 로그 INSERT·정산·감사 INSERT 실패 rollback과 멱등 복구.
+- 원본 ledger와 summary·timeseries·breakdown·로그·상세·CSV·월 한도 대조.
+- 동일 시각 다중 소스 cursor의 누락·중복 없는 페이지 이동과 잘못된 cursor 거부.
+- CSV 5,000행 상한과 `truncated: true`, 5,001개 header 포함 행 수 검증.
+
+Quality Gate에는 독립 `console-db-regression` job을 추가했다. Node.js 24와 digest를 고정한
+`pgvector/pgvector:pg16` service를 사용하며 DB 준비 상태를 확인한 후 위 명령을 실행한다.
+일반 단위 품질 job과 분리해 PostgreSQL service 실패와 Console DB 회귀 실패를 명확히 구분한다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-regression-db` 2회 | Pass — 매회 2 suites / 24 tests | 로컬 PostgreSQL, 매회 24 migrations·서로 다른 임시 DB·삭제 확인 |
+| CI와 동일 digest의 `pgvector/pgvector:pg16` Docker service + 전용 명령 | Pass — 2 suites / 24 tests | host port 55432에서 service image·health·migration·정리 검증 |
+| `npx prettier --check package.json test/run-queue-http-e2e.mjs .github/workflows/quality-gate.yml` | Pass | 신규 명령·runner·workflow 형식 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+CI workflow 정의와 service image는 로컬에서 대등하게 검증했지만 GitHub Actions 원격 실행은
+아직 수행하지 않았다. 실제 AWS provider·운영 DB·배포도 실행하지 않았다. M3-05에서 현재
+작업본의 전체 품질 검사와 환경·revision 기준을 최종 기록한다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-23 | M3-04 완료, M3 진행 중 4/5 | 격리 회귀 24개 반복·CI service image 검증 Pass | M3-05 전체 품질 검사·작업본 기준 기록 |
+
+### M3-05 전체 품질 검사와 작업본 기준 기록 — 2026-09-23
+
+[Console M3 | DB·브라우저 통합 검증과 CI | 완료 | 5/5]
+
+최종 검증 기준은 Git branch `codex/demo-api-validation`, base HEAD
+`08a210e727ffa585da037bea11231413ee1524ff`에 아래 M3 변경을 포함한 미커밋 작업본이다.
+따라서 특정 배포 revision이나 원격 branch의 검증 결과로 해석하지 않는다.
+
+- 수정: `.github/workflows/quality-gate.yml`, `package.json`, `test/run-queue-http-e2e.mjs`,
+  마일스톤·진행·구축 계획·시험 전략 문서.
+- 신규: `scripts/run-console-browser-fixture.mjs`, `test/console-access-db.e2e-spec.ts`.
+- 실행 환경: Windows 11 Home 10.0.26200 x64, Node.js 24.15.0, npm 11.12.1,
+  Prisma/Client 7.9.1, TypeScript 5.9.3, PostgreSQL 18.4, Docker 29.8.0.
+- CI service 기준: digest 고정 `pgvector/pgvector:pg16`
+  (`sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b`).
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run verify` 단독 재실행 | Pass | build·typecheck·lint, 서버 62 suites/497 tests, Console Web 24, demo 56 |
+| `npm run test:console-regression-db` | Pass — 2 suites / 24 tests | 한도·동시성·중복·실패 복구·집계·cursor·CSV, 24 migrations·임시 DB 삭제 |
+| `npm run test:console-access-db` | Pass — 1 suite / 4 tests | 조직·permission·production fixture 차단, 24 migrations·임시 DB 삭제 |
+| `npm run test:console-web-gate` | Pass | Web 실패가 verify exit 1로 전파되고 후속 검사 중단 |
+| M3-03 Playwright CLI 대표 여정 | Pass | 실제 브라우저 앱·Key·API·사용량·로그·grace·폐기; 해당 기록 재사용, 이번 M3-05에서 미재실행 |
+| `npx prettier --check ...`, `git diff --check` | Pass | 실행 경로·workflow 형식과 변경 공백 |
+
+첫 최종 실행에서 `verify`, 두 DB suite와 `test:console-web-gate`를 동시에 실행했다. Web gate가
+별도 임시 작업본에서 자체 `verify`를 수행하는 동안 주 `verify`의 Jest가 상세 실패 로그 없이
+exit 1로 종료됐다. DB 24개·4개와 Web gate는 통과했다. 동일 작업본에서 `npm run verify`를
+단독 재실행해 전체 통과했으므로 기능 실패가 아니라 검증 프로세스 병렬 간섭으로 판정했다.
+향후 최종 품질 검사는 Web gate와 동시 실행하지 않는다.
+
+M3 완료 기준인 사용자 행동·실 DB 결과 검증, 자동화/별도 통합 범위 구분, 실행 증거 기록을
+모두 충족했다. 원격 GitHub Actions, 실제 AWS provider, 운영 DB migration, 운영 배포는
+실행하지 않았으며 이는 M7 운영 준비·공개 범위다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-23 | M3-05 및 M3 완료(5/5), M4 대기(0/5) | 전체 verify, 실 DB 24+4개, Web gate, M3-03 브라우저 증거 | M4-01 월 사용량 임계치 event·중복 방지 |
+
+### M4-01 월 사용량 임계치 event와 중복 방지 — 2026-09-23
+
+[Console M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 1/5]
+
+조직 월 요청 수와 조직 월 token의 committed 사용량이 설정 한도의 70%, 90%, 100%에
+도달하면 `console_usage_threshold_event`를 요청 admission/token 예약과 같은 transaction에
+저장한다. 조직·UTC 승인 월·REQUESTS/TOKENS 지표·임계치 unique constraint와
+`skipDuplicates`를 함께 사용해 독립 프로세스 경합에서도 동일 event가 한 번만 남는다.
+
+event 저장 실패는 사용량 변경도 rollback하여 동일 operation 재시도가 안전하다. 요청은 admission
+UTC 월, token은 원래 예약 승인 월에 귀속한다. null 무제한과 0 한도는 event를 만들지 않으며,
+한도 설정 변경만으로 과거 사용량을 backfill하지 않는다. 한 번의 사용이 여러 임계치를 넘으면
+도달한 event를 모두 저장한다. 외부 채널·수신자·전달 재시도는 M4-04 범위이며 이번 작업에서는
+메시지를 발송하지 않았다. 상세 정책은 `HJ_AI_CONSOLE_USAGE_CONTRACT.md` §4에 기록했다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:ci -- --runTestsByPath src/usage-quota/usage-quota.service.spec.ts src/console/console-usage-threshold-migration.contract.spec.ts` | Pass — 2 suites / 39 tests | 도달·중복·rollback/재시도와 additive migration 계약 |
+| `npm run test:usage-quota-db` | Pass — 1 suite / 17 tests | 25 migrations, 요청·token 70/90/100%, 독립 프로세스 중복 방지, 임시 DB 삭제 |
+| `npm run test:console-regression-db` | Pass — 2 suites / 25 tests | M1/M2 회귀와 신규 임계치 event, 25 migrations·임시 DB 삭제 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 63 suites/501 tests, Console Web 24, demo 56 |
+| `npx prisma format` | Pass | Prisma schema 형식 |
+
+신규 migration은 격리 PostgreSQL에만 적용했다. 운영 DB migration, 실제 알림 전송,
+원격 CI·AWS·운영 배포는 실행하지 않았다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-23 | M4-01 완료, M4 진행 중 1/5 | 임계치 event·transaction rollback·DB unique, 단위/계약 39개·실 DB 17/25개·전체 verify Pass | M4-02 Console 홈 요약 지표 |
+
+### M4-02 Console 홈 요약 — 2026-09-23
+
+[Console M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 2/5]
+
+`/console`을 앱 목록의 별칭이 아닌 독립 홈 route로 연결했다. 새 집계 API를 만들지 않고 기존
+조직 범위 `usage/monthly`, 앱 목록, 당월 실패 요청 로그를 병렬 조회한다. 홈에는 당월 요청·
+token committed(확정+예약), 잔여 한도, 결과 측정 기준 성공률, 지연 측정 기준 p95를 표시한다.
+
+최근 오류는 원문 없이 최대 5건과 전체 실패 로그 링크를 제공한다. 현재 API Key 만료일은 가까운
+순으로 최대 5개를 보여주며 30일 이하는 주의 상태로 표시하고 Credential 화면으로 연결한다.
+지식 색인 실패는 M5의 `knowledge-index-failures-v1` 계약(`failedJobs`, `lastFailureAt`,
+`affectedApps`)을 명시하고 연결 전에는 0이 아닌 미측정으로 표시한다. 모바일에서는 네 요약 카드와
+두 운영 패널을 한 열로 재배치한다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `node --check console-web/public/app.js` | Pass | 브라우저 모듈 구문 |
+| `npm run test:console-web` | Pass — 27 tests | 홈 실 markup 렌더, 빈 값·미측정·escape, route/API 연결 포함 |
+| `npm run typecheck`, `npm run lint:check` | Pass | 서버 TypeScript 회귀 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 63 suites/501 tests, Console Web 27, demo 56 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+M4-02에서는 실제 브라우저·운영 DB·원격 CI·AWS·운영 배포를 실행하지 않았다. 홈 탐색·모바일·
+키보드 실제 브라우저 회귀는 M4-05 완료 기준에 포함한다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-23 | M4-02 완료, M4 진행 중 2/5 | 홈 route·당월 지표·최근 오류·Key 만료·M5 색인 계약, Web 27개·전체 verify Pass | M4-03 조직 감사 조회 API·화면 |
+
+### M4-03 조직 범위 활동·보안 감사 조회 — 2026-09-28
+
+[Console M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 3/5]
+
+`GET /console-api/v1/audit-events`와 `/console/audit` 화면을 추가했다. API는 `audit:read`를
+요구하며 organization ID를 query로 받지 않고 인증 identity에서 강제한다. 최근 7/30/90일,
+event type, 조직 소유 앱, Works 사용자 필터와 기본 25/최대 100건의 `createdAt + id` cursor
+pagination을 제공한다.
+
+응답은 event·앱·request·불변 행위자 식별자와 허용된 primitive 상세만 반환한다. session hash,
+credential 원문/hash, recovery key, 임의 metadata와 요청·응답 원문은 projection에서 제외한다.
+화면은 동일 필터와 더 보기를 지원하고 앱·Key 관리 활동을 사람이 읽을 수 있는 이름으로 표시한다.
+
+감사 저장 실패 정책은 [감사 계약](HJ_AI_CONSOLE_AUDIT_CONTRACT.md)에 확정했다. Console 앱·Key
+변경의 사후 활동 감사는 best-effort로 오류를 기록하고 이미 commit된 변경을 실패로 뒤집지 않는다.
+한도 복구처럼 감사 event 자체가 결정 원장인 작업은 기존대로 업무 변경과 같은 transaction에서
+fail-closed한다. 저장 오류 운영 경보는 M7 관측성 범위다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| 감사 service/controller와 저장 실패 단위 시험 | Pass — 3 suites / 10 tests | 조직 강제, filter/cursor, allowlist, 권한, best-effort false 반환 |
+| `npm run test:console-access-db` | Pass — 1 suite / 5 tests | 실제 PostgreSQL 두 조직 격리·권한·session hash/metadata 비노출, 25 migrations·임시 DB 삭제 |
+| `npm run test:console-web` | Pass — 30 tests | API 직렬화, 안전한 markup, 메뉴·route·pagination 연결 |
+| `npm run typecheck`, `npm run lint:check` | Pass | TypeScript·lint |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/507 tests, Console Web 30, demo 56 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+첫 실 DB 실행은 공통 interceptor의 `awsRequest` 응답 확장을 정확 일치 assertion이 고려하지 않아
+1건 실패했다. 조직 격리 결과는 정상이었고 핵심 필드 match로 시험을 수정한 뒤 5/5 통과했다.
+새 migration은 없으며 실제 브라우저·운영 DB·원격 CI·AWS·운영 배포는 실행하지 않았다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-28 | M4-03 완료, M4 진행 중 3/5 | 감사 API·화면·실패 정책, 단위/HTTP 10개·실 DB 5개·Web 30개·전체 verify Pass | M4-04 알림 전달·상태 UX |
+
+### M4-04 내부 알림함 전달 정책과 상태 UX — 2026-09-28
+
+[Console M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 4/5]
+
+`GET /console-api/v1/usage/alerts`를 추가해 인증 identity의 조직과 현재 UTC 월에 속한 임계치
+event만 조회한다. 채널은 외부 전송이 없는 내장 `console-inbox`, 수신자는 활성 membership과
+`usage:read` 권한을 통과한 사용자다. 화면은 읽기 전용이며 동일 event의 안정된 ID와 DB unique
+key를 사용해 새 메시지를 만들지 않고 재조회한다. 따라서 재전송 정책은 `idempotent-refetch`이고
+별도 SMTP·메신저 계정, 주소 원문, delivery worker를 추가하지 않았다.
+
+홈에 70/90/100% 알림 목록과 빈 상태를 연결했다. 100%는 위험, 90%는 주의, 70%는 안내로
+표시한다. 기존 월 카드의 0 한도·무제한·미측정 구분과 함께 읽기 전용 표식을 명시했다.
+월 사용량은 홈의 필수 기준 데이터로 유지하되 앱·오류·알림 조회는 `Promise.allSettled`로
+분리해 한 부가 API 오류가 전체 홈을 가리지 않고 해당 패널에 재시도 상태만 표시한다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| usage service/controller 단위·HTTP 시험 | Pass — 2 suites / 11 tests | 현재 조직·UTC 월, severity·채널 계약, `usage:read` 허용/거부 |
+| `npm run test:console-access-db` | Pass — 1 suite / 5 tests | 실제 PostgreSQL 두 조직 event 격리·Viewer 허용·무권한 403, 25 migrations·임시 DB 삭제 |
+| `npm run test:console-web` | Pass — 31 tests | 알림·빈 상태·읽기 전용·부분 오류·0/무제한/미측정 실제 markup 및 API 경로 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/509 tests, Console Web 31, demo 56 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+외부 메시지는 발송하지 않았다. 실제 브라우저 모바일·키보드 탐색, 임계치 다중 프로세스와
+월 전환 최종 회귀는 M4-05에서 수행한다. 운영 DB·원격 CI·AWS·운영 배포도 실행하지 않았다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-28 | M4-04 완료, M4 진행 중 4/5 | 내부 알림함 API·홈 상태 UX, 단위/HTTP 11개·실 DB 5개·Web 31개·전체 verify Pass | M4-05 최종 DB·브라우저 회귀 |

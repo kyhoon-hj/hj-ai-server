@@ -78,6 +78,11 @@ enum ConsoleUsageReservationState {
   UNCERTAIN
 }
 
+enum ConsoleUsageThresholdMetric {
+  REQUESTS
+  TOKENS
+}
+
 model TestTable {
   id        Int      @id @default(autoincrement())
   name      String
@@ -135,10 +140,11 @@ model ConsoleOrganization {
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   lastSyncedAt        DateTime                  @map("last_synced_at")
 
-  memberships       ConsoleMembership[]
-  apps              ConsoleAppOwnership[]
-  auditEvents       SecurityAuditEvent[]
-  usageReservations ConsoleUsageReservation[]
+  memberships          ConsoleMembership[]
+  apps                 ConsoleAppOwnership[]
+  auditEvents          SecurityAuditEvent[]
+  usageReservations    ConsoleUsageReservation[]
+  usageThresholdEvents ConsoleUsageThresholdEvent[]
 
   @@index([status])
   @@map("console_organization")
@@ -231,6 +237,23 @@ model ConsoleUsageReservation {
   @@index([appcode, periodKey, state])
   @@index([organizationId, periodKey, state])
   @@map("console_usage_reservation")
+}
+
+model ConsoleUsageThresholdEvent {
+  id               String                      @id @default(uuid()) @db.Uuid
+  organizationId   String                      @map("organization_id") @db.Uuid
+  periodKey        String                      @map("period_key") @db.VarChar(7)
+  metric           ConsoleUsageThresholdMetric
+  thresholdPercent Int                         @map("threshold_percent")
+  limitValue       Int                         @map("limit_value")
+  observedValue    Int                         @map("observed_value")
+  createdAt        DateTime                    @default(now()) @map("created_at")
+
+  organization ConsoleOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, periodKey, metric, thresholdPercent])
+  @@index([periodKey, createdAt])
+  @@map("console_usage_threshold_event")
 }
 
 model SecurityAuditEvent {

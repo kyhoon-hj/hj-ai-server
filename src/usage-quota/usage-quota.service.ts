@@ -16,6 +16,7 @@ type UsageTotals = {
 type ReservationTotals = {
   _sum: { reservedRequests: number | null; reservedTokens: number | null };
 };
+const USAGE_THRESHOLD_PERCENTAGES = [70, 90, 100] as const;
 
 export type UsageQuotaReservation = {
   id: string;
@@ -79,15 +80,21 @@ export class UsageQuotaService {
             periodKey,
           }),
         ]);
-        if (
-          measured.requests + Number(active._sum.reservedRequests ?? 0) + 1 >
-          policy.organizationRequestLimit
-        ) {
+        const observedRequests =
+          measured.requests + Number(active._sum.reservedRequests ?? 0) + 1;
+        if (observedRequests > policy.organizationRequestLimit) {
           throw this.limitExceeded(
             'MONTHLY_REQUEST_LIMIT_EXCEEDED',
             policy.organizationRequestLimit,
           );
         }
+        await this.recordOrganizationThresholds(transaction, {
+          organizationId: policy.organizationId,
+          periodKey,
+          metric: 'REQUESTS',
+          limit: policy.organizationRequestLimit,
+          observed: observedRequests,
+        });
       }
 
       const created = await transaction.consoleUsageReservation.create({
@@ -149,8 +156,9 @@ export class UsageQuotaService {
         requestedTokens,
         code: 'APP_MONTHLY_TOKEN_LIMIT_EXCEEDED',
       });
+      let organizationTokens: number | null = null;
       if (reservation.organizationId) {
-        await this.assertTokenLimit(transaction, {
+        organizationTokens = await this.assertTokenLimit(transaction, {
           scope: {
             organizationId: reservation.organizationId,
             periodKey: reservation.periodKey,
@@ -164,6 +172,15 @@ export class UsageQuotaService {
         where: { id: reservation.id },
         data: { reservedTokens: requestedTokens, tokensReservedAt: new Date() },
       });
+      if (reservation.organizationId && organizationTokens !== null) {
+        await this.recordOrganizationThresholds(transaction, {
+          organizationId: reservation.organizationId,
+          periodKey: reservation.periodKey,
+          metric: 'TOKENS',
+          limit: policy.organizationTokenLimit,
+          observed: organizationTokens,
+        });
+      }
     });
   }
 
@@ -249,7 +266,7 @@ export class UsageQuotaService {
       code: string;
     },
   ) {
-    if (input.limit === null) return;
+    if (input.limit === null) return null;
     const [measured, active] = await Promise.all([
       this.measuredUsage(transaction, input.scope),
       this.activeReservations(transaction, input.scope),
@@ -257,14 +274,45 @@ export class UsageQuotaService {
     if (measured.unmeasuredRequests > 0) {
       throw new ServiceUnavailableException('USAGE_QUOTA_USAGE_UNMEASURED');
     }
-    if (
+    const observedTokens =
       measured.tokens +
-        Number(active._sum.reservedTokens ?? 0) +
-        input.requestedTokens >
-      input.limit
-    ) {
+      Number(active._sum.reservedTokens ?? 0) +
+      input.requestedTokens;
+    if (observedTokens > input.limit) {
       throw this.limitExceeded(input.code, input.limit);
     }
+    return observedTokens;
+  }
+
+  private recordOrganizationThresholds(
+    transaction: Prisma.TransactionClient,
+    input: {
+      organizationId: string;
+      periodKey: string;
+      metric: 'REQUESTS' | 'TOKENS';
+      limit: number | null;
+      observed: number;
+    },
+  ) {
+    if (input.limit === null || input.limit <= 0) return Promise.resolve();
+    const limit = input.limit;
+    const reached = USAGE_THRESHOLD_PERCENTAGES.filter(
+      (threshold) => input.observed * 100 >= limit * threshold,
+    );
+    if (reached.length === 0) return Promise.resolve();
+    return transaction.consoleUsageThresholdEvent
+      .createMany({
+        data: reached.map((thresholdPercent) => ({
+          organizationId: input.organizationId,
+          periodKey: input.periodKey,
+          metric: input.metric,
+          thresholdPercent,
+          limitValue: limit,
+          observedValue: input.observed,
+        })),
+        skipDuplicates: true,
+      })
+      .then(() => undefined);
   }
 
   private async finish(

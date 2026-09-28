@@ -85,6 +85,18 @@ PostgreSQL 18에서 확장 경로를 DB별로 설정한 경우, 원본 DB의 `ex
 기본 CI에는 포함하지 않으며, 종료 시 이번 실행이 만든 임시 DB만 삭제합니다.
 프로세스 강제 종료 시 정리가 실행되지 않을 수 있으므로 출력된 `queue_e2e_<UUID>` DB를 확인해야 합니다.
 
+### Console M1/M2 PostgreSQL 회귀 시험 (2026-09-23)
+
+`npm run test:console-regression-db`는 로컬 PostgreSQL에 무작위 임시 DB를 한 번 만들고 현재
+24개 migration을 적용한 뒤 `usage-quota-db` 16개와 `console-usage-db` 8개를 직렬 실행합니다.
+조직·앱 월 한도, 동시·중복 operation, 실제 DB 실패 rollback·복구, 원본과 집계·로그·CSV
+대조, 동일 시각 cursor, CSV 5,000행 제한을 포함합니다. 종료 시 해당 임시 DB만 삭제합니다.
+
+Quality Gate의 `console-db-regression` job은 Node.js 24와 digest 고정 `pgvector/pgvector:pg16` service에서
+같은 명령을 실행합니다. 일반 `verify`와 독립된 job이므로 PostgreSQL 준비·migration·실 DB
+회귀 실패를 별도로 식별합니다. 실제 AWS와 운영 DB를 사용하지 않으며, 원격 GitHub Actions
+실행 여부는 마일스톤 검증 기록에서 로컬 대등 환경 결과와 구분합니다.
+
 ### 파서·청크·pgvector 통합 시험 (2026-09-04)
 
 `npm run test:queue-http-e2e`는 HTTP 시험 3개, 벡터 시험 4개, 기존 장애 시험 7개,

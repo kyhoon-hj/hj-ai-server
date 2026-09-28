@@ -25,6 +25,7 @@ describe('Console usage HTTP contract', () => {
   let app: INestApplication;
   let identity = identityFixture();
   const monthly = jest.fn().mockResolvedValue({ period: { timezone: 'UTC' } });
+  const alerts = jest.fn().mockResolvedValue({ items: [], readOnly: true });
   const summary = jest.fn().mockResolvedValue({ requestCount: 0 });
   const timeseries = jest.fn().mockResolvedValue({ points: [] });
   const breakdown = jest.fn().mockResolvedValue({ apps: [] });
@@ -33,6 +34,7 @@ describe('Console usage HTTP contract', () => {
     identity = identityFixture();
     summary.mockClear();
     monthly.mockClear();
+    alerts.mockClear();
     timeseries.mockClear();
     breakdown.mockClear();
     const module = await Test.createTestingModule({
@@ -41,7 +43,7 @@ describe('Console usage HTTP contract', () => {
       providers: [
         {
           provide: ConsoleUsageService,
-          useValue: { summary, timeseries, breakdown, monthly },
+          useValue: { summary, timeseries, breakdown, monthly, alerts },
         },
       ],
     })
@@ -116,6 +118,18 @@ describe('Console usage HTTP contract', () => {
     identity = { ...identity, permissions: [] };
     await request(app.getHttpServer() as Server)
       .get('/console-api/v1/usage/monthly')
+      .expect(403);
+  });
+
+  it('exposes the read-only alert inbox to usage readers', async () => {
+    await request(app.getHttpServer() as Server)
+      .get('/console-api/v1/usage/alerts')
+      .expect(200);
+    expect(alerts).toHaveBeenCalledWith(identity);
+
+    identity = { ...identity, permissions: [] };
+    await request(app.getHttpServer() as Server)
+      .get('/console-api/v1/usage/alerts')
       .expect(403);
   });
 

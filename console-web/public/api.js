@@ -97,12 +97,19 @@ export const playgroundApi = {
 
 export const usageApi = {
   monthly: () => consoleRequest('/console-api/v1/usage/monthly'),
+  alerts: () => consoleRequest('/console-api/v1/usage/alerts'),
   summary: (days, endpoint = '') =>
-    consoleRequest(`/console-api/v1/usage/summary?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`),
+    consoleRequest(
+      `/console-api/v1/usage/summary?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`,
+    ),
   timeseries: (days, endpoint = '') =>
-    consoleRequest(`/console-api/v1/usage/timeseries?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`),
+    consoleRequest(
+      `/console-api/v1/usage/timeseries?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`,
+    ),
   breakdown: (days, endpoint = '') =>
-    consoleRequest(`/console-api/v1/usage/breakdown?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`),
+    consoleRequest(
+      `/console-api/v1/usage/breakdown?days=${days}${endpoint ? `&endpoint=${encodeURIComponent(endpoint)}` : ''}`,
+    ),
 };
 
 export const requestLogsApi = {
@@ -125,5 +132,17 @@ export const requestLogsApi = {
       }
     });
     return `/console-api/v1/request-logs/export.csv?${query}`;
+  },
+};
+
+export const auditApi = {
+  list: (filters = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        query.set(key, String(value));
+      }
+    });
+    return consoleRequest(`/console-api/v1/audit-events?${query}`);
   },
 };

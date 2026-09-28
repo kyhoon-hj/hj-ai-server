@@ -22,6 +22,15 @@ export class ConsoleUsageController {
     return this.usage.monthly(this.identity(request));
   }
 
+  @Get('alerts')
+  @ConsolePermissions('usage:read')
+  @ApiOkResponse({
+    description: 'UTC 이번 달 사용량 임계치 Console 알림함',
+  })
+  alerts(@Req() request: ConsoleRequest) {
+    return this.usage.alerts(this.identity(request));
+  }
+
   @Get('summary')
   @ConsolePermissions('usage:read')
   @ApiOkResponse({ description: '조직 범위 사용량 합계와 측정 상태' })

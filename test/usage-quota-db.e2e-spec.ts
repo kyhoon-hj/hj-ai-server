@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { ValidationPipe } from '@nestjs/common';
+import { ConflictException, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -119,7 +119,7 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
   }
   async function begin(
     appcode: string,
-    operationKey = randomUUID(),
+    operationKey: string = randomUUID(),
     service = quota,
   ) {
     const result = await service.begin({
@@ -242,9 +242,67 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
         where: { organizationId: org.id },
       }),
     ).toBe(2);
+    expect(
+      (
+        await prisma.consoleUsageThresholdEvent.findMany({
+          where: { organizationId: org.id, metric: 'REQUESTS' },
+          orderBy: { thresholdPercent: 'asc' },
+        })
+      ).map((event) => event.thresholdPercent),
+    ).toEqual([70, 90, 100]);
     const other = await fixture({ requests: 1 });
     await expect(begin(other.app.appcode)).resolves.toBeTruthy();
   }, 40000);
+
+  it('persists each organization request and token threshold once', async () => {
+    const { org, app } = await fixture({
+      requests: 10,
+      orgTokens: 100,
+      appTokens: 100,
+    });
+    const operationKeys = Array.from(
+      { length: 10 },
+      (_, index) => `threshold-${index}`,
+    );
+    for (const [index, operationKey] of operationKeys.entries()) {
+      const reservation = await begin(app.appcode, operationKey);
+      if (index < 3) {
+        await quota.reserveTokens(reservation, [70, 20, 10][index]);
+      }
+    }
+
+    const events = await prisma.consoleUsageThresholdEvent.findMany({
+      where: { organizationId: org.id },
+      orderBy: [{ metric: 'asc' }, { thresholdPercent: 'asc' }],
+    });
+    expect(
+      events.map(({ metric, thresholdPercent, limitValue }) => ({
+        metric,
+        thresholdPercent,
+        limitValue,
+      })),
+    ).toEqual([
+      { metric: 'REQUESTS', thresholdPercent: 70, limitValue: 10 },
+      { metric: 'REQUESTS', thresholdPercent: 90, limitValue: 10 },
+      { metric: 'REQUESTS', thresholdPercent: 100, limitValue: 10 },
+      { metric: 'TOKENS', thresholdPercent: 70, limitValue: 100 },
+      { metric: 'TOKENS', thresholdPercent: 90, limitValue: 100 },
+      { metric: 'TOKENS', thresholdPercent: 100, limitValue: 100 },
+    ]);
+
+    await expect(
+      quota.begin({
+        appcode: app.appcode,
+        operationKey: operationKeys[0],
+        operationScope: 'integration',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      await prisma.consoleUsageThresholdEvent.count({
+        where: { organizationId: org.id },
+      }),
+    ).toBe(6);
+  });
 
   it.each(['app', 'organization'] as const)(
     'enforces the %s token boundary across independent processes',

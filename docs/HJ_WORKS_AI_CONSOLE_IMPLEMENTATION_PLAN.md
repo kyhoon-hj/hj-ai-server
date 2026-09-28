@@ -1,7 +1,7 @@
 # HJ-Works 연계 AI Console 구축 계획
 
 작성일: 2026-09-11  
-변경일: 2026-09-18
+변경일: 2026-09-28
 대상 서비스: HJ AI Server, HJ-Works, HJ AI Console  
 목표 주소: `https://ai.hjshub.com/console`  
 상태: 기능 우선 구현 순서 확정, `CON-WORKS-01` 인증 조사 완료,
@@ -12,7 +12,7 @@
 
 2026-09-18 검토 이후 실행 순서·현재 단계·완료 판정은
 [전체 마일스톤](HJ_AI_CONSOLE_MILESTONES.md)을 기준으로 관리한다.
-현재는 **M3 DB·브라우저 통합 검증과 CI — 진행 중(1/5, M3-01 완료)**다. 아래 단계 번호와 `CON-*` ID는
+현재는 **M4 홈·임계치 알림·감사 조회 — 진행 중(4/5)**이다. 아래 단계 번호와 `CON-*` ID는
 기존 설계 추적용으로 유지하며, 실제 실행은 M1 한도 → M2 집계·로그 → M3 통합 검증·CI →
 M4 홈·알림·감사 → M5 지식 → M6 SSO → M7 운영 공개 순서를 따른다.
 
@@ -439,6 +439,7 @@ membership.removed
 - 질문·응답 원문은 기본 사용량 화면의 집계에 필요하지 않으며 최소 수집 원칙을 따른다.
 - 감사 이벤트는 actor Works ID, 조직, 동작, 대상, 결과, request ID와 시각을 남긴다.
 - 감사 로그 실패를 어디까지 fail-closed로 처리할지 동작별로 결정한다.
+  — M4-03에서 일반 Console 사후 활동 감사는 best-effort, 결정 원장 감사는 동일 transaction fail-closed로 확정했다.
 - 브라우저 응답에 관리자 credential, appkey hash, 내부 S3 key와 model 내부 설정을 노출하지 않는다.
 
 ## 13. 단계별 실행 계획
@@ -454,7 +455,7 @@ membership.removed
 - [x] `CON-SRV-03` 인증 방식과 분리된 `ConsoleIdentityContext`·조직 context·permission guard
   — 기본 fail-closed resolver와 permission·조직 격리 계약 시험 완료
 - [x] `CON-SRV-05` 감사 actor를 Console identity와 조직으로 확장
-  — 내부·Works ID와 session ID hash 저장, 기존 관리자 감사 호환 계약 완료
+  — M4-03까지 내부·Works ID와 session hash 저장, 기존 관리자 호환, 조직 범위 조회·필터·cursor·안전한 projection과 실패 정책 완료
 
 기능 개발 중에는 test와 명시적 local development에서만 fixture identity adapter를 사용한다.
 이 adapter는 운영 build에서 활성화할 수 없고, 운영 환경에서 관련 flag가 설정되면 시작을
@@ -494,9 +495,11 @@ flag를 비활성 상태로 유지한다.
   — M2 완료. Family/복구 목록·상세·CSV, Bedrock request ID/실패·endpoint/model/status 필터와 cursor 실 DB 검증.
 - [x] `CON-SRV-13` 월 한도와 원자적 예약·정산 정책
   — M1-01~05 완료. 격리 PostgreSQL 집계·다중 프로세스 경합·복구 16개 및 관련 API 회귀 254개 통과. 운영 DB 반영은 M7.
-- [ ] `CON-SRV-14` 임계치 알림 event와 중복 방지
-- [ ] `CON-WEB-05` 홈 dashboard와 사용량 차트
-  — 사용량 dashboard·차트 완료, 홈 요약 화면은 잔여
+- [x] `CON-SRV-14` 임계치 알림 event와 중복 방지
+  — M4-01/M4-04 완료. 조직 월 요청·token 70/90/100% unique event와 transaction rollback,
+  `usage:read` 조직 범위 내부 알림함·멱등 재조회 정책 구현.
+- [x] `CON-WEB-05` 홈 dashboard와 사용량 차트
+  — M4-02 완료. 당월 committed·잔여·성공률·p95, 최근 오류·Key 만료, M5 지식 색인 실패 계약과 반응형 홈 구현.
 - [ ] `CON-WEB-06` 요청 로그, 오류 상세와 CSV export
   — M2 구현·실 DB/VM 렌더 검증 완료. Family/복구/CSV 5,000행·월/기간 구분·로그 추적 링크 포함. 브라우저 통합 검증은 M3 잔여.
 
@@ -545,8 +548,15 @@ session 폐기 E2E가 통과하고 production에서 fixture adapter가 완전히
 
 2026-09-21 M3-01: 기본 `verify`/Quality Gate CI에 Console Web 검사를 포함했다. CI는
 `test:console-web-gate`도 실행하여 Web 실패의 종료 코드 전파·후속 검사 중단을 검증한다.
-로컬 전체 verify와 실패 주입 검증은 통과했으며 원격 CI 실행은 미실행이다. DB·브라우저
-통합 검증은 M3-02~05에서 진행한다.
+로컬 전체 verify와 실패 주입 검증은 통과했으며 원격 CI 실행은 미실행이다. 2026-09-23
+M3-02에서 두 조직·역할별 실제 PostgreSQL/HTTP 앱·credential·사용량·로그 격리와 production
+fixture 차단 4개를 통과했다. M3-03에서는 headed Chromium과 격리 PostgreSQL/서버/Web으로 앱
+생성부터 실제 `/knowledge/answers`, 사용량·로그, Key grace 회전·폐기 전후까지 검증했다.
+provider 대체는 사용하지 않았고, 자료가 없어 Bedrock 생성 호출 전 `insufficient_evidence`로
+종료됐다. M3-04에서는 한도·중복·실패 복구·cursor·CSV 제한의 실 DB 24개를 단일 격리
+명령과 pgvector CI job으로 연결했고 동일 CI image 로컬 검증을 통과했다. 최종 전체 검증과
+작업본 기준 기록도 M3-05에서 완료했다. 단독 전체 verify, 실 DB 24+4개, Web 실패 전파와
+M3-03 브라우저 증거를 합쳐 M3 완료로 판정했다. 다음 기능 단계는 M4 홈·임계치 알림·감사 조회다.
 
 ### 14.1 계약 시험
 

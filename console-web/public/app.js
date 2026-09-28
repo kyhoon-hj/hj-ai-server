@@ -1,5 +1,6 @@
 import {
   appsApi,
+  auditApi,
   ConsoleApiError,
   credentialsApi,
   playgroundApi,
@@ -58,6 +59,15 @@ const state = {
     period: '',
   },
   requestLogNextCursor: null,
+  auditEvents: [],
+  auditApps: [],
+  auditFilters: {
+    days: 30,
+    eventType: '',
+    appId: '',
+    worksUserId: '',
+  },
+  auditNextCursor: null,
 };
 
 function escapeHtml(value = '') {
@@ -113,11 +123,15 @@ function setActiveNavigation(name) {
     const href = item.getAttribute('href');
     item.classList.toggle(
       'active',
-      name === 'usage'
-        ? href === '/console/usage'
-        : name === 'request-logs' || name === 'request-log-detail'
-          ? href === '/console/request-logs'
-          : href === '/console/apps',
+      name === 'home'
+        ? href === '/console'
+        : name === 'audit'
+          ? href === '/console/audit'
+        : name === 'usage'
+          ? href === '/console/usage'
+          : name === 'request-logs' || name === 'request-log-detail'
+            ? href === '/console/request-logs'
+            : href === '/console/apps',
     );
   });
 }
@@ -280,6 +294,108 @@ async function renderPlayground(appId) {
   }
 }
 
+function homeLimitCopy(metric) {
+  const usage = `확정 ${metric.used.toLocaleString()} · 예약 ${metric.reserved.toLocaleString()}`;
+  if (metric.limit === null) return `${usage} · 무제한`;
+  if (metric.limit === 0) return `${usage} · 사용 불가 (0 한도)`;
+  if (metric.remaining === null) return `${usage} · 잔여 미측정`;
+  return `${usage} · 잔여 ${metric.remaining.toLocaleString()} / 한도 ${metric.limit.toLocaleString()}`;
+}
+
+function homeUnavailable(message) {
+  return `<div class="home-empty home-error"><strong>정보를 불러오지 못했습니다</strong><p>${escapeHtml(message)}</p><button class="button secondary compact" type="button" data-action="reload-home">다시 시도</button></div>`;
+}
+
+function homeAlertsMarkup(alerts, unavailable = false) {
+  if (unavailable) {
+    return homeUnavailable('사용량 알림을 다시 조회해 주세요.');
+  }
+  const rows = (alerts?.items ?? [])
+    .map((alert) => {
+      const metric = alert.metric === 'TOKENS' ? 'Token' : '요청';
+      const status = alert.severity === 'critical' ? 'danger' : alert.severity === 'warning' ? 'warning' : '';
+      return `<li><div><strong>${metric} 한도 ${alert.thresholdPercent.toLocaleString()}% 도달</strong><small>관측 ${alert.observedValue.toLocaleString()} / 한도 ${alert.limitValue.toLocaleString()}</small></div><div><span class="status ${status}">${alert.thresholdPercent.toLocaleString()}%</span><time>${formatDate(alert.createdAt, true)}</time></div></li>`;
+    })
+    .join('');
+  return rows
+    ? `<ul class="home-list">${rows}</ul>`
+    : '<div class="home-empty"><strong>이번 달 사용량 알림이 없습니다</strong><p>70%, 90%, 100% 임계치에 도달하면 여기에 표시됩니다.</p></div>';
+}
+
+function homeMarkup(monthly, apps, recentErrors, alerts = { items: [] }, failures = {}, now = Date.now()) {
+  const expires = apps
+    .filter((app) => app.appkeyExpiresAt)
+    .map((app) => ({
+      ...app,
+      expiresAtMs: new Date(app.appkeyExpiresAt).getTime(),
+    }))
+    .filter((app) => !Number.isNaN(app.expiresAtMs))
+    .sort((left, right) => left.expiresAtMs - right.expiresAtMs)
+    .slice(0, 5);
+  const expiryRows = expires
+    .map((app) => {
+      const days = Math.ceil((app.expiresAtMs - now) / 86_400_000);
+      const label =
+        days < 0
+          ? `${Math.abs(days)}일 경과`
+          : days === 0
+            ? '오늘 만료'
+            : `${days}일 남음`;
+      const status = days <= 30 ? 'danger' : '';
+      return `<li><div><strong>${escapeHtml(app.appname)}</strong><small class="mono">${escapeHtml(app.appcode)}</small></div><div><span class="status ${status}">${label}</span><a href="/console/apps/${encodeURIComponent(app.id)}/credentials" data-link>관리</a></div></li>`;
+    })
+    .join('');
+  const errorRows = recentErrors
+    .slice(0, 5)
+    .map(
+      (log) =>
+        `<li><a href="/console/request-logs/${encodeURIComponent(log.id)}" data-link><div><strong>${escapeHtml(log.app?.appname ?? '알 수 없는 앱')}</strong><small class="mono">${escapeHtml(log.endpoint ?? 'unknown')}</small></div><div><span>${escapeHtml(log.errorCode ?? log.result ?? 'UNKNOWN_ERROR')}</span><time>${formatDate(log.occurredAt, true)}</time></div></a></li>`,
+    )
+    .join('');
+  const successRate =
+    monthly.outcome.successRate === null
+      ? '미측정'
+      : `${monthly.outcome.successRate.toLocaleString()}%`;
+  const p95 =
+    monthly.latency.p95Ms === null
+      ? '미측정'
+      : `${monthly.latency.p95Ms.toLocaleString()} ms`;
+  return `<div class="page-heading home-heading"><div><p class="eyebrow">OVERVIEW</p><h1>조직 홈</h1><p>UTC ${escapeHtml(monthly.period.key)} 사용량과 운영 주의 항목을 한눈에 확인합니다.</p></div><a class="button secondary" href="/console/usage" data-link>상세 사용량 보기</a></div>
+    <div class="summary-grid home-summary"><div class="summary-card highlight"><span>이번 달 요청</span><strong>${monthly.limits.requests.committed.toLocaleString()}</strong><small>${homeLimitCopy(monthly.limits.requests)}</small></div><div class="summary-card"><span>이번 달 Token</span><strong>${monthly.limits.tokens.committed.toLocaleString()}</strong><small>${homeLimitCopy(monthly.limits.tokens)}</small></div><div class="summary-card"><span>이번 달 성공률</span><strong>${successRate}</strong><small>${monthly.outcome.measuredRequests.toLocaleString()}건 결과 측정</small></div><div class="summary-card"><span>이번 달 p95</span><strong>${p95}</strong><small>${monthly.latency.measuredRequests.toLocaleString()}건 지연 측정</small></div></div>
+    <section class="panel home-panel usage-alerts" data-channel="console-inbox"><div class="home-panel-heading"><div><p class="eyebrow">USAGE ALERTS</p><h2>사용량 알림</h2></div><span class="status inactive">읽기 전용</span></div><p class="muted-copy">내부 Console 알림함이며 활성 <span class="mono">usage:read</span> 권한 사용자가 조회합니다. 같은 이벤트는 고유 ID로 중복 없이 다시 조회됩니다.</p>${homeAlertsMarkup(alerts, failures.alerts)}</section>
+    <div class="home-grid"><section class="panel home-panel"><div class="home-panel-heading"><div><p class="eyebrow">RECENT ERRORS</p><h2>최근 오류</h2></div><a href="/console/request-logs?period=month&status=failed" data-link>전체 보기</a></div>${failures.errors ? homeUnavailable('최근 오류를 다시 조회해 주세요.') : errorRows ? `<ul class="home-list error-list">${errorRows}</ul>` : '<div class="home-empty"><strong>이번 달 오류가 없습니다</strong><p>결과가 실패로 측정된 요청이 없습니다.</p></div>'}</section>
+    <section class="panel home-panel"><div class="home-panel-heading"><div><p class="eyebrow">KEY EXPIRY</p><h2>API Key 만료</h2></div><a href="/console/apps" data-link>앱 보기</a></div>${failures.apps ? homeUnavailable('API Key 만료 정보를 다시 조회해 주세요.') : expiryRows ? `<ul class="home-list">${expiryRows}</ul>` : '<div class="home-empty"><strong>만료일이 설정된 Key가 없습니다</strong><p>앱별 Credential 화면에서 새 Key를 발급할 수 있습니다.</p></div>'}</section></div>
+    <section class="panel home-panel knowledge-index-contract" data-contract="knowledge-index-failures-v1"><div class="home-panel-heading"><div><p class="eyebrow">KNOWLEDGE INDEX</p><h2>지식 색인 실패</h2></div><span class="status inactive">M5 연결 예정</span></div><div class="home-empty"><strong>현재는 미측정 상태입니다</strong><p>M5에서 조직 범위 <span class="mono">failedJobs</span>, <span class="mono">lastFailureAt</span>, <span class="mono">affectedApps</span>를 연결합니다. 데이터가 없다는 의미의 0으로 표시하지 않습니다.</p></div></section>`;
+}
+
+async function renderHome() {
+  breadcrumb.textContent = '홈';
+  document.title = '홈 · HJ AI Console';
+  view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>조직 홈</h1><p>이번 달 운영 현황을 불러오고 있습니다.</p></div></div>${loadingMarkup()}`;
+  try {
+    const [monthlyResult, appsResult, errorsResult, alertsResult] = await Promise.allSettled([
+      usageApi.monthly(),
+      appsApi.list(),
+      requestLogsApi.list({ period: 'month', status: 'failed', limit: 5 }),
+      usageApi.alerts(),
+    ]);
+    if (monthlyResult.status === 'rejected') throw monthlyResult.reason;
+    view.innerHTML = homeMarkup(
+      monthlyResult.value,
+      appsResult.status === 'fulfilled' ? appsResult.value : [],
+      errorsResult.status === 'fulfilled' ? errorsResult.value.items ?? [] : [],
+      alertsResult.status === 'fulfilled' ? alertsResult.value : { items: [] },
+      {
+        apps: appsResult.status === 'rejected',
+        errors: errorsResult.status === 'rejected',
+        alerts: alertsResult.status === 'rejected',
+      },
+    );
+  } catch (error) {
+    view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>조직 홈</h1></div></div><div class="panel">${errorMarkup(error, 'reload-home')}</div>`;
+  }
+}
+
 function metricValue(measurement, suffix = '') {
   return measurement?.value === null || measurement?.value === undefined
     ? '미측정'
@@ -399,6 +515,72 @@ async function renderRequestLogs() {
   }
 }
 
+const auditEventLabels = {
+  CONSOLE_APP_CREATED: '앱 생성',
+  CONSOLE_APP_UPDATED: '앱 설정 변경',
+  CONSOLE_APPKEY_ISSUED: 'API Key 발급',
+  CONSOLE_APPKEY_ROTATED: 'API Key 회전',
+  CONSOLE_APPKEY_REVOKED: 'API Key 폐기',
+};
+
+function auditDetails(details = {}) {
+  const values = Object.entries(details);
+  return values.length
+    ? values
+        .map(
+          ([key, value]) =>
+            `<span><b>${escapeHtml(key)}</b> ${escapeHtml(value)}</span>`,
+        )
+        .join('')
+    : '<span>추가 진단 정보 없음</span>';
+}
+
+function auditMarkup() {
+  const filters = state.auditFilters;
+  const appOptions = state.auditApps
+    .map(
+      (app) =>
+        `<option value="${app.id}" ${filters.appId === app.id ? 'selected' : ''}>${escapeHtml(app.appname)}</option>`,
+    )
+    .join('');
+  const rows = state.auditEvents
+    .map(
+      (item) =>
+        `<tr><td><strong>${formatDate(item.createdAt, true)}</strong><small class="mono">${escapeHtml(item.requestId ?? 'Request ID 없음')}</small></td><td><strong>${escapeHtml(auditEventLabels[item.eventType] ?? item.eventType)}</strong><small class="mono">${escapeHtml(item.eventType)}</small></td><td><strong>${escapeHtml(item.app?.appcode ?? '조직 공통')}</strong><small class="mono">${escapeHtml(item.app?.id ? shortId(item.app.id) : '—')}</small></td><td><strong>${escapeHtml(item.actor.type)}</strong><small class="mono">${escapeHtml(shortId(item.actor.worksUserId ?? item.actor.consoleIdentityId))}</small></td><td><div class="audit-details">${auditDetails(item.details)}</div></td></tr>`,
+    )
+    .join('');
+  return `<div class="page-heading"><div><p class="eyebrow">ACTIVITY & SECURITY</p><h1>활동·보안 감사</h1><p>조직의 관리 작업을 원문과 credential 정보 없이 조회합니다.</p></div><span class="security-chip">조직 범위 · metadata only</span></div>
+    <section class="panel request-log-panel"><form id="audit-filters" class="request-log-filters audit-filters"><label><span>조회 기간</span><select name="days"><option value="7" ${filters.days === 7 ? 'selected' : ''}>최근 7일</option><option value="30" ${filters.days === 30 ? 'selected' : ''}>최근 30일</option><option value="90" ${filters.days === 90 ? 'selected' : ''}>최근 90일</option></select></label><label><span>이벤트</span><select name="eventType"><option value="">모든 이벤트</option>${Object.entries(auditEventLabels).map(([value, label]) => `<option value="${value}" ${filters.eventType === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label><span>애플리케이션</span><select name="appId"><option value="">모든 앱</option>${appOptions}</select></label><label><span>Works 사용자 ID</span><input name="worksUserId" value="${escapeHtml(filters.worksUserId)}" placeholder="UUID 정확히 입력" /></label><div class="request-log-actions"><button class="button primary" type="submit">조회</button></div></form>
+    ${rows ? `<div class="table-scroll"><table class="app-table audit-table"><thead><tr><th>발생 시각</th><th>활동</th><th>앱</th><th>행위자</th><th>안전한 상세</th></tr></thead><tbody>${rows}</tbody></table></div>${state.auditNextCursor ? '<div class="load-more"><button class="button secondary" data-action="load-more-audit">더 보기</button></div>' : ''}` : '<div class="empty-state"><div class="state-copy"><div class="state-icon">◎</div><h2>조건에 맞는 감사 기록이 없습니다</h2><p>기간이나 필터를 변경해 보세요.</p></div></div>'}</section>`;
+}
+
+async function loadAuditEvents(append = false) {
+  const result = await auditApi.list({
+    ...state.auditFilters,
+    limit: 25,
+    ...(append && state.auditNextCursor
+      ? { cursor: state.auditNextCursor }
+      : {}),
+  });
+  state.auditEvents = append
+    ? [...state.auditEvents, ...result.items]
+    : result.items;
+  state.auditNextCursor = result.nextCursor;
+}
+
+async function renderAudit() {
+  breadcrumb.textContent = '활동·보안 감사';
+  document.title = '활동·보안 감사 · HJ AI Console';
+  view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">ACTIVITY & SECURITY</p><h1>활동·보안 감사</h1><p>조직 범위 감사 기록을 불러오고 있습니다.</p></div></div>${loadingMarkup()}`;
+  try {
+    if (!state.auditApps.length) state.auditApps = await appsApi.list();
+    await loadAuditEvents();
+    view.innerHTML = auditMarkup();
+  } catch (error) {
+    view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">ACTIVITY & SECURITY</p><h1>활동·보안 감사</h1></div></div><div class="panel">${errorMarkup(error, 'reload-audit')}</div>`;
+  }
+}
+
 function requestLogDetailMarkup(log) {
   const execution = log.execution
     ? `<pre><code>${escapeHtml(JSON.stringify(log.execution, null, 2))}</code></pre>`
@@ -464,6 +646,9 @@ function openRevokeDialog(appId, credentialId) {
 }
 
 function route() {
+  if (/^\/console\/?$/i.test(window.location.pathname)) {
+    return { name: 'home' };
+  }
   const requestLogDetail = window.location.pathname.match(
     /^\/console\/request-logs\/(.+)\/?$/i,
   );
@@ -475,6 +660,9 @@ function route() {
   }
   if (/^\/console\/request-logs\/?$/i.test(window.location.pathname)) {
     return { name: 'request-logs' };
+  }
+  if (/^\/console\/audit\/?$/i.test(window.location.pathname)) {
+    return { name: 'audit' };
   }
   if (/^\/console\/usage\/?$/i.test(window.location.pathname)) {
     return { name: 'usage' };
@@ -496,7 +684,9 @@ function route() {
 async function renderRoute() {
   const current = route();
   setActiveNavigation(current.name);
-  if (current.name === 'request-log-detail')
+  if (current.name === 'home') await renderHome();
+  else if (current.name === 'audit') await renderAudit();
+  else if (current.name === 'request-log-detail')
     await renderRequestLogDetail(current.logId);
   else if (current.name === 'request-logs') await renderRequestLogs();
   else if (current.name === 'usage') await renderUsage();
@@ -534,6 +724,8 @@ view.addEventListener('click', (event) => {
     createDialog.showModal();
   }
   if (action === 'reload-list') void renderList();
+  if (action === 'reload-home') void renderHome();
+  if (action === 'reload-audit') void renderAudit();
   if (action === 'reload-detail') void renderRoute();
   if (action === 'reload-credentials') void renderRoute();
   if (action === 'reload-playground') void renderRoute();
@@ -546,6 +738,15 @@ view.addEventListener('click', (event) => {
     loadRequestLogs(true)
       .then(() => {
         view.innerHTML = requestLogListMarkup();
+      })
+      .catch((error) => showToast(error.message, 'error'));
+  }
+  if (action === 'load-more-audit') {
+    const button = event.target.closest('button');
+    button.disabled = true;
+    loadAuditEvents(true)
+      .then(() => {
+        view.innerHTML = auditMarkup();
       })
       .catch((error) => showToast(error.message, 'error'));
   }
@@ -597,6 +798,25 @@ view.addEventListener('change', (event) => {
 });
 
 view.addEventListener('submit', async (event) => {
+  if (event.target.id === 'audit-filters') {
+    event.preventDefault();
+    const data = new FormData(event.target);
+    state.auditFilters = {
+      days: Number(data.get('days')),
+      eventType: data.get('eventType'),
+      appId: data.get('appId'),
+      worksUserId: data.get('worksUserId').trim(),
+    };
+    view.innerHTML = `${auditMarkup()}<div class="loading-overlay">조회 중…</div>`;
+    try {
+      await loadAuditEvents();
+      view.innerHTML = auditMarkup();
+    } catch (error) {
+      showToast(error.message, 'error');
+      view.innerHTML = auditMarkup();
+    }
+    return;
+  }
   if (event.target.id === 'request-log-filters') {
     event.preventDefault();
     const data = new FormData(event.target);

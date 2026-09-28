@@ -42,6 +42,53 @@ describe('ConsoleUsageService', () => {
     return { service, findMany, queryRaw };
   };
 
+  it('lists only the current organization-month threshold events with a stable pull policy', async () => {
+    const createdAt = new Date('2026-09-14T02:00:00.000Z');
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'alert-1',
+        metric: 'TOKENS',
+        thresholdPercent: 100,
+        limitValue: 1000,
+        observedValue: 1001,
+        createdAt,
+      },
+      {
+        id: 'alert-2',
+        metric: 'REQUESTS',
+        thresholdPercent: 70,
+        limitValue: 100,
+        observedValue: 70,
+        createdAt,
+      },
+    ]);
+    const service = new ConsoleUsageService({
+      consoleUsageThresholdEvent: { findMany },
+    } as never);
+
+    await expect(service.alerts(identity)).resolves.toMatchObject({
+      period: { key: '2026-09', timezone: 'UTC' },
+      channel: {
+        type: 'console-inbox',
+        recipientPermission: 'usage:read',
+        redeliveryPolicy: 'idempotent-refetch',
+      },
+      readOnly: true,
+      items: [
+        { id: 'alert-1', severity: 'critical' },
+        { id: 'alert-2', severity: 'notice' },
+      ],
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: identity.organizationId,
+          periodKey: '2026-09',
+        },
+      }),
+    );
+  });
+
   it('combines measured values while preserving unmeasured request counts', async () => {
     const { service, findMany } = fixture([
       {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   appsApi,
+  auditApi,
   ConsoleApiError,
   credentialsApi,
   playgroundApi,
@@ -172,7 +173,7 @@ test('Playground 요청은 Key를 전용 header로 전달하고 저장하지 않
   });
 });
 
-test('사용량 summary, timeseries와 breakdown 범위를 전달한다', async (context) => {
+test('사용량 알림과 summary, timeseries, breakdown 범위를 전달한다', async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => {
     globalThis.fetch = originalFetch;
@@ -185,11 +186,13 @@ test('사용량 summary, timeseries와 breakdown 범위를 전달한다', async 
     });
   };
 
+  await usageApi.alerts();
   await usageApi.summary(30);
   await usageApi.timeseries(30);
   await usageApi.breakdown(30);
 
   assert.deepEqual(paths, [
+    '/console-api/v1/usage/alerts',
     '/console-api/v1/usage/summary?days=30',
     '/console-api/v1/usage/timeseries?days=30',
     '/console-api/v1/usage/breakdown?days=30',
@@ -226,4 +229,32 @@ test('요청 로그 필터와 상세 ID를 안전하게 직렬화한다', async 
     exportUrl,
     '/console-api/v1/request-logs/export.csv?days=30&status=failed',
   );
+});
+
+test('감사 필터와 cursor를 조직 범위 Console API에 전달한다', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let path;
+  globalThis.fetch = async (value) => {
+    path = value;
+    return new Response(JSON.stringify({ items: [], nextCursor: null }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  await auditApi.list({
+    days: 7,
+    eventType: 'CONSOLE_APP_UPDATED',
+    appId: '11111111-1111-4111-8111-111111111111',
+    worksUserId: '22222222-2222-4222-8222-222222222222',
+    cursor: 'cursor value',
+  });
+
+  const url = new URL(path, 'http://localhost');
+  assert.equal(url.pathname, '/console-api/v1/audit-events');
+  assert.equal(url.searchParams.get('days'), '7');
+  assert.equal(url.searchParams.get('eventType'), 'CONSOLE_APP_UPDATED');
+  assert.equal(url.searchParams.get('cursor'), 'cursor value');
 });

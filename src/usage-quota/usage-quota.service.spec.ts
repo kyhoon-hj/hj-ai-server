@@ -15,6 +15,14 @@ type ReservationRow = {
   state: 'RESERVED' | 'SETTLED' | 'UNCERTAIN';
   completedAt: Date | null;
 };
+type ThresholdEventRow = {
+  organizationId: string;
+  periodKey: string;
+  metric: 'REQUESTS' | 'TOKENS';
+  thresholdPercent: number;
+  limitValue: number;
+  observedValue: number;
+};
 
 function fixture(options?: {
   appTokenLimit?: number | null;
@@ -25,6 +33,7 @@ function fixture(options?: {
   unmeasuredRequests?: number;
 }) {
   const rows: ReservationRow[] = [];
+  const thresholdEvents: ThresholdEventRow[] = [];
   let sequence = 0;
   const measured = {
     requests: options?.measuredRequests ?? 0,
@@ -161,6 +170,23 @@ function fixture(options?: {
   const transaction = {
     appInfo: { findUnique: jest.fn().mockResolvedValue(policy) },
     consoleUsageReservation: reservation,
+    consoleUsageThresholdEvent: {
+      createMany: jest.fn(
+        ({ data }: { data: ThresholdEventRow[]; skipDuplicates: boolean }) => {
+          for (const event of data) {
+            const exists = thresholdEvents.some(
+              (candidate) =>
+                candidate.organizationId === event.organizationId &&
+                candidate.periodKey === event.periodKey &&
+                candidate.metric === event.metric &&
+                candidate.thresholdPercent === event.thresholdPercent,
+            );
+            if (!exists) thresholdEvents.push(event);
+          }
+          return Promise.resolve({ count: data.length });
+        },
+      ),
+    },
     $queryRaw: jest.fn((query: { strings?: string[] }) => {
       const sql = query.strings?.join(' ') ?? '';
       return Promise.resolve(
@@ -182,11 +208,13 @@ function fixture(options?: {
     $transaction: jest.fn(<T>(work: (tx: typeof transaction) => Promise<T>) => {
       const result = queue.then(async () => {
         const beforeRows = rows.map((row) => ({ ...row }));
+        const beforeEvents = thresholdEvents.map((event) => ({ ...event }));
         const beforeMeasured = { ...measured };
         try {
           return await work(transaction);
         } catch (error) {
           rows.splice(0, rows.length, ...beforeRows);
+          thresholdEvents.splice(0, thresholdEvents.length, ...beforeEvents);
           Object.assign(measured, beforeMeasured);
           throw error;
         }
@@ -201,6 +229,7 @@ function fixture(options?: {
   return {
     service: new UsageQuotaService(prisma as never),
     rows,
+    thresholdEvents,
     measured,
     transaction,
     prisma,
@@ -230,6 +259,81 @@ describe('UsageQuotaService', () => {
     expect(
       results.filter((result) => result.status === 'rejected'),
     ).toHaveLength(1);
+  });
+
+  it('records each organization request threshold once per UTC month', async () => {
+    const { service, thresholdEvents } = fixture({
+      organizationRequestLimit: 10,
+      measuredRequests: 6,
+    });
+
+    await service.begin({ appcode: 'APP', operationKey: 'september-1' });
+    await service.begin({ appcode: 'APP', operationKey: 'september-2' });
+    expect(thresholdEvents).toEqual([
+      expect.objectContaining({
+        periodKey: '2026-09',
+        metric: 'REQUESTS',
+        thresholdPercent: 70,
+        observedValue: 7,
+      }),
+    ]);
+
+    jest.setSystemTime(new Date('2026-10-01T00:00:00.000Z'));
+    await service.begin({ appcode: 'APP', operationKey: 'october-1' });
+    expect(thresholdEvents).toEqual([
+      expect.objectContaining({ periodKey: '2026-09' }),
+      expect.objectContaining({
+        periodKey: '2026-10',
+        metric: 'REQUESTS',
+        thresholdPercent: 70,
+      }),
+    ]);
+  });
+
+  it('records organization token thresholds without duplicating earlier levels', async () => {
+    const { service, thresholdEvents } = fixture({
+      organizationRequestLimit: 100,
+      organizationTokenLimit: 100,
+      appTokenLimit: 100,
+    });
+    const first = await service.begin({
+      appcode: 'APP',
+      operationKey: 'token-70',
+    });
+    await service.reserveTokens(first, 70);
+    const second = await service.begin({
+      appcode: 'APP',
+      operationKey: 'token-90',
+    });
+    await service.reserveTokens(second, 20);
+
+    expect(
+      thresholdEvents
+        .filter((event) => event.metric === 'TOKENS')
+        .map((event) => event.thresholdPercent),
+    ).toEqual([70, 90]);
+  });
+
+  it('rolls back quota admission when threshold persistence fails and permits retry', async () => {
+    const { service, rows, thresholdEvents, transaction } = fixture({
+      organizationRequestLimit: 10,
+      measuredRequests: 6,
+    });
+    transaction.consoleUsageThresholdEvent.createMany.mockRejectedValueOnce(
+      new Error('threshold event failed'),
+    );
+
+    await expect(
+      service.begin({ appcode: 'APP', operationKey: 'retryable' }),
+    ).rejects.toThrow('threshold event failed');
+    expect(rows).toHaveLength(0);
+    expect(thresholdEvents).toHaveLength(0);
+
+    await expect(
+      service.begin({ appcode: 'APP', operationKey: 'retryable' }),
+    ).resolves.toBeTruthy();
+    expect(rows).toHaveLength(1);
+    expect(thresholdEvents).toHaveLength(1);
   });
 
   it('rejects duplicate operation keys in the transaction mock', async () => {

@@ -114,6 +114,28 @@ describe('SecurityAuditService Console actor contract', () => {
     });
   });
 
+  it('reports best-effort Console audit persistence failure without throwing', async () => {
+    const create = jest.fn().mockRejectedValue(new Error('audit unavailable'));
+    const service = new SecurityAuditService({
+      securityAuditEvent: { create, findMany: jest.fn() },
+    } as never);
+    const loggerSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(
+      service.recordConsole({
+        eventType: 'CONSOLE_APP_UPDATED',
+        identity,
+        appId: '77777777-7777-4777-8777-777777777777',
+      }),
+    ).resolves.toBe(false);
+    expect(loggerSpy).toHaveBeenCalledWith(
+      'Security audit persistence failed: audit unavailable',
+    );
+    loggerSpy.mockRestore();
+  });
+
   it('supports organization and Works user filters with a bounded limit', async () => {
     const { findMany, service } = createService();
 

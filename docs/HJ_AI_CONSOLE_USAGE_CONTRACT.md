@@ -1,4 +1,4 @@
-# Console 사용량·요청 로그 계약 (M2)
+# Console 사용량·요청 로그·임계치 계약 (M2/M4)
 
 작성일: 2026-09-18. 대상: HJ_AI_Server Console API/Web.
 
@@ -86,7 +86,65 @@ Family는 원문 저장도 하지 않는다.
 조직 한도는 console_organization.monthlyRequestLimit/monthlyTokenLimit의 승인된 DB 설정 절차로
 관리한다. 현재 Console 앱 수정 API와 화면은 한도를 변경하지 않는다. 조직 한도 변경용 Console API는 없다.
 
-## 4. 조회·검증
+## 4. 월 사용량 임계치 event
+
+조직 월 요청 수와 조직 월 token의 committed 사용량이 설정 한도의 70%, 90%, 100%에
+도달하면 `console_usage_threshold_event`에 event를 저장한다. committed는 확정 사용량과
+활성 RESERVED/UNCERTAIN 예약의 합이며, 성공한 요청 admission 또는 token 예약과 같은
+transaction에서 event를 기록한다. 앱 token 한도는 이 조직 알림 event의 대상이 아니다.
+
+- 중복 범위는 `organizationId + UTC periodKey + metric + thresholdPercent`다. DB unique
+  constraint와 `createMany(skipDuplicates)`를 함께 적용하여 단일·다중 프로세스 경합에서도
+  같은 임계치가 한 번만 저장된다. 한 번의 사용으로 여러 임계치를 넘으면 도달한 임계치를
+  모두 각각 저장한다.
+- event 저장이 실패하면 요청 admission/token 예약도 rollback한다. 동일 operation 재시도는
+  기존 operation 멱등성 정책을 따르고, rollback된 요청은 다시 임계치를 평가한다. 이미 저장된
+  event는 unique key 때문에 재시도해도 늘어나지 않는다.
+- 요청의 월은 admission 시점의 UTC `periodKey`, token은 해당 예약의 승인 월을 사용한다.
+  따라서 월 변경 뒤 새 요청은 새 범위에서 다시 70/90/100%를 평가하고, 이전 달 예약의 후속
+  token 처리는 이전 달 event에 귀속한다.
+- null 한도는 무제한이므로 event를 만들지 않는다. 0 한도는 양수 사용을 거절하며 event를
+  만들지 않는다. 설정 변경만으로 과거 사용량을 소급 backfill하지 않고 다음 성공한 사용
+  동작에서 현재 한도와 committed 사용량을 평가한다.
+- event는 전달 가능한 내구성 있는 사실 기록이다. M4-01은 외부 메시지를 발송하지 않는다.
+
+### 4.1 Console 알림함 전달 계약
+
+`GET /console-api/v1/usage/alerts`는 인증 identity의 조직과 현재 UTC 월 event만 반환한다.
+채널은 `console-inbox`, 전달 방식은 pull, 수신 대상은 활성 membership을 가진 `usage:read`
+권한 사용자다. guard와 identity resolver가 상태·권한을 검사하며 organization ID를 요청에서
+받지 않는다. 응답은 읽기 전용이고 100% `critical`, 90% `warning`, 70% `notice` severity를
+제공한다.
+
+pull 채널의 재전송은 새 event나 외부 메시지를 만드는 방식이 아니라 같은 event ID를 다시
+조회하는 `idempotent-refetch`다. 중복 기준은 원장의
+`organizationId + periodKey + metric + thresholdPercent` unique key다. 따라서 네트워크 오류에는
+클라이언트가 안전하게 재조회하며 별도 횟수 제한·backoff·delivery 상태는 없다. 외부 이메일·
+메신저 채널은 검증된 주소·동의·전송 provider·실패 queue가 확정되기 전에는 활성화하지 않는다.
+
+추가 migration `20260923100000_add_console_usage_threshold_event`는 enum, 조직 외래키,
+70/90/100·양수 한도 제약과 위 unique index를 추가한다. 기존 사용량의 backfill은 없다.
+
+## 5. Console 홈 요약
+
+`/console` 홈은 새 집계 원장을 만들지 않고 다음 조직 범위 API를 병렬 조회한다.
+
+- `GET /console-api/v1/usage/monthly`: UTC 당월 요청·token의 확정/예약/committed, 한도·잔여량,
+  결과가 측정된 요청 기준 성공률과 지연 측정 요청 기준 p95.
+- `GET /console-api/v1/request-logs?period=month&status=failed&limit=5`: 원문을 제외한 최근 실패
+  metadata 최대 5건. 전체 보기는 동일 월·실패 필터를 유지한다.
+- `GET /console-api/v1/apps`: 현재 credential 만료일이 있는 앱을 가까운 순으로 최대 5개 표시한다.
+  30일 이하는 주의 상태이며 앱의 Credential 화면으로 연결한다.
+
+홈의 월 요청·token 큰 숫자는 `committed=used+reserved`이며 확정·예약 값을 함께 표기한다.
+null 한도는 무제한, 0 한도는 사용 불가, 결과·지연 또는 잔여량을 계산할 수 없으면 미측정으로
+표시한다. 미측정을 0으로 바꾸지 않는다. 최근 오류에는 질문·응답 원문을 표시하지 않는다.
+
+지식 색인 실패는 M5가 제공할 조직 범위 `knowledge-index-failures-v1` 계약의
+`failedJobs`, `lastFailureAt`, `affectedApps`를 소비한다. M5 연결 전에는 “미측정/M5 연결 예정”으로
+표시하며 실패 0건으로 간주하지 않는다.
+
+## 6. 조회·검증
 
 요청 목록은 기본 25/최대 100건, CSV는 최대 5,000건이며 초과 시 x-export-truncated=true를 반환한다.
 cursor는 집계 시각과 source:UUID의 내림차순 복합 키다. 조직 조건은 매 요청에 다시 적용한다.
