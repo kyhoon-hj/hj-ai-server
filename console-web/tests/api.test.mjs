@@ -5,10 +5,75 @@ import {
   auditApi,
   ConsoleApiError,
   credentialsApi,
+  knowledgeApi,
   playgroundApi,
   requestLogsApi,
   usageApi,
 } from '../public/api.js';
+
+test('지식 파일 업로드는 multipart로 보내고 정책 변경은 JSON으로 보낸다', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const requests = [];
+  globalThis.fetch = async (path, options) => {
+    requests.push({ path, options });
+    return new Response(JSON.stringify({ id: 'file-1' }), {
+      status: options.method === 'POST' ? 201 : 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  await knowledgeApi.upload('app-1', new File(['content'], 'policy.txt', { type: 'text/plain' }));
+  await knowledgeApi.updatePolicy('app-1', 'file-1', { businessStatus: 'PUBLISHED' });
+  assert.equal(requests[0].path, '/console-api/v1/apps/app-1/knowledge/files');
+  assert.equal(requests[0].options.headers['content-type'], undefined);
+  assert.equal(requests[0].options.body.get('file').name, 'policy.txt');
+  assert.equal(requests[1].path, '/console-api/v1/apps/app-1/knowledge/files/file-1/policy');
+  assert.deepEqual(JSON.parse(requests[1].options.body), { businessStatus: 'PUBLISHED' });
+});
+
+test('지식 색인 작업과 조직 실패 지표를 Console API로 조회한다', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const paths = [];
+  globalThis.fetch = async (path, options) => {
+    paths.push(`${options.method}:${path}`);
+    return new Response(JSON.stringify({ id: 'job-1' }), { headers: { 'content-type': 'application/json' } });
+  };
+  await knowledgeApi.indexFailures();
+  await knowledgeApi.jobs('app-1', 'file-1');
+  await knowledgeApi.job('app-1', 'job-1');
+  await knowledgeApi.submitIndex('app-1', 'file-1');
+  await knowledgeApi.submitReindex('app-1', 'file-1');
+  await knowledgeApi.retry('app-1', 'job-1');
+  assert.deepEqual(paths, [
+    'GET:/console-api/v1/knowledge/index-failures',
+    'GET:/console-api/v1/apps/app-1/knowledge/files/file-1/index-jobs',
+    'GET:/console-api/v1/apps/app-1/knowledge/index-jobs/job-1',
+    'POST:/console-api/v1/apps/app-1/knowledge/files/file-1/index-jobs',
+    'POST:/console-api/v1/apps/app-1/knowledge/files/file-1/reindex-jobs',
+    'POST:/console-api/v1/apps/app-1/knowledge/index-jobs/job-1/retry',
+  ]);
+});
+
+test('보관 목록과 안전한 삭제·복구 경로를 구분한다', async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const paths = [];
+  globalThis.fetch = async (path, options) => {
+    paths.push(`${options.method}:${path}`);
+    return new Response(JSON.stringify({ id: 'file-1', status: 'archived' }), { headers: { 'content-type': 'application/json' } });
+  };
+  await knowledgeApi.list('app-1', true);
+  await knowledgeApi.archive('app-1', 'file-1');
+  await knowledgeApi.archive('app-1', 'file-1', true);
+  await knowledgeApi.retryObjectCleanup('app-1', 'file-1');
+  assert.deepEqual(paths, [
+    'GET:/console-api/v1/apps/app-1/knowledge/files?includeArchived=true',
+    'DELETE:/console-api/v1/apps/app-1/knowledge/files/file-1',
+    'DELETE:/console-api/v1/apps/app-1/knowledge/files/file-1?deleteObject=true',
+    'POST:/console-api/v1/apps/app-1/knowledge/files/file-1/object-cleanup/retry',
+  ]);
+});
 
 test('앱 목록 요청은 same-origin credential 정책을 사용한다', async (context) => {
   const originalFetch = globalThis.fetch;

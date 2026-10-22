@@ -69,6 +69,39 @@ export class UsageQuotaService {
         throw new ConflictException('USAGE_QUOTA_OPERATION_ALREADY_RESERVED');
       }
 
+      if (policy.appRequestLimit !== null) {
+        const scope = { appcode: input.appcode, periodKey };
+        const [measured, active] = await Promise.all([
+          this.measuredUsage(transaction, scope),
+          this.activeReservations(transaction, scope),
+        ]);
+        if (
+          measured.requests + Number(active._sum.reservedRequests ?? 0) + 1 >
+          policy.appRequestLimit
+        ) {
+          throw this.limitExceeded(
+            'APP_MONTHLY_REQUEST_LIMIT_EXCEEDED',
+            policy.appRequestLimit,
+          );
+        }
+      }
+
+      // Reject exhausted budgets before retrieval or external classification.
+      // The full generation estimate is still reserved immediately before generation.
+      await this.assertTokenLimit(transaction, {
+        scope: { appcode: input.appcode, periodKey },
+        limit: policy.appTokenLimit,
+        requestedTokens: 1,
+        code: 'APP_MONTHLY_TOKEN_LIMIT_EXCEEDED',
+      });
+      if (policy.organizationId)
+        await this.assertTokenLimit(transaction, {
+          scope: { organizationId: policy.organizationId, periodKey },
+          limit: policy.organizationTokenLimit,
+          requestedTokens: 1,
+          code: 'ORGANIZATION_MONTHLY_TOKEN_LIMIT_EXCEEDED',
+        });
+
       if (policy.organizationId && policy.organizationRequestLimit !== null) {
         const [measured, active] = await Promise.all([
           this.measuredUsage(transaction, {
@@ -350,6 +383,7 @@ export class UsageQuotaService {
       where: { appcode },
       select: {
         monthlyTokenLimit: true,
+        monthlyRequestLimit: true,
         consoleOwnership: {
           select: {
             organizationId: true,
@@ -364,6 +398,7 @@ export class UsageQuotaService {
       throw new ServiceUnavailableException('USAGE_QUOTA_APP_NOT_FOUND');
     }
     return {
+      appRequestLimit: app.monthlyRequestLimit ?? null,
       appTokenLimit: app.monthlyTokenLimit,
       organizationId: app.consoleOwnership?.organizationId ?? null,
       organizationRequestLimit:
@@ -375,6 +410,7 @@ export class UsageQuotaService {
 
   private hasLimit(policy: Awaited<ReturnType<UsageQuotaService['policy']>>) {
     return (
+      policy.appRequestLimit !== null ||
       policy.appTokenLimit !== null ||
       policy.organizationRequestLimit !== null ||
       policy.organizationTokenLimit !== null

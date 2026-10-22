@@ -35,6 +35,25 @@ test('Console 문서 경로와 정적 asset을 제공한다', async (context) =>
   assert.match(await assetResponse.text(), /appsApi/);
 });
 
+test('Works callback preserves redirect, separate cookies and browser Origin through BFF', async (context) => {
+  const received = [];
+  const upstream = createServer((request, response) => {
+    received.push({ url: request.url, origin: request.headers.origin });
+    response.writeHead(302, { location: '/console', 'set-cookie': ['hj_console_state=; Max-Age=0; HttpOnly; Secure; SameSite=Lax', 'hj_console_session=opaque; HttpOnly; Secure; SameSite=Lax'] });
+    response.end();
+  });
+  const server = createConsoleWebServer({ aiServerOrigin: await listen(upstream) });
+  const origin = await listen(server);
+  context.after(async () => { await close(server); await close(upstream); });
+  const callback = await fetch(`${origin}/console/auth/callback?code=test-code&state=test-state`, { redirect: 'manual' });
+  assert.equal(callback.status, 302);
+  assert.equal(callback.headers.get('location'), '/console');
+  assert.equal(callback.headers.getSetCookie().length, 2);
+  assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
+  await fetch(`${origin}/console-api/v1/auth/logout`, { method: 'POST', headers: { origin } , redirect: 'manual' });
+  assert.deepEqual(received, [{ url: '/console-api/v1/auth/callback?code=test-code&state=test-state', origin: undefined }, { url: '/console-api/v1/auth/logout', origin }]);
+});
+
 test('Console API 요청만 AI Server로 전달한다', async (context) => {
   const received = [];
   const upstream = createServer(async (request, response) => {
@@ -80,6 +99,27 @@ test('Console API 요청만 AI Server로 전달한다', async (context) => {
       correlationId: 'browser-1',
     },
   ]);
+});
+
+test('1MB가 넘는 지식 multipart 업로드를 AI Server로 전달한다', async (context) => {
+  let received;
+  const upstream = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    received = { size: Buffer.concat(chunks).length, type: request.headers['content-type'] };
+    response.writeHead(201, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ id: 'file-1' }));
+  });
+  const upstreamOrigin = await listen(upstream);
+  const server = createConsoleWebServer({ aiServerOrigin: upstreamOrigin });
+  const origin = await listen(server);
+  context.after(async () => { await close(server); await close(upstream); });
+  const form = new FormData();
+  form.append('file', new File([Buffer.alloc(1_100_000, 65)], 'large.txt', { type: 'text/plain' }));
+  const response = await fetch(`${origin}/console-api/v1/apps/00000000-0000-4000-8000-000000000001/knowledge/files`, { method: 'POST', body: form });
+  assert.equal(response.status, 201);
+  assert.ok(received.size > 1_048_576);
+  assert.match(received.type, /^multipart\/form-data; boundary=/);
 });
 
 test('CSV 다운로드에 필요한 제한된 응답 header를 전달한다', async (context) => {

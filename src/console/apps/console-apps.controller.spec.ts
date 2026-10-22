@@ -156,6 +156,40 @@ describe('Console apps HTTP contract', () => {
       .expect(401);
   });
 
+  it.each([null, 0, 25, 2147483647])(
+    'accepts monthly quota %s',
+    async (limit) => {
+      const limits = { monthlyRequestLimit: limit, monthlyTokenLimit: limit };
+      await request(app.getHttpServer() as Server)
+        .patch('/console-api/v1/apps/' + appId)
+        .send(limits)
+        .expect(200);
+      expect(update).toHaveBeenCalledWith(appId, limits, identity, undefined);
+    },
+  );
+
+  it.each([-1, 0.5, '100', false, 2147483648])(
+    'rejects invalid monthly quota %s',
+    async (limit) => {
+      for (const field of ['monthlyRequestLimit', 'monthlyTokenLimit']) {
+        await request(app.getHttpServer() as Server)
+          .patch('/console-api/v1/apps/' + appId)
+          .send({ [field]: limit })
+          .expect(400);
+      }
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('denies quota changes for read-only members', async () => {
+    identity = identityFixture(['apps:read']);
+    await request(app.getHttpServer() as Server)
+      .patch('/console-api/v1/apps/' + appId)
+      .send({ monthlyRequestLimit: null })
+      .expect(403);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('enforces separate credential read, rotate and revoke permissions', async () => {
     identity = identityFixture(['apps:read']);
     await request(app.getHttpServer() as Server)

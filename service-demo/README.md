@@ -63,3 +63,14 @@ npm audit --omit=dev
 ```
 
 Fixture 버전은 `svc-s0-v1`입니다. 현재 상담원 검토 요청은 세션 내 접수 상태까지 제공하며, 영구 검토함 저장은 후속 운영 UX 단계에서 연결합니다.
+
+## Jev 로컬 비교 환경
+
+2026-10-22 준비한 환경은 루트에서 `node scripts/jev-local-demo.mjs server classify`로
+비교 전용 로컬 DB를 사용하는 AI 서버를 실행하고, 이 디렉터리에서 `npm run dev`로 연결합니다.
+Jev 키는 AI 서버의 루트 `.env`에만 설정합니다. 고객 답변은 Bedrock이 생성하고
+판단 결과는 서버 DB에 기록합니다. 현재 모드는 Jev가 문의를 먼저 분류하고 Bedrock이 유형별 지침과 자료로 답변하는 `classify`입니다.
+실행 결과는 [선분류 연동 보고서](../docs/JEV_AI_INQUIRY_ROUTING_2026-10-22.md)를 참조합니다.
+
+질문별 결과, 실제 비용, 남은 응답 형식 문제는
+[로컬 비교 보고서](../docs/JEV_AI_DEMO_COMPARISON_2026-10-22.md)를 참조합니다.

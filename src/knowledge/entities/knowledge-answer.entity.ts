@@ -1,5 +1,78 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { readAwsAttempts } from '../../common/aws/aws-attempts';
+import { JEV_INQUIRY_CATEGORIES } from '../../jev/jev-inquiry-policy';
+
+class ClassificationUsageEntity {
+  @ApiProperty({ type: 'integer', minimum: 0 })
+  inputTokens!: number;
+  @ApiProperty({ type: 'integer', minimum: 0 })
+  outputTokens!: number;
+}
+
+class ClassificationBillingEntity {
+  @ApiProperty({ type: Number, minimum: 0, nullable: true })
+  creditsCharged!: number | null;
+  @ApiProperty({ type: Number, minimum: 0, nullable: true })
+  paidInputTokensUsed!: number | null;
+}
+
+export class KnowledgeClassificationEntity {
+  @ApiProperty({ enum: ['classified', 'unavailable', 'skipped'] })
+  status!: string;
+  @ApiProperty({
+    type: String,
+    enum: Object.keys(JEV_INQUIRY_CATEGORIES),
+    nullable: true,
+  })
+  category!: string | null;
+  @ApiProperty({
+    type: String,
+    enum: Object.keys(JEV_INQUIRY_CATEGORIES),
+    nullable: true,
+  })
+  appliedCategory!: string | null;
+  @ApiProperty()
+  applied!: boolean;
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    maximum: 1,
+    nullable: true,
+    description: '분류 confidence이며 답변 정확도가 아닙니다.',
+  })
+  confidence!: number | null;
+  @ApiProperty({ type: Number, minimum: 0, maximum: 1, nullable: true })
+  selectedProbability!: number | null;
+  @ApiProperty({ type: Number, minimum: 0, maximum: 1, nullable: true })
+  minimumConfidence!: number | null;
+  @ApiProperty({ type: String, nullable: true })
+  policyVersion!: string | null;
+  @ApiProperty({ type: Number, minimum: 0, nullable: true })
+  durationMs!: number | null;
+  @ApiProperty({
+    type: String,
+    enum: [
+      'low_confidence',
+      'classification_unavailable',
+      'not_enabled_for_request',
+      'request_cancelled',
+    ],
+    nullable: true,
+  })
+  reason!: string | null;
+  @ApiProperty({
+    type: String,
+    enum: ['CLASSIFICATION_UNAVAILABLE', 'CLASSIFICATION_INVALID_RESPONSE'],
+    nullable: true,
+  })
+  errorCode!: string | null;
+  @ApiProperty({ enum: ['succeeded', 'not_sent', 'failed', 'unknown'] })
+  outcome!: string;
+  @ApiProperty({ type: ClassificationUsageEntity, nullable: true })
+  usage!: ClassificationUsageEntity | null;
+  @ApiProperty({ type: ClassificationBillingEntity })
+  billing!: ClassificationBillingEntity;
+}
 
 class KnowledgeRetrievalEntity {
   @ApiProperty()
@@ -64,6 +137,11 @@ class KnowledgePerformanceEntity {
 }
 
 export class KnowledgeAnswerEntity {
+  @ApiPropertyOptional({
+    type: KnowledgeClassificationEntity,
+    description: 'includeClassification=true인 200 응답에 포함됩니다.',
+  })
+  classification?: KnowledgeClassificationEntity;
   @ApiPropertyOptional({
     type: Object,
     description: '생성 호출의 SDK 시도·재시도·재시도 지연. 누락 측정은 null.',

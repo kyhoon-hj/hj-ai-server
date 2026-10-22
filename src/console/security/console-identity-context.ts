@@ -30,6 +30,8 @@ export interface ConsoleIdentityContext {
   membershipId: string;
   membershipStatus: 'ACTIVE' | 'REMOVED';
   permissions: readonly ConsolePermission[];
+  displayName?: string;
+  organizationName?: string;
 }
 
 export type ConsoleRequest = CorrelatedRequest & {

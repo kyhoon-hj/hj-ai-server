@@ -498,6 +498,7 @@ export class ConsoleUsageService {
                   appcode: true,
                   appname: true,
                   monthlyTokenLimit: true,
+                  monthlyRequestLimit: true,
                 },
               },
             },
@@ -565,6 +566,15 @@ export class ConsoleUsageService {
               id: app.id,
               appcode: app.appcode,
               appname: app.appname,
+              requests: this.limitMetric(
+                app.monthlyRequestLimit ?? null,
+                Number(appRow?.requestCount ?? 0),
+                pending
+                  .filter((item) => item.appcode === app.appcode)
+                  .reduce((sum, item) => sum + item.reservedRequests, 0),
+                0,
+                organizationChanged,
+              ),
               tokens: this.limitMetric(
                 app.monthlyTokenLimit,
                 Number(appRow?.totalTokens ?? 0),
@@ -580,7 +590,7 @@ export class ConsoleUsageService {
           management: {
             organization:
               'platform-admin: console_organization (approved configuration procedure; no Console edit API)',
-            app: 'platform-admin: PATCH /app-info/:id monthlyTokenLimit',
+            app: 'apps:write: PATCH /console-api/v1/apps/:id monthlyRequestLimit/monthlyTokenLimit',
           },
         };
       },

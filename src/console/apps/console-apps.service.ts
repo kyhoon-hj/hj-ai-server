@@ -11,6 +11,9 @@ const CONSOLE_APP_SELECT = {
   id: true,
   appname: true,
   appcode: true,
+  maxStorageMb: true,
+  monthlyRequestLimit: true,
+  monthlyTokenLimit: true,
   status: true,
   remark: true,
   appkeyExpiresAt: true,
@@ -93,6 +96,8 @@ export class ConsoleAppsService {
         appname: dto.appname,
         remark: dto.remark,
         status: dto.status,
+        monthlyRequestLimit: dto.monthlyRequestLimit,
+        monthlyTokenLimit: dto.monthlyTokenLimit,
       },
       select: CONSOLE_APP_SELECT,
     });

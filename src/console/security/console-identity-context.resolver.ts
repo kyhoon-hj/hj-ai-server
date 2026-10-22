@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ConsoleWorksAuthService } from './console-works-auth.service';
 import type {
   ConsoleIdentityContext,
   ConsoleRequest,
@@ -34,5 +35,19 @@ export class DevelopmentConsoleIdentityContextResolver implements ConsoleIdentit
         ? DEVELOPMENT_CONSOLE_IDENTITY
         : null,
     );
+  }
+}
+
+@Injectable()
+export class SessionConsoleIdentityContextResolver implements ConsoleIdentityContextResolver {
+  constructor(
+    private readonly auth: ConsoleWorksAuthService,
+    private readonly development: DevelopmentConsoleIdentityContextResolver,
+  ) {}
+
+  resolve(request: ConsoleRequest) {
+    return this.auth.enabled()
+      ? this.auth.resolve(request)
+      : this.development.resolve();
   }
 }

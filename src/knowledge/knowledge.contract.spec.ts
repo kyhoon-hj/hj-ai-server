@@ -1,12 +1,14 @@
 import { Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { KnowledgeService } from './knowledge.service';
+import type { JevService } from '../jev/jev.service';
 
 describe('KnowledgeService provider contract', () => {
   const createService = (options?: {
     rawMatches?: unknown[];
     rawError?: unknown;
     memoryMatches?: unknown[];
+    jev?: Partial<Pick<JevService, 'evaluateRag' | 'classifyInquiry'>>;
   }) => {
     let capturedQuery: unknown;
     let loggedRequestId: string | undefined;
@@ -73,6 +75,13 @@ describe('KnowledgeService provider contract', () => {
       {} as never,
       embeddingService as never,
       quota as never,
+      (options?.jev
+        ? {
+            classifyInquiry: jest.fn().mockResolvedValue(undefined),
+            evaluateRag: jest.fn().mockResolvedValue(undefined),
+            ...options.jev,
+          }
+        : undefined) as JevService | undefined,
     );
     const bedrockSend = jest.fn().mockResolvedValue({
       output: {
@@ -108,6 +117,273 @@ describe('KnowledgeService provider contract', () => {
       getLoggedRequestId: () => loggedRequestId,
     };
   };
+
+  it.each([undefined, false, true])(
+    'returns classification only for opt-in %s',
+    async (includeClassification) => {
+      const { service, bedrockSend, queryLogCreate } = createService();
+      const result = await service.createRagResponse(
+        { query: '문의', strict: true, includeClassification },
+        'test-app',
+        'classification-request',
+      );
+      expect(bedrockSend).not.toHaveBeenCalled();
+      if (includeClassification)
+        expect(result).toHaveProperty('classification.status', 'skipped');
+      else expect(result).not.toHaveProperty('classification');
+      expect(queryLogCreate.mock.calls[0][0]).toMatchObject({
+        data: {
+          requestId: result.requestId,
+          execution: {
+            classification: { status: 'skipped', policyVersion: null },
+          },
+        },
+      });
+    },
+  );
+
+  it('does not call classification, retrieval or generation when admission is rejected', async () => {
+    const classifyInquiry = jest.fn();
+    const { service, quota, bedrockSend, embeddingService } = createService({
+      jev: { classifyInquiry },
+    });
+    quota.begin.mockRejectedValueOnce(
+      new Error('APP_MONTHLY_REQUEST_LIMIT_EXCEEDED'),
+    );
+    await expect(
+      service.createRagResponse(
+        { query: '문의', includeClassification: true },
+        'test-app',
+      ),
+    ).rejects.toThrow('APP_MONTHLY_REQUEST_LIMIT_EXCEEDED');
+    expect(classifyInquiry).not.toHaveBeenCalled();
+    expect(embeddingService.createEmbedding).not.toHaveBeenCalled();
+    expect(bedrockSend).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'answered',
+    'insufficient_evidence',
+    'invalid_model_response',
+    'incomplete_model_response',
+    'request_failed',
+  ])('preserves classification and request ID for %s', async (status) => {
+    const classification = {
+      status: 'unavailable',
+      policyVersion: 'inquiry-v1',
+      minimumConfidence: 0.7,
+      durationMs: 12,
+      outcome: 'unknown',
+      code: 'JEV_AI_INVALID_RESPONSE',
+      applied: false,
+      billing: { creditsCharged: 1 },
+      usage: { inputTokens: 10, outputTokens: 2 },
+    };
+    const classifyInquiry = jest.fn().mockResolvedValue(classification);
+    const { service, bedrockSend, queryLogCreate } = createService({
+      jev: { classifyInquiry },
+      rawMatches:
+        status === 'insufficient_evidence'
+          ? []
+          : [
+              {
+                id: 'chunk-1',
+                fileId: 'file-1',
+                fileName: 'policy',
+                key: 'private/key',
+                content: '검수 자료',
+                score: 0.9,
+              },
+            ],
+    });
+    if (status === 'invalid_model_response')
+      bedrockSend.mockResolvedValueOnce({
+        output: { message: { content: [{ text: 'not JSON' }] } },
+        stopReason: 'end_turn',
+      });
+    if (status === 'incomplete_model_response')
+      bedrockSend.mockResolvedValueOnce({
+        output: { message: { content: [{ text: '{}' }] } },
+        stopReason: 'max_tokens',
+      });
+    if (status === 'request_failed')
+      bedrockSend.mockRejectedValueOnce(new Error('provider failed'));
+    const pending = service.createRagResponse(
+      { query: '문의', strict: true, includeClassification: true },
+      'test-app',
+      'classification-request',
+    );
+    let response:
+      | Awaited<ReturnType<KnowledgeService['createRagResponse']>>
+      | undefined;
+    if (status === 'request_failed')
+      await expect(pending).rejects.toThrow('provider failed');
+    else response = await pending;
+    const saved = queryLogCreate.mock.calls[0][0].data as unknown as {
+      requestId: string;
+      execution: { classification: unknown; jevClassification: unknown };
+    };
+    expect(saved.requestId).toBe('classification-request');
+    expect(saved.execution.jevClassification).toEqual(classification);
+    expect(saved.execution.classification).toMatchObject({
+      status: 'unavailable',
+      policyVersion: 'inquiry-v1',
+      minimumConfidence: 0.7,
+      errorCode: 'CLASSIFICATION_INVALID_RESPONSE',
+      outcome: 'unknown',
+      billing: { creditsCharged: 1, paidInputTokensUsed: null },
+      usage: { inputTokens: 10, outputTokens: 2 },
+    });
+    if (response) {
+      expect(response.answerStatus).toBe(status);
+      expect(response.classification).toEqual(saved.execution.classification);
+      expect(response.requestId).toBe(saved.requestId);
+      if (status === 'answered')
+        expect(response.usage).toMatchObject({ totalTokens: 15 });
+    }
+    expect(classifyInquiry).toHaveBeenCalledTimes(1);
+    if (status === 'insufficient_evidence')
+      expect(bedrockSend).not.toHaveBeenCalled();
+  });
+
+  it.each(['evaluated', 'unavailable'])(
+    'records Jev %s separately while preserving the answer, citation mapping and Bedrock usage',
+    async (status) => {
+      const evaluateRag = jest.fn().mockResolvedValue({
+        mode: 'shadow',
+        status,
+        usage: { inputTokens: 99 },
+      });
+      const { service, queryLogCreate, quota } = createService({
+        jev: { evaluateRag },
+        rawMatches: [
+          {
+            id: 'chunk-1',
+            fileId: 'file-1',
+            fileName: 'policy',
+            key: 'private/key',
+            content: '문을 오전 10시에 엽니다.',
+            score: 0.5,
+          },
+        ],
+      });
+      const result = await service.createRagResponse(
+        { query: '운영시간은?' },
+        'test-app',
+      );
+      expect(result).toMatchObject({
+        answer: '게시판 승인 답변을 참고하세요.',
+        answerable: true,
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        sources: [{ index: 1, chunkId: 'chunk-1' }],
+      });
+      expect(result).not.toHaveProperty('jev');
+      expect(evaluateRag).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appcode: 'test-app',
+          sourceIndexes: [1],
+          answerable: true,
+        }),
+      );
+      const log = queryLogCreate.mock.calls[0][0] as unknown as {
+        data: { totaltokens: number; execution: { jev: { status: string } } };
+      };
+      expect(log.data.totaltokens).toBe(15);
+      expect(log.data.execution.jev.status).toBe(status);
+      expect(quota.settle).toHaveBeenCalledWith(expect.anything(), 15);
+    },
+  );
+
+  it.each(['classified', 'unavailable'])(
+    'classifies before retrieval and generation, with safe guidance or fallback for %s',
+    async (status) => {
+      const classification =
+        status === 'classified'
+          ? {
+              mode: 'classify',
+              status,
+              category: 'refund_exchange',
+              appliedCategory: 'refund_exchange',
+              applied: true,
+              usage: { inputTokens: 80 },
+              billing: { creditsCharged: 1 },
+            }
+          : {
+              mode: 'classify',
+              status,
+              applied: false,
+              code: 'JEV_AI_BALANCE_REQUIRED',
+            };
+      const classifyInquiry = jest.fn().mockResolvedValue(classification);
+      const { service, embeddingService, bedrockSend, queryLogCreate, quota } =
+        createService({
+          jev: { classifyInquiry },
+          rawMatches: [
+            {
+              id: 'chunk-1',
+              fileId: 'file-1',
+              fileName: 'policy',
+              key: 'private/key',
+              content: '교환 기한은 7일입니다.',
+              score: 0.9,
+            },
+          ],
+        });
+      const response = await service.createRagResponse(
+        { query: '8일 전 구매한 상품 교환 가능?' },
+        'test-app',
+      );
+      expect(classifyInquiry).toHaveBeenCalledWith({
+        appcode: 'test-app',
+        query: '8일 전 구매한 상품 교환 가능?',
+        signal: undefined,
+      });
+      expect(classifyInquiry.mock.invocationCallOrder[0]).toBeLessThan(
+        embeddingService.createEmbedding.mock.invocationCallOrder[0],
+      );
+      expect(classifyInquiry.mock.invocationCallOrder[0]).toBeLessThan(
+        bedrockSend.mock.invocationCallOrder[0],
+      );
+      const calls = bedrockSend.mock.calls as unknown as [
+        { input: { system: { text: string }[] } },
+      ][];
+      const system = calls[0][0].input.system;
+      expect(system).toHaveLength(status === 'classified' ? 3 : 2);
+      if (status === 'classified') expect(system[2].text).toContain('기한');
+      const saved = queryLogCreate.mock.calls[0][0] as unknown as {
+        data: { execution: Record<string, unknown> };
+      };
+      expect(saved.data.execution.jevClassification).toEqual(classification);
+      expect(response.usage?.totalTokens).toBe(15);
+      expect(quota.settle).toHaveBeenCalledWith(expect.anything(), 15);
+      expect(response).not.toHaveProperty('jevClassification');
+    },
+  );
+
+  it('does not bypass strict no-evidence handling after successful classification', async () => {
+    const classifyInquiry = jest.fn().mockResolvedValue({
+      mode: 'classify',
+      status: 'classified',
+      appliedCategory: 'product',
+      applied: true,
+    });
+    const { service, bedrockSend, queryLogCreate } = createService({
+      jev: { classifyInquiry },
+    });
+    const response = await service.createRagResponse(
+      { query: '가격은?', strict: true },
+      'test-app',
+    );
+    expect(response.answerable).toBe(false);
+    expect(bedrockSend).not.toHaveBeenCalled();
+    const saved = queryLogCreate.mock.calls[0][0] as unknown as {
+      data: { totaltokens: number; execution: Record<string, unknown> };
+    };
+    expect(saved.data.totaltokens).toBe(0);
+    expect(saved.data.execution.jevClassification).toMatchObject({
+      status: 'classified',
+    });
+  });
 
   it.each(['answer', 'no-answer', 'generation-error'])(
     'omits Frame content at the query log sink for %s',

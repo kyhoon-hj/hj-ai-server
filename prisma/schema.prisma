@@ -116,6 +116,7 @@ model AppInfo {
   systemPrompt                     String?                @map("system_prompt")
   maxStorageMb                     Int?                   @map("max_storage_mb")
   monthlyTokenLimit                Int?                   @map("monthly_token_limit")
+  monthlyRequestLimit              Int?                   @map("monthly_request_limit")
   metadata                         Json?
   remark                           String?
   createat                         DateTime               @default(now())
@@ -185,11 +186,33 @@ model ConsoleMembership {
 
   organization ConsoleOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   identity     ConsoleIdentity     @relation(fields: [identityId], references: [id], onDelete: Restrict)
+  sessions     ConsoleSession[]
 
   @@unique([organizationId, identityId])
   @@index([identityId, status])
   @@index([organizationId, status])
   @@map("console_membership")
+}
+
+model ConsoleAuthState {
+  hash      String   @id @db.VarChar(64)
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("console_auth_state")
+}
+
+model ConsoleSession {
+  hash         String   @id @db.VarChar(64)
+  membershipId String   @map("membership_id") @db.Uuid
+  worksRole    ConsoleWorksMembershipRole @map("works_role")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  membership   ConsoleMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@index([membershipId])
+  @@index([expiresAt])
+  @@map("console_session")
 }
 
 model ConsoleAppOwnership {

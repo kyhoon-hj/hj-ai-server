@@ -4,7 +4,7 @@
 
 이 문서는 M1-01~03의 과거 검증 기록 이후 적용되는 정책이다.
 범위는 지식 답변, Bedrock converse/text-response/general-answers, 일반·Family 대화 생성이다.
-검색·파일 색인 embedding은 이 생성 토큰 한도에서 제외한다.
+검색·파일 색인 embedding과 Jev 분류 사용량은 이 생성 토큰 한도에서 제외한다.
 
 ## 1. 월 귀속과 조직
 
@@ -20,7 +20,8 @@ organizationId를 사용한다. 신규 요청은 새달의 독립 한도를 사�
 예약 없는 무제한 호출과 연결 없는 과거 로그는 기록 시각의 UTC 월·현재 앱 소유 조직을 사용한다.
 이는 과거 로그에 없는 승인 시각/조직을 추정하지 않기 위한 fallback이다. 예약 이후 소유 조직이
 바뀌면 토큰 예약에서 USAGE_QUOTA_ORGANIZATION_CHANGED(409)로 거절한다.
-조직 이동·한도 설정 변경은 진행 중 요청을 drain한 뒤 수행해야 한다. 이동·정책 변경의 별도 API는 추가하지 않았다.
+조직 이동은 진행 중 요청을 drain한 뒤 수행해야 한다. 조직 이동 API는 추가하지 않았다.
+2026-10-22부터 Console 앱 수정 API에서 앱별 월 요청·토큰 한도를 설정한다. 저장 후 새 요청에 적용하며 이미 승인·실행 중인 생성은 강제 중단하지 않는다. 즉시 완전 정지가 필요한 운영은 진행 중 요청을 drain해야 한다.
 
 ## 2. operation과 재시도
 
@@ -70,8 +71,8 @@ JSON 직렬화한 messages(근거 포함)를 입력으로 사용한다. provider
 | 상태 | 정책 |
 | --- | --- |
 | 앱/조직 한도 null | 해당 한도 검사 생략. 모든 한도 null이면 예약도 생략 |
-| 조직 요청 한도 0 | 모든 새 생성 요청 승인 거절 |
-| 앱/조직 토큰 한도 0 | 양수 추정 거절. 생성하지 않는 지식 no-answer의 실측 0은 허용 |
+| 앱/조직 요청 한도 0 | 모든 새 생성 요청 승인 거절 |
+| 앱/조직 토큰 한도 0 | 모든 새 생성 요청을 admission에서 거절. 지식 검색·Jev 분류도 실행하지 않음 |
 | provider totalTokens=0 | 유효한 실측 0 |
 | totalTokens 누락/null/음수/소수/범위 초과 | 미측정. 0으로 대체하지 않고 UNCERTAIN 및 추정 예약 유지 |
 | 생성 전 실패/지식 근거 없음 | 모델을 호출하지 않은 것이 확인된 경우 생성 토큰 0 기록·정산 |
@@ -105,3 +106,18 @@ provider·Prisma·직렬화 트랜잭션 mock 및 HTTP 계약 테스트이며 SQ
 복구를 확인했다. 월 경계는 승인 월과 로그 시각 fixture를 사용했다.
 자세한 근거와 제한은 [마일스톤 M1-05](HJ_AI_CONSOLE_MILESTONES.md)를 참조한다.
 M2에서는 일반 Console 사용량·로그·CSV에도 승인 월/조직 귀속과 복구 원장의 합산 정책을 연결한다.
+
+
+## 2026-10-22 앱별 Console 설정과 사전 차단
+
+앱 개요에서 월 요청 횟수와 월 생성 입력·출력 토큰 합계를 설정한다. `apps:write` 및 조직 소유권이 필요하며 감사 기록을 남긴다.
+`PATCH /console-api/v1/apps/:id`에서 monthlyRequestLimit/monthlyTokenLimit은 0~2147483647 정수 또는 null을 받는다.
+생략은 유지, null은 해당 앱 제한 해제, 0은 차단이다. 조직 한도는 계속 함께 적용한다.
+
+앱 요청은 확정 요청+활성/불확실 예약+새 요청이 한도를 초과하면 APP_MONTHLY_REQUEST_LIMIT_EXCEEDED(429)다.
+토큰은 admission에서 잔여량이 1 미만이면 차단하고, 생성 직전에 전체 추정량을 별도로 예약한다.
+토큰 부족 코드는 APP_MONTHLY_TOKEN_LIMIT_EXCEEDED 또는 ORGANIZATION_MONTHLY_TOKEN_LIMIT_EXCEEDED(429)다.
+이미 소진된 한도로 거절한 요청은 실행 로그/요청 사용량에 추가하지 않는다. 승인 후 추정량 부족은 기존 실패 기록 정책을 유지한다.
+
+컬럼 추가 migration `20261022090000_add_app_request_limit`을 서버 업데이트 전에 적용해야 한다.
+구현 검증 시에는 격리 테스트 DB에 적용했다. 이후 2026-10-22 사용자 요청으로 운영 backup·복원 rehearsal 후 migration 26→27 및 서버·Console 배포를 완료했다. 실제 브라우저에서 한도를 설정하고 요청 한도·토큰 0·소진 경계 429, 상향 후 AWS 생성 재개를 확인했다. 기존 9개 앱 설정은 보존했다. [운영 배포·검증 기록](HJ_AI_CONSOLE_QUOTA_DEPLOYMENT_2026-10-22.md)을 참조한다.

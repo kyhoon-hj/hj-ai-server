@@ -18,6 +18,8 @@
     "test": "jest",
     "test:ci": "jest --runInBand",
     "test:demo": "npm --prefix demo test",
+    "jev:check": "node -r ts-node/register scripts/jev-ai.ts check",
+    "jev:decision": "node -r ts-node/register scripts/jev-ai.ts decision",
     "test:console-web": "npm --prefix console-web test",
     "test:console-web-gate": "node scripts/check-console-web-gate.mjs",
     "test:streaming-smoke": "npm --prefix demo run smoke:streaming",

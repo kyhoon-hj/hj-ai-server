@@ -177,7 +177,34 @@ describe('ConsoleAppsService organization ownership contract', () => {
       appname: 'Updated',
       remark: undefined,
       status: 'inactive',
+      monthlyRequestLimit: undefined,
+      monthlyTokenLimit: undefined,
     });
     expect(recordConsole).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores zero and null limits and audits the change', async () => {
+    const { service, appInfoUpdate, recordConsole } = createFixture();
+    await service.update(
+      app.id,
+      { monthlyRequestLimit: 0, monthlyTokenLimit: null },
+      identity,
+    );
+    expect(appInfoUpdate.mock.calls[0][0].data).toMatchObject({
+      monthlyRequestLimit: 0,
+      monthlyTokenLimit: null,
+    });
+    expect(recordConsole.mock.calls[0][0]).toMatchObject({
+      metadata: { changedFields: 'monthlyRequestLimit,monthlyTokenLimit' },
+    });
+  });
+
+  it('does not change another organization app quota', async () => {
+    const { service, findFirst, appInfoUpdate } = createFixture();
+    findFirst.mockResolvedValueOnce(null);
+    await expect(
+      service.update(app.id, { monthlyRequestLimit: 0 }, identity),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(appInfoUpdate).not.toHaveBeenCalled();
   });
 });

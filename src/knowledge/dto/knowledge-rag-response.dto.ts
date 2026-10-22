@@ -16,6 +16,7 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { KnowledgeFiltersContainerDto } from './knowledge-policy.dto';
 
@@ -61,6 +62,14 @@ export class SupplementalKnowledgeSourceDto {
 }
 
 export class KnowledgeRagResponseDto extends KnowledgeFiltersContainerDto {
+  @ApiPropertyOptional({
+    default: false,
+    description: '분류 실행을 변경하지 않고 안전한 분류 요약만 반환합니다.',
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  includeClassification?: boolean;
+
   @ApiProperty({
     example: '등록된 자료 기준으로 S3 RAG 검색 기능을 어떻게 사용하나요?',
   })

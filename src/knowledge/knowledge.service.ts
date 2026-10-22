@@ -42,6 +42,9 @@ import {
   RAG_PROMPT_VERSION,
 } from './rag-answer-contract';
 import { createRagQueryGuidance } from './rag-query-guidance';
+import { JevService } from '../jev/jev.service';
+import { summarizeClassification } from '../jev/jev-classification-summary';
+import { createJevInquiryGuidance } from '../jev/jev-inquiry-policy';
 import {
   assertKnowledgeIndexLease,
   KnowledgeIndexLeaseLostError,
@@ -124,6 +127,7 @@ export class KnowledgeService {
     private readonly chunkingService: ChunkingService,
     private readonly embeddingService: EmbeddingService,
     @Optional() private readonly usageQuota?: UsageQuotaService,
+    @Optional() private readonly jevService?: JevService,
   ) {
     this.requestTimeoutMs = getAwsRequestTimeoutMs(this.configService);
     this.bedrockClient = new BedrockRuntimeClient({
@@ -268,6 +272,7 @@ export class KnowledgeService {
         where: { id: file.id },
         data: {
           status: KNOWLEDGE_FILE_STATUS.archived,
+          businessStatus: 'RETIRED',
           errorMessage: null,
           indexedAt: null,
           metadata: {
@@ -415,11 +420,19 @@ export class KnowledgeService {
   ) {
     const file = await this.prisma.knowledgeFile.findFirst({
       where: { id, appcode },
-      select: { id: true, effectiveFrom: true, effectiveTo: true },
+      select: {
+        id: true,
+        status: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+      },
     });
 
     if (!file) {
       throw new NotFoundException(`Knowledge file ${id} not found`);
+    }
+    if (file.status === KNOWLEDGE_FILE_STATUS.archived) {
+      throw new BadRequestException('보관된 파일의 정책은 변경할 수 없습니다.');
     }
 
     const effectiveFrom =
@@ -932,7 +945,29 @@ export class KnowledgeService {
     let stage = 'retrieval';
     let generationInvoked = false;
     let result: ConverseCommandOutput;
+    let classificationSummary = summarizeClassification(undefined);
     try {
+      stage = 'classification';
+      const classification = await this.jevService?.classifyInquiry({
+        appcode,
+        query: dto.query,
+        signal: parentSignal,
+      });
+      classificationSummary = summarizeClassification(classification);
+      execution.classification = JSON.parse(
+        JSON.stringify(classificationSummary),
+      ) as Prisma.InputJsonObject;
+      if (classification)
+        execution.jevClassification = JSON.parse(
+          JSON.stringify(classification),
+        ) as Prisma.InputJsonObject;
+      const inquiryGuidance =
+        classification?.status === 'classified'
+          ? createJevInquiryGuidance(classification.appliedCategory)
+          : undefined;
+      if (inquiryGuidance)
+        execution.inquiryGuidanceSha256 = sha256Text(inquiryGuidance);
+      stage = 'retrieval';
       matches = await measure('retrievalMs', () =>
         this.findMatches(
           dto.query,
@@ -987,6 +1022,9 @@ export class KnowledgeService {
           answerable: false,
           answerStatus: 'insufficient_evidence',
           promptVersion: RAG_PROMPT_VERSION,
+          ...(dto.includeClassification
+            ? { classification: classificationSummary }
+            : {}),
           stopReason: null,
           modelId,
           embeddingModel,
@@ -998,6 +1036,7 @@ export class KnowledgeService {
           },
           usage: null,
           performance: timing,
+          sdk: undefined,
           latencyMs,
           requestId,
           sources: includeSources ? [] : undefined,
@@ -1011,7 +1050,7 @@ export class KnowledgeService {
         quotaReservation,
         estimateGenerationTokens(
           inferenceConfig.maxTokens,
-          system + RAG_ANSWER_INSTRUCTION + prompt,
+          system + RAG_ANSWER_INSTRUCTION + (inquiryGuidance ?? '') + prompt,
         ),
       );
       generationInvoked = true;
@@ -1036,6 +1075,7 @@ export class KnowledgeService {
                     text: system,
                   },
                   { text: RAG_ANSWER_INSTRUCTION },
+                  ...(inquiryGuidance ? [{ text: inquiryGuidance }] : []),
                 ],
                 inferenceConfig,
               }),
@@ -1096,6 +1136,18 @@ export class KnowledgeService {
       result.stopReason,
     );
     const response = decision.answer;
+    const jev = await this.jevService?.evaluateRag({
+      appcode,
+      query: dto.query,
+      answer: response,
+      answerable: decision.answerable,
+      sourceIndexes: decision.sourceIndexes,
+      sources: [...matches, ...supplementalSources],
+      signal: parentSignal,
+    });
+    if (jev) {
+      execution.jev = JSON.parse(JSON.stringify(jev)) as Prisma.InputJsonObject;
+    }
     const latencyMs = Date.now() - startedAt;
 
     try {
@@ -1139,6 +1191,9 @@ export class KnowledgeService {
       answerable: decision.answerable,
       answerStatus: decision.answerStatus,
       promptVersion: RAG_PROMPT_VERSION,
+      ...(dto.includeClassification
+        ? { classification: classificationSummary }
+        : {}),
       stopReason: result.stopReason ?? null,
       modelId,
       embeddingModel,

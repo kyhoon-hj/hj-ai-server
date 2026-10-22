@@ -1,0 +1,16 @@
+{
+  "userId": "10000000-0000-4000-8000-000000000001",
+  "tenantId": "20000000-0000-4000-8000-000000000001",
+  "membershipRole": "MEMBER",
+  "user": {
+    "id": "10000000-0000-4000-8000-000000000001",
+    "email": "cellar.user@example.invalid",
+    "displayName": "CELLAR Test User"
+  },
+  "tenant": {
+    "id": "20000000-0000-4000-8000-000000000001",
+    "name": "CELLAR Test Tenant",
+    "slug": "cellar-test"
+  },
+  "expiresAt": "2026-10-14T00:05:00.000Z"
+}

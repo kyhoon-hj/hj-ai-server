@@ -59,13 +59,34 @@ async function readRequestBody(request, maxBytes = 1_048_576) {
 }
 
 async function proxyConsoleApi(request, response, aiServerOrigin) {
-  const target = new URL(request.url, aiServerOrigin);
+  const requestPath = request.url.startsWith('/console/auth/')
+    ? request.url.replace('/console/auth/', '/console-api/v1/auth/')
+    : request.url;
+  const incoming = new URL(requestPath, 'http://console.local');
+  const target = new URL(aiServerOrigin);
+  target.pathname = incoming.pathname;
+  target.search = incoming.search;
+  const upload =
+    request.method === 'POST' &&
+    /^\/console-api\/v1\/apps\/[0-9a-f-]+\/knowledge\/files$/i.test(
+      target.pathname,
+    );
+  const configuredUploadMb = Number(process.env.KNOWLEDGE_MAX_FILE_SIZE_MB ?? 30);
+  const uploadMb =
+    Number.isInteger(configuredUploadMb) &&
+    configuredUploadMb >= 1 &&
+    configuredUploadMb <= 100
+      ? configuredUploadMb
+      : 30;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), upload ? 120_000 : 10_000);
   try {
     const body = ['GET', 'HEAD'].includes(request.method)
       ? undefined
-      : await readRequestBody(request);
+      : await readRequestBody(
+          request,
+          upload ? uploadMb * 1024 * 1024 + 65_536 : 1_048_576,
+        );
     const upstream = await fetch(target, {
       method: request.method,
       headers: {
@@ -75,6 +96,7 @@ async function proxyConsoleApi(request, response, aiServerOrigin) {
           : {}),
         'x-correlation-id': request.headers['x-correlation-id'] ?? randomUUID(),
         ...(request.headers.cookie ? { cookie: request.headers.cookie } : {}),
+        ...(request.headers.origin ? { origin: request.headers.origin } : {}),
       },
       body,
       redirect: 'manual',
@@ -88,9 +110,11 @@ async function proxyConsoleApi(request, response, aiServerOrigin) {
       ...(upstream.headers.get('x-correlation-id')
         ? { 'x-correlation-id': upstream.headers.get('x-correlation-id') }
         : {}),
-      ...(upstream.headers.get('set-cookie')
-        ? { 'set-cookie': upstream.headers.get('set-cookie') }
+      ...(upstream.headers.getSetCookie().length
+        ? { 'set-cookie': upstream.headers.getSetCookie() }
         : {}),
+      ...(upstream.headers.get('location') ? { location: upstream.headers.get('location') } : {}),
+      'referrer-policy': 'no-referrer',
       ...(upstream.headers.get('content-disposition')
         ? { 'content-disposition': upstream.headers.get('content-disposition') }
         : {}),
@@ -104,16 +128,21 @@ async function proxyConsoleApi(request, response, aiServerOrigin) {
     response.end(payload);
   } catch (error) {
     const timedOut = error?.name === 'AbortError';
-    response.writeHead(timedOut ? 504 : 502, {
+    const tooLarge = error?.message === 'REQUEST_BODY_TOO_LARGE';
+    response.writeHead(tooLarge ? 413 : timedOut ? 504 : 502, {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
     });
     response.end(
       JSON.stringify({
-        code: timedOut
+        code: tooLarge
+          ? 'CONSOLE_REQUEST_BODY_TOO_LARGE'
+          : timedOut
           ? 'CONSOLE_UPSTREAM_TIMEOUT'
           : 'CONSOLE_UPSTREAM_UNAVAILABLE',
-        message: timedOut
+        message: tooLarge
+          ? '파일 크기 제한을 초과했습니다.'
+          : timedOut
           ? 'AI Server 응답 시간이 초과되었습니다.'
           : 'AI Server에 연결할 수 없습니다.',
       }),
@@ -213,7 +242,7 @@ export function createConsoleWebServer(options = {}) {
     `http://127.0.0.1:${AI_SERVER_STANDARD_PORT}`;
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://console.local');
-    if (url.pathname.startsWith('/console-api/')) {
+    if (url.pathname.startsWith('/console-api/') || ['/console/auth/login', '/console/auth/callback'].includes(url.pathname)) {
       await proxyConsoleApi(request, response, aiServerOrigin);
       return;
     }

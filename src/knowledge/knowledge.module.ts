@@ -16,6 +16,7 @@ import { ApiExposureGuard } from '../common/guards/api-exposure.guard';
 import { createKnowledgeUploadOptions } from './knowledge-file-security';
 import { KnowledgeIndexJobService } from './knowledge-index-job.service';
 import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
+import { JevModule } from '../jev/jev.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
     PrismaModule,
     StorageModule,
     UsageQuotaModule,
+    JevModule,
     MulterModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
@@ -42,6 +44,11 @@ import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
     AdminApiKeyGuard,
     ApiExposureGuard,
   ],
-  exports: [ChunkingService, EmbeddingService],
+  exports: [
+    ChunkingService,
+    EmbeddingService,
+    KnowledgeService,
+    KnowledgeIndexJobService,
+  ],
 })
 export class KnowledgeModule {}

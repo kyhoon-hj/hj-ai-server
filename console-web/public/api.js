@@ -25,6 +25,7 @@ async function parsePayload(response) {
 }
 
 export async function consoleRequest(path, options = {}) {
+  const hasFormData = options.formData instanceof FormData;
   const response = await fetch(path, {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
@@ -33,7 +34,11 @@ export async function consoleRequest(path, options = {}) {
       ...(options.body ? { 'content-type': 'application/json' } : {}),
       ...options.headers,
     },
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: hasFormData
+      ? options.formData
+      : options.body
+        ? JSON.stringify(options.body)
+        : undefined,
   });
   const payload = await parsePayload(response);
   if (!response.ok) {
@@ -93,6 +98,41 @@ export const playgroundApi = {
       headers: { 'x-console-playground-appkey': appkey },
       body: input,
     }),
+};
+
+export const knowledgeApi = {
+  indexFailures: () => consoleRequest('/console-api/v1/knowledge/index-failures'),
+  list: (appId, includeArchived = false) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files${includeArchived ? '?includeArchived=true' : ''}`),
+  get: (appId, fileId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}`),
+  upload: (appId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return consoleRequest(
+      `/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files`,
+      { method: 'POST', formData },
+    );
+  },
+  updatePolicy: (appId, fileId, input) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}/policy`, {
+      method: 'PATCH',
+      body: input,
+    }),
+  jobs: (appId, fileId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}/index-jobs`),
+  job: (appId, jobId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/index-jobs/${encodeURIComponent(jobId)}`),
+  submitIndex: (appId, fileId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}/index-jobs`, { method: 'POST' }),
+  submitReindex: (appId, fileId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}/reindex-jobs`, { method: 'POST' }),
+  retry: (appId, jobId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/index-jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }),
+  archive: (appId, fileId, deleteObject = false) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}${deleteObject ? '?deleteObject=true' : ''}`, { method: 'DELETE' }),
+  retryObjectCleanup: (appId, fileId) =>
+    consoleRequest(`/console-api/v1/apps/${encodeURIComponent(appId)}/knowledge/files/${encodeURIComponent(fileId)}/object-cleanup/retry`, { method: 'POST' }),
 };
 
 export const usageApi = {

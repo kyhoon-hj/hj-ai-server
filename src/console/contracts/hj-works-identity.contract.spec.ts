@@ -22,6 +22,38 @@ const fixture = () =>
   ) as Record<string, unknown>;
 
 describe('HJ-Works SSO v1 identity contract', () => {
+  it('accepts the Works handoff fixture without adding system-manager privileges', () => {
+    const payload = JSON.parse(
+      readFileSync(
+        join(
+          process.cwd(),
+          'src',
+          'console',
+          'contracts',
+          'fixtures',
+          'hj-works-console-handoff-2026-10-14.json',
+        ),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+    expect(
+      parseHjWorksSsoV1Identity(payload, new Date('2026-10-14T00:00:00.000Z')),
+    ).toMatchObject({
+      worksUserId: payload.userId,
+      worksOrganizationId: payload.tenantId,
+      membershipRole: 'MEMBER',
+      expiresAt: new Date('2026-10-14T00:05:00.000Z'),
+    });
+    expect(() =>
+      parseHjWorksSsoV1Identity(payload, new Date('2026-10-14T00:05:00.000Z')),
+    ).toThrow(HjWorksIdentityContractError);
+    expect(() =>
+      parseHjWorksSsoV1Identity(
+        { ...payload, accessContext: { isSystemManager: true } },
+        new Date('2026-10-14T00:00:00.000Z'),
+      ),
+    ).toThrow('response contains unknown fields: accessContext');
+  });
   it('creates immutable issuer-scoped identity and organization bindings', () => {
     expect(parseHjWorksSsoV1Identity(fixture(), NOW)).toEqual({
       contractVersion: 'hj-works-sso-v1',

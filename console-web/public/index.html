@@ -23,7 +23,7 @@
         </a>
         <div class="org-switcher">
           <span class="org-avatar">H</span>
-          <span><small>현재 조직</small><strong>HJ Solution</strong></span>
+          <span><small>현재 조직</small><strong id="session-organization">조직 확인 중</strong></span>
           <svg aria-hidden="true" viewBox="0 0 24 24">
             <path d="m8 10 4 4 4-4" />
           </svg>
@@ -55,13 +55,15 @@
         </nav>
         <div class="sidebar-footer">
           <div class="user-avatar">김</div>
-          <div><strong>김관리</strong><small>Administrator</small></div>
+          <div><strong id="session-user">로그인이 필요합니다</strong><small id="session-role">HJ-Works</small></div>
           <button
             class="icon-button dark"
             type="button"
-            aria-label="사용자 메뉴"
+            id="session-logout"
+            aria-label="로그아웃"
+            hidden
           >
-            •••
+            ↪
           </button>
         </div>
       </aside>
@@ -310,5 +312,6 @@
 
     <div id="toast-region" class="toast-region" aria-live="assertive"></div>
     <script type="module" src="/console-assets/app.js"></script>
+    <script type="module" src="/console-assets/auth.js"></script>
   </body>
 </html>

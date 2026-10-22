@@ -3,6 +3,7 @@ import {
   auditApi,
   ConsoleApiError,
   credentialsApi,
+  knowledgeApi,
   playgroundApi,
   requestLogsApi,
   usageApi,
@@ -20,6 +21,7 @@ const toastRegion = document.querySelector('#toast-region');
 const sidebar = document.querySelector('#sidebar');
 const mobileMenu = document.querySelector('.mobile-menu');
 const mobileNavBackdrop = document.querySelector('#mobile-nav-backdrop');
+const mobileNavigationMedia = window.matchMedia('(max-width: 900px)');
 const credentialDialog = document.querySelector('#credential-dialog');
 const credentialForm = document.querySelector('#credential-form');
 const credentialError = document.querySelector('#credential-error');
@@ -68,6 +70,12 @@ const state = {
     worksUserId: '',
   },
   auditNextCursor: null,
+  knowledgeApp: null,
+  knowledgeFiles: [],
+  knowledgeSelectedFileId: null,
+  knowledgeJobs: [],
+  knowledgeJobsError: null,
+  knowledgeIncludeArchived: false,
 };
 
 function escapeHtml(value = '') {
@@ -100,15 +108,17 @@ function showToast(message, kind = 'success') {
 }
 
 function navigate(path) {
-  closeMobileNavigation();
+  closeMobileNavigation(true);
   if (window.location.pathname !== path) history.pushState({}, '', path);
   void renderRoute();
 }
 
-function closeMobileNavigation() {
+function closeMobileNavigation(restoreFocus = false) {
   sidebar.classList.remove('open');
   mobileNavBackdrop.classList.remove('open');
   mobileMenu.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && mobileNavigationMedia.matches) mobileMenu.focus();
+  sidebar.inert = mobileNavigationMedia.matches;
 }
 
 function toggleMobileNavigation() {
@@ -116,6 +126,9 @@ function toggleMobileNavigation() {
   sidebar.classList.toggle('open', open);
   mobileNavBackdrop.classList.toggle('open', open);
   mobileMenu.setAttribute('aria-expanded', String(open));
+  sidebar.inert = mobileNavigationMedia.matches && !open;
+  if (open) sidebar.querySelector('.brand').focus();
+  else mobileMenu.focus();
 }
 
 function setActiveNavigation(name) {
@@ -138,7 +151,7 @@ function setActiveNavigation(name) {
 
 function errorMarkup(error, retry) {
   const loginPending = error instanceof ConsoleApiError && error.status === 401;
-  return `<div class="error-state"><div class="state-copy"><div class="state-icon">${loginPending ? '◎' : '!'}</div><h2>${loginPending ? '개발용 Console 연결이 필요합니다' : '앱 정보를 불러오지 못했습니다'}</h2><p>${escapeHtml(loginPending ? 'HJ-Works 로그인은 마지막 기능 단계에서 연결됩니다. 현재는 로컬 fixture identity가 연결된 AI Server에서 기능을 확인할 수 있습니다.' : error.message)}</p>${error.correlationId ? `<span class="correlation">Request ${escapeHtml(error.correlationId)}</span>` : ''}<button class="button secondary" data-action="${retry}">다시 시도</button></div></div>`;
+  return `<div class="error-state"><div class="state-copy"><div class="state-icon">${loginPending ? '◎' : '!'}</div><h2>${loginPending ? 'Console 로그인이 필요합니다' : error.status === 403 ? '접근 권한이 없습니다' : '정보를 불러오지 못했습니다'}</h2><p>${escapeHtml(loginPending ? 'HJ-Works에서 사용할 조직을 선택한 뒤 로그인해 주세요. 세션이 만료된 경우 다시 로그인할 수 있습니다.' : error.message)}</p>${error.correlationId ? `<span class="correlation">Request ${escapeHtml(error.correlationId)}</span>` : ''}${loginPending ? '<a class="button primary" href="/console/auth/login">HJ-Works 로그인</a>' : `<button class="button secondary" data-action="${retry}">다시 시도</button>`}</div></div>`;
 }
 
 function loadingMarkup(rows = true) {
@@ -150,7 +163,7 @@ function loadingMarkup(rows = true) {
 function detailTabs(appId, active) {
   const tab = (name, label, path) =>
     `<a class="${active === name ? 'active' : ''}" href="/console/apps/${appId}/${path}" data-link>${label}</a>`;
-  return `<nav class="detail-tabs" aria-label="앱 설정">${tab('overview', '개요', 'overview')}${tab('credentials', 'API Credential', 'credentials')}${tab('playground', 'Playground', 'playground')}</nav>`;
+  return `<nav class="detail-tabs" aria-label="앱 설정">${tab('overview', '개요', 'overview')}${tab('credentials', 'API Credential', 'credentials')}${tab('playground', 'Playground', 'playground')}${tab('knowledge', '지식 관리', 'knowledge')}</nav>`;
 }
 
 function filteredApps() {
@@ -197,11 +210,24 @@ async function renderList() {
   }
 }
 
+function parseMonthlyLimit(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (!/^\d+$/.test(text)) throw new Error('월 한도는 0 이상의 정수로 입력하세요.');
+  const limit = Number(text);
+  if (!Number.isSafeInteger(limit) || limit > 2147483647) throw new Error('월 한도는 2,147,483,647 이하로 입력하세요.');
+  return limit;
+}
+
+function appLimitsMarkup(app) {
+  return `<fieldset class="form-grid"><legend>월간 AI 사용 한도</legend><p>UTC 매월 1일에 새 기간이 시작됩니다. 빈 값은 앱 한도 없음, 0은 사용 차단입니다. 조직 한도도 함께 적용됩니다.</p><div class="form-grid two"><label><span>월 답변 요청 횟수</span><input name="monthlyRequestLimit" type="number" min="0" max="2147483647" step="1" value="${escapeHtml(app.monthlyRequestLimit ?? '')}" placeholder="무제한" /></label><label><span>월 생성 토큰 수</span><input name="monthlyTokenLimit" type="number" min="0" max="2147483647" step="1" value="${escapeHtml(app.monthlyTokenLimit ?? '')}" placeholder="무제한" /></label></div><small>입력·출력 토큰 합계와 진행 중 예약을 계산합니다. 요청은 성공·실패를 포함하며 생성 예상 토큰이 잔여량보다 크면 실행을 차단합니다. Jev·embedding 사용량은 이 토큰 한도에 합산하지 않습니다. 저장 후 새 요청에 적용되며 이미 실행 중인 생성은 중단하지 않습니다.</small><a href="/console/usage" data-link>이번 달 사용량·잔여 한도 확인 →</a></fieldset>`;
+}
+
 function detailMarkup(app) {
   return `<a class="detail-back" href="/console/apps" data-link>← 애플리케이션으로 돌아가기</a>
     ${detailTabs(app.id, 'overview')}
     <div class="detail-layout"><section class="panel detail-card"><div class="detail-header"><div class="detail-title"><span class="app-glyph">◇</span><div><h1>${escapeHtml(app.appname)}</h1><p class="mono">${escapeHtml(app.appcode)}</p></div></div><span class="status ${app.status === 'active' ? '' : 'inactive'}">${app.status === 'active' ? '활성' : '비활성'}</span></div>
-      <form id="detail-form" class="form-grid"><div class="form-grid two"><label><span>앱 이름</span><input name="appname" maxlength="200" required value="${escapeHtml(app.appname)}" /></label><label><span>상태</span><select name="status"><option value="active" ${app.status === 'active' ? 'selected' : ''}>활성</option><option value="inactive" ${app.status === 'inactive' ? 'selected' : ''}>비활성</option></select></label></div><label><span>앱 코드</span><input class="mono" readonly value="${escapeHtml(app.appcode)}" /><small>앱 코드는 생성 후 변경할 수 없습니다.</small></label><label><span>설명</span><textarea name="remark" maxlength="1000" rows="5" placeholder="앱의 용도와 사용 대상을 입력하세요.">${escapeHtml(app.remark ?? '')}</textarea></label><div id="detail-error" class="inline-error" hidden></div><div class="form-actions"><button class="button secondary" type="reset">변경 취소</button><button class="button primary" id="detail-submit" type="submit">변경사항 저장</button></div></form>
+      <form id="detail-form" class="form-grid"><div class="form-grid two"><label><span>앱 이름</span><input name="appname" maxlength="200" required value="${escapeHtml(app.appname)}" /></label><label><span>상태</span><select name="status"><option value="active" ${app.status === 'active' ? 'selected' : ''}>활성</option><option value="inactive" ${app.status === 'inactive' ? 'selected' : ''}>비활성</option></select></label></div><label><span>앱 코드</span><input class="mono" readonly value="${escapeHtml(app.appcode)}" /><small>앱 코드는 생성 후 변경할 수 없습니다.</small></label><label><span>설명</span><textarea name="remark" maxlength="1000" rows="5" placeholder="앱의 용도와 사용 대상을 입력하세요.">${escapeHtml(app.remark ?? '')}</textarea></label>${appLimitsMarkup(app)}<div id="detail-error" class="inline-error" hidden></div><div class="form-actions"><button class="button secondary" type="reset">변경 취소</button><button class="button primary" id="detail-submit" type="submit">변경사항 저장</button></div></form>
     </section><aside><div class="panel side-card"><h3>앱 정보</h3><p>이 조직에서 소유한 AI 애플리케이션입니다.</p><div class="info-list"><div class="info-row"><span>생성일</span><strong>${formatDate(app.createat, true)}</strong></div><div class="info-row"><span>최근 수정</span><strong>${formatDate(app.updateat, true)}</strong></div><div class="info-row"><span>API Key 만료</span><strong>${formatDate(app.appkeyExpiresAt)}</strong></div></div></div><div class="panel side-card"><h3>API Credential</h3><p>앱의 서버 전용 Key를 발급하고 안전하게 회전합니다.</p><a class="button secondary full-button" href="/console/apps/${app.id}/credentials" data-link>Key 관리 열기 →</a></div><div class="panel side-card"><h3>API 테스트</h3><p>발급한 Key로 지식 기반 답변을 바로 실행합니다.</p><a class="button secondary full-button" href="/console/apps/${app.id}/playground" data-link>Playground 열기 →</a></div></aside></div>`;
 }
 
@@ -215,6 +241,98 @@ async function renderDetail(appId) {
     view.innerHTML = detailMarkup(app);
   } catch (error) {
     view.innerHTML = `<a class="detail-back" href="/console/apps" data-link>← 애플리케이션으로 돌아가기</a><div class="panel">${errorMarkup(error, 'reload-detail')}</div>`;
+  }
+}
+
+function knowledgeJobsMarkup(file) {
+  const jobs = state.knowledgeJobs;
+  const latest = jobs[0];
+  const active = jobs.some((job) => ['queued', 'processing'].includes(job.status));
+  const submitLabel = file.status === 'indexed' || latest ? '재색인' : '색인 시작';
+  const submitAction = submitLabel === '재색인' ? 'reindex-knowledge' : 'index-knowledge';
+  const rows = jobs.map((job) => `<li><div><strong>${job.operation === 'reindex' ? '재색인' : '색인'} · ${escapeHtml(job.status)}</strong><small>${formatDate(job.requestedAt, true)} · 시도 ${Number(job.attempt)}/${Number(job.maxAttempts)}</small>${job.errorCode ? `<small class="knowledge-job-error">${escapeHtml(job.errorCode)} · ${escapeHtml(job.errorMessage ?? '')}</small>` : ''}${job.nextAttemptAt ? `<small>다음 자동 시도 ${formatDate(job.nextAttemptAt, true)}</small>` : ''}</div>${job.status === 'failed' && job.retryable && job.attempt < job.maxAttempts ? `<button type="button" class="button secondary compact" data-action="retry-knowledge-job" data-job-id="${escapeHtml(job.id)}">재시도</button>` : ''}</li>`).join('');
+  return `<section class="knowledge-jobs"><div class="home-panel-heading"><h3>색인 작업</h3><button type="button" class="button secondary compact" data-action="reload-knowledge-jobs">새로고침</button></div>${state.knowledgeJobsError ? `<div class="inline-error">${escapeHtml(state.knowledgeJobsError)}</div>` : jobs.length ? `<ul class="home-list">${rows}</ul>` : '<p class="muted-copy">제출된 색인 작업이 없습니다.</p>'}<div id="knowledge-job-error" class="inline-error" hidden></div><button type="button" class="button secondary" data-action="${submitAction}" ${active ? 'disabled' : ''}>${submitLabel}</button></section>`;
+}
+
+function knowledgeLifecycleMarkup(file) {
+  if (file.status !== 'archived') {
+    return `<section class="knowledge-lifecycle"><h3>보관 및 원본 삭제</h3><p class="muted-copy">보관하면 검색에서 제외되고 색인 청크가 삭제됩니다. 원본 삭제는 별도로 선택할 수 있습니다.</p><button type="button" class="button secondary" data-action="archive-knowledge">파일 보관</button><button type="button" class="button danger" data-action="delete-knowledge-object">보관하고 S3 원본 삭제</button></section>`;
+  }
+  const status = file.objectCleanupStatus ?? 'not_requested';
+  const action = file.deletedObject
+    ? '<p class="muted-copy">S3 원본 삭제가 완료됐습니다.</p>'
+    : file.deleteObjectRequested
+      ? '<button type="button" class="button secondary" data-action="retry-knowledge-cleanup">원본 삭제 재시도</button>'
+      : '<button type="button" class="button danger" data-action="delete-knowledge-object">S3 원본 삭제</button>';
+  return `<section class="knowledge-lifecycle"><h3>보관된 파일</h3><p class="muted-copy">검색에서 제외됐습니다. 원본 정리 상태: ${escapeHtml(status)}</p>${action}</section>`;
+}
+
+function knowledgeMarkup(app, files) {
+  const selected =
+    files.find((file) => file.id === state.knowledgeSelectedFileId) ?? files[0];
+  const usedBytes = files.reduce((sum, file) => sum + (file.status === 'archived' ? 0 : Number(file.size || 0)), 0);
+  const storageLimit = app.maxStorageMb
+    ? `${app.maxStorageMb} MB`
+    : '앱 저장 한도 미설정';
+  const fileRows = files.length
+    ? files
+        .map(
+          (file) =>
+            `<button class="knowledge-file ${selected?.id === file.id ? 'active' : ''}" type="button" data-action="select-knowledge-file" data-file-id="${escapeHtml(file.id)}" aria-pressed="${selected?.id === file.id}"><strong>${escapeHtml(file.originalName)}</strong><small>${escapeHtml(file.status)} · ${Number(file.size).toLocaleString()} bytes · ${formatDate(file.createdAt)}</small></button>`,
+        )
+        .join('')
+    : '<div class="home-empty"><strong>등록된 지식 파일이 없습니다</strong><p>파일을 업로드해 지식 자료를 추가하세요.</p></div>';
+  const policy = selected?.status === 'archived'
+    ? `<div class="knowledge-detail"><h2>${escapeHtml(selected.originalName)}</h2><p>보관된 파일 · 게시 종료</p></div>`
+    : selected
+    ? `<div class="knowledge-detail"><h2>${escapeHtml(selected.originalName)}</h2><p>${escapeHtml(selected.mimetype)} · ${Number(selected.size).toLocaleString()} bytes · 청크 ${Number(selected.chunkCount)}</p><dl class="knowledge-facts"><div><dt>파일 상태</dt><dd>${escapeHtml(selected.status)}</dd></div><div><dt>색인 시각</dt><dd>${formatDate(selected.indexedAt, true)}</dd></div></dl>${knowledgeJobsMarkup(selected)}<form id="knowledge-policy-form" class="form-grid"><label><span>접근 수준</span><select name="accessLevel"><option value="PUBLIC" ${selected.accessLevel === 'PUBLIC' ? 'selected' : ''}>PUBLIC</option><option value="INTERNAL" ${selected.accessLevel === 'INTERNAL' ? 'selected' : ''}>INTERNAL</option><option value="RESTRICTED" ${selected.accessLevel === 'RESTRICTED' ? 'selected' : ''}>RESTRICTED</option></select></label><label><span>게시 상태</span><select name="businessStatus"><option value="DRAFT" ${selected.businessStatus === 'DRAFT' ? 'selected' : ''}>초안</option><option value="PUBLISHED" ${selected.businessStatus === 'PUBLISHED' ? 'selected' : ''}>게시</option><option value="RETIRED" ${selected.businessStatus === 'RETIRED' ? 'selected' : ''}>게시 종료</option></select><small>게시된 자료도 색인이 완료되어야 답변에 사용됩니다.</small></label><label><span>상품 코드</span><input name="productCodes" value="${escapeHtml((selected.productCodes ?? []).join(', '))}" placeholder="쉼표로 구분" /></label><div class="form-grid two"><label><span>유효 시작 (UTC)</span><input name="effectiveFrom" value="${escapeHtml(selected.effectiveFrom ?? '')}" placeholder="2026-10-01T00:00:00.000Z" /></label><label><span>유효 종료 (UTC)</span><input name="effectiveTo" value="${escapeHtml(selected.effectiveTo ?? '')}" placeholder="2027-01-01T00:00:00.000Z" /></label></div><div id="knowledge-policy-error" class="inline-error" hidden></div><div class="form-actions"><button class="button primary" type="submit">정책 저장</button></div></form></div>`
+    : '<div class="home-empty"><strong>선택된 파일이 없습니다</strong><p>파일을 등록하면 상세와 게시 정책을 여기서 관리할 수 있습니다.</p></div>';
+  return `<a class="detail-back" href="/console/apps" data-link>← 애플리케이션으로 돌아가기</a><div class="page-heading"><div><p class="eyebrow">KNOWLEDGE</p><h1>${escapeHtml(app.appname)} · 지식 관리</h1><p>조직 소유 앱의 지식 파일과 게시 정책을 관리합니다.</p></div></div>${detailTabs(app.id, 'knowledge')}<section class="panel knowledge-upload"><h2>파일 업로드</h2><p>TXT, MD, JSON, CSV, XLSX, PDF, DOCX 파일을 지원합니다. 파일 형식·크기와 앱 저장 한도는 서버에서 검사합니다.</p><p class="knowledge-usage">현재 ${usedBytes.toLocaleString()} bytes 사용 · ${escapeHtml(storageLimit)}</p><form id="knowledge-upload-form" class="knowledge-upload-form"><label><span class="sr-only">지식 파일</span><input name="file" type="file" accept=".txt,.md,.json,.csv,.xlsx,.pdf,.docx" required /></label><button class="button primary" type="submit">파일 업로드</button><div id="knowledge-upload-error" class="inline-error" hidden></div></form></section><div class="knowledge-layout"><section class="panel knowledge-list"><div class="home-panel-heading"><h2>파일 목록</h2><button type="button" class="button secondary compact" data-action="toggle-archived-knowledge" aria-pressed="${state.knowledgeIncludeArchived}">${state.knowledgeIncludeArchived ? '보관 파일 숨기기' : '보관 파일 보기'}</button></div>${fileRows}</section><section class="panel knowledge-policy">${policy}${selected ? knowledgeLifecycleMarkup(selected) : ''}<div id="knowledge-lifecycle-error" class="inline-error" hidden></div></section></div>`;
+}
+
+async function renderKnowledge(appId) {
+  breadcrumb.textContent = '지식 관리';
+  document.title = '지식 관리 · HJ AI Console';
+  view.innerHTML = `<div class="panel">${loadingMarkup(false)}</div>`;
+  try {
+    const [app, files] = await Promise.all([
+      appsApi.get(appId),
+      knowledgeApi.list(appId, state.knowledgeIncludeArchived),
+    ]);
+    state.knowledgeApp = app;
+    state.knowledgeFiles = files;
+    state.knowledgeSelectedFileId =
+      files.find((file) => file.id === state.knowledgeSelectedFileId)?.id ?? files[0]?.id ?? null;
+    state.knowledgeJobs = [];
+    state.knowledgeJobsError = null;
+    if (state.knowledgeSelectedFileId && files.find((file) => file.id === state.knowledgeSelectedFileId)?.status !== 'archived') {
+      try {
+        state.knowledgeJobs = await knowledgeApi.jobs(appId, state.knowledgeSelectedFileId);
+      } catch (error) {
+        state.knowledgeJobsError = error.message;
+      }
+    }
+    document.title = `${app.appname} 지식 관리 · HJ AI Console`;
+    view.innerHTML = knowledgeMarkup(app, files);
+  } catch (error) {
+    view.innerHTML = `<div class="panel">${errorMarkup(error, 'reload-knowledge')}</div>`;
+  }
+}
+
+async function selectKnowledgeFile(appId, fileId) {
+  state.knowledgeSelectedFileId = fileId;
+  state.knowledgeJobs = [];
+  state.knowledgeJobsError = null;
+  view.innerHTML = knowledgeMarkup(state.knowledgeApp, state.knowledgeFiles);
+  if (state.knowledgeFiles.find((file) => file.id === fileId)?.status !== 'archived') {
+    try {
+      state.knowledgeJobs = await knowledgeApi.jobs(appId, fileId);
+    } catch (error) {
+      state.knowledgeJobsError = error.message;
+    }
+  }
+  if (route().name === 'knowledge' && state.knowledgeSelectedFileId === fileId) {
+    view.innerHTML = knowledgeMarkup(state.knowledgeApp, state.knowledgeFiles);
   }
 }
 
@@ -322,7 +440,7 @@ function homeAlertsMarkup(alerts, unavailable = false) {
     : '<div class="home-empty"><strong>이번 달 사용량 알림이 없습니다</strong><p>70%, 90%, 100% 임계치에 도달하면 여기에 표시됩니다.</p></div>';
 }
 
-function homeMarkup(monthly, apps, recentErrors, alerts = { items: [] }, failures = {}, now = Date.now()) {
+function homeMarkup(monthly, apps, recentErrors, alerts = { items: [] }, failures = {}, now = Date.now(), indexFailures = null) {
   const expires = apps
     .filter((app) => app.appkeyExpiresAt)
     .map((app) => ({
@@ -365,7 +483,7 @@ function homeMarkup(monthly, apps, recentErrors, alerts = { items: [] }, failure
     <section class="panel home-panel usage-alerts" data-channel="console-inbox"><div class="home-panel-heading"><div><p class="eyebrow">USAGE ALERTS</p><h2>사용량 알림</h2></div><span class="status inactive">읽기 전용</span></div><p class="muted-copy">내부 Console 알림함이며 활성 <span class="mono">usage:read</span> 권한 사용자가 조회합니다. 같은 이벤트는 고유 ID로 중복 없이 다시 조회됩니다.</p>${homeAlertsMarkup(alerts, failures.alerts)}</section>
     <div class="home-grid"><section class="panel home-panel"><div class="home-panel-heading"><div><p class="eyebrow">RECENT ERRORS</p><h2>최근 오류</h2></div><a href="/console/request-logs?period=month&status=failed" data-link>전체 보기</a></div>${failures.errors ? homeUnavailable('최근 오류를 다시 조회해 주세요.') : errorRows ? `<ul class="home-list error-list">${errorRows}</ul>` : '<div class="home-empty"><strong>이번 달 오류가 없습니다</strong><p>결과가 실패로 측정된 요청이 없습니다.</p></div>'}</section>
     <section class="panel home-panel"><div class="home-panel-heading"><div><p class="eyebrow">KEY EXPIRY</p><h2>API Key 만료</h2></div><a href="/console/apps" data-link>앱 보기</a></div>${failures.apps ? homeUnavailable('API Key 만료 정보를 다시 조회해 주세요.') : expiryRows ? `<ul class="home-list">${expiryRows}</ul>` : '<div class="home-empty"><strong>만료일이 설정된 Key가 없습니다</strong><p>앱별 Credential 화면에서 새 Key를 발급할 수 있습니다.</p></div>'}</section></div>
-    <section class="panel home-panel knowledge-index-contract" data-contract="knowledge-index-failures-v1"><div class="home-panel-heading"><div><p class="eyebrow">KNOWLEDGE INDEX</p><h2>지식 색인 실패</h2></div><span class="status inactive">M5 연결 예정</span></div><div class="home-empty"><strong>현재는 미측정 상태입니다</strong><p>M5에서 조직 범위 <span class="mono">failedJobs</span>, <span class="mono">lastFailureAt</span>, <span class="mono">affectedApps</span>를 연결합니다. 데이터가 없다는 의미의 0으로 표시하지 않습니다.</p></div></section>`;
+    <section class="panel home-panel knowledge-index-contract" data-contract="knowledge-index-failures-v1"><div class="home-panel-heading"><div><p class="eyebrow">KNOWLEDGE INDEX</p><h2>지식 색인 실패</h2></div><a href="/console/apps" data-link>앱 보기</a></div>${failures.indexFailures ? homeUnavailable('지식 색인 상태를 다시 조회해 주세요.') : indexFailures ? `<div class="summary-grid"><div class="summary-card"><span>failedJobs</span><strong>${Number(indexFailures.failedJobs).toLocaleString()}</strong></div><div class="summary-card"><span>affectedApps</span><strong>${Number(indexFailures.affectedApps).toLocaleString()}</strong></div><div class="summary-card"><span>lastFailureAt</span><strong>${formatDate(indexFailures.lastFailureAt, true)}</strong></div></div>` : '<div class="home-empty"><strong>현재는 미측정 상태입니다</strong></div>'}</section>`;
 }
 
 async function renderHome() {
@@ -373,11 +491,12 @@ async function renderHome() {
   document.title = '홈 · HJ AI Console';
   view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>조직 홈</h1><p>이번 달 운영 현황을 불러오고 있습니다.</p></div></div>${loadingMarkup()}`;
   try {
-    const [monthlyResult, appsResult, errorsResult, alertsResult] = await Promise.allSettled([
+    const [monthlyResult, appsResult, errorsResult, alertsResult, indexFailuresResult] = await Promise.allSettled([
       usageApi.monthly(),
       appsApi.list(),
       requestLogsApi.list({ period: 'month', status: 'failed', limit: 5 }),
       usageApi.alerts(),
+      knowledgeApi.indexFailures(),
     ]);
     if (monthlyResult.status === 'rejected') throw monthlyResult.reason;
     view.innerHTML = homeMarkup(
@@ -389,7 +508,10 @@ async function renderHome() {
         apps: appsResult.status === 'rejected',
         errors: errorsResult.status === 'rejected',
         alerts: alertsResult.status === 'rejected',
+        indexFailures: indexFailuresResult.status === 'rejected',
       },
+      Date.now(),
+      indexFailuresResult.status === 'fulfilled' ? indexFailuresResult.value : null,
     );
   } catch (error) {
     view.innerHTML = `<div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>조직 홈</h1></div></div><div class="panel">${errorMarkup(error, 'reload-home')}</div>`;
@@ -412,7 +534,7 @@ function logsLink(filters, label = '요청 로그 보기') {
 }
 function monthlyUsageMarkup(monthly) {
   const metric = (label, value) => `<div class="summary-card"><span>${label}</span><strong>${value.used.toLocaleString()}</strong><small>예약 ${value.reserved.toLocaleString()} · 한도 ${value.limit === null ? '무제한' : value.limit.toLocaleString()}<br>잔여 ${value.remaining === null ? (value.limit === null ? '무제한' : '미측정') : value.remaining.toLocaleString()} · 사용률 ${value.utilizationPercent === null ? '—' : `${value.utilizationPercent}%`}${value.limit === 0 ? ' · 사용 불가(0 한도)' : ''}${value.unmeasuredRequests ? ` · ${value.unmeasuredRequests}건 미측정` : ''}</small></div>`;
-  return `<section class="panel"><div class="credentials-intro"><div><h2>이번 달 사용량·한도 (UTC ${escapeHtml(monthly.period.key)})</h2><p>승인 월 기준 사용량입니다. 진행 중 예약은 별도 표시하며 사용률에 포함합니다. ${logsLink({ period: 'month' })}</p></div></div><div class="summary-grid">${metric('월 요청', monthly.limits.requests)}${metric('월 Token', monthly.limits.tokens)}</div><p class="muted-copy">한도 변경은 플랫폼 관리자에게 요청하세요. 조직 한도는 승인된 설정 절차로, 앱 한도는 관리자 앱 설정에서 관리합니다.</p>${monthly.apps.length ? `<div class="table-scroll"><table class="app-table"><thead><tr><th>앱</th><th>Token 사용 / 예약</th><th>한도 / 잔여</th></tr></thead><tbody>${monthly.apps.map((app) => `<tr><td>${escapeHtml(app.appname)} ${logsLink({ period: 'month', appId: app.id })}</td><td>${app.tokens.used} / ${app.tokens.reserved}</td><td>${app.tokens.limit ?? '무제한'} / ${app.tokens.remaining ?? (app.tokens.limit === null ? '무제한' : app.tokens.state === 'organization-changed' ? '조직 이동 · 관리자 확인' : '미측정')}</td></tr>`).join('')}</tbody></table></div>` : ''}</section>`;
+  return `<section class="panel"><div class="credentials-intro"><div><h2>이번 달 사용량·한도 (UTC ${escapeHtml(monthly.period.key)})</h2><p>승인 월 기준 사용량입니다. 진행 중 예약은 별도 표시하며 사용률에 포함합니다. ${logsLink({ period: 'month' })}</p></div></div><div class="summary-grid">${metric('월 요청', monthly.limits.requests)}${metric('월 Token', monthly.limits.tokens)}</div><p class="muted-copy">앱별 한도는 앱 개요에서 변경할 수 있습니다. 조직 한도는 플랫폼 관리자에게 요청하세요. 앱과 조직 한도가 함께 적용됩니다.</p>${monthly.apps.length ? `<div class="table-scroll"><table class="app-table"><thead><tr><th>앱</th><th>요청 사용 / 예약</th><th>요청 한도 / 잔여</th><th>Token 사용 / 예약</th><th>Token 한도 / 잔여</th></tr></thead><tbody>${monthly.apps.map((app) => `<tr><td><a href="/console/apps/${app.id}/overview" data-link>${escapeHtml(app.appname)}</a> ${logsLink({ period: 'month', appId: app.id })}</td><td>${app.requests?.used ?? '—'} / ${app.requests?.reserved ?? '—'}</td><td>${app.requests?.limit ?? '무제한'} / ${app.requests?.remaining ?? (app.requests?.limit == null ? '무제한' : '미측정')}</td><td>${app.tokens.used} / ${app.tokens.reserved}</td><td>${app.tokens.limit ?? '무제한'} / ${app.tokens.remaining ?? (app.tokens.limit === null ? '무제한' : app.tokens.state === 'organization-changed' ? '조직 이동 · 관리자 확인' : '미측정')}</td></tr>`).join('')}</tbody></table></div>` : ''}</section>`;
 }
 function dimensionsMarkup(breakdown) {
   return `<section class="panel"><h2>Endpoint · 모델 · 결과별 사용량</h2><div class="table-scroll"><table class="app-table"><thead><tr><th>구분</th><th>대상</th><th>요청</th><th>Token</th><th>p50 / p95 (ms)</th></tr></thead><tbody>${(breakdown.dimensions ?? []).map((item) => `<tr><td>${escapeHtml(item.dimension)}</td><td>${logsLink({ days: state.usageDays, endpoint: state.usageEndpoint, [item.dimension === 'model' ? 'modelId' : item.dimension]: item.value }, item.value)}</td><td>${item.requestCount}</td><td>${metricValue(item.tokens.total)}</td><td>${item.latency.p50Ms ?? '미측정'} / ${item.latency.p95Ms ?? '미측정'}</td></tr>`).join('')}</tbody></table></div></section>`;
@@ -671,6 +793,10 @@ function route() {
     /^\/console\/apps\/([0-9a-f-]+)\/playground\/?$/i,
   );
   if (playground) return { name: 'playground', appId: playground[1] };
+  const knowledge = window.location.pathname.match(
+    /^\/console\/apps\/([0-9a-f-]+)\/knowledge\/?$/i,
+  );
+  if (knowledge) return { name: 'knowledge', appId: knowledge[1] };
   const credentials = window.location.pathname.match(
     /^\/console\/apps\/([0-9a-f-]+)\/credentials\/?$/i,
   );
@@ -691,6 +817,7 @@ async function renderRoute() {
   else if (current.name === 'request-logs') await renderRequestLogs();
   else if (current.name === 'usage') await renderUsage();
   else if (current.name === 'playground') await renderPlayground(current.appId);
+  else if (current.name === 'knowledge') await renderKnowledge(current.appId);
   else if (current.name === 'credentials')
     await renderCredentials(current.appId);
   else if (current.name === 'detail') await renderDetail(current.appId);
@@ -729,6 +856,78 @@ view.addEventListener('click', (event) => {
   if (action === 'reload-detail') void renderRoute();
   if (action === 'reload-credentials') void renderRoute();
   if (action === 'reload-playground') void renderRoute();
+  if (action === 'reload-knowledge') void renderRoute();
+  if (action === 'select-knowledge-file') {
+    const current = route();
+    if (current.name === 'knowledge')
+      void selectKnowledgeFile(current.appId, event.target.closest('[data-file-id]').dataset.fileId);
+  }
+  if (action === 'toggle-archived-knowledge') {
+    const current = route();
+    if (current.name === 'knowledge') {
+      state.knowledgeIncludeArchived = !state.knowledgeIncludeArchived;
+      void renderKnowledge(current.appId);
+    }
+  }
+  if (['archive-knowledge', 'delete-knowledge-object', 'retry-knowledge-cleanup'].includes(action)) {
+    const current = route();
+    if (current.name !== 'knowledge' || !state.knowledgeSelectedFileId) return;
+    const file = state.knowledgeFiles.find((item) => item.id === state.knowledgeSelectedFileId);
+    if (!file) return;
+    const message = action === 'archive-knowledge'
+      ? `"${file.originalName}" 파일을 보관하고 검색에서 제외할까요?`
+      : action === 'delete-knowledge-object'
+        ? `"${file.originalName}"의 S3 원본을 삭제할까요? 삭제 후 복구할 수 없습니다.`
+        : `"${file.originalName}"의 원본 삭제를 다시 시도할까요?`;
+    if (!window.confirm(message)) return;
+    const button = event.target.closest('button');
+    const errorBox = view.querySelector('#knowledge-lifecycle-error');
+    button.disabled = true;
+    errorBox.hidden = true;
+    const operation = action === 'retry-knowledge-cleanup'
+      ? knowledgeApi.retryObjectCleanup(current.appId, file.id)
+      : knowledgeApi.archive(current.appId, file.id, action === 'delete-knowledge-object');
+    operation.then(async () => {
+      state.knowledgeIncludeArchived = true;
+      state.knowledgeSelectedFileId = file.id;
+      showToast('지식 파일 상태를 변경했습니다.');
+      await renderKnowledge(current.appId);
+    }).catch(async (error) => {
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+      button.disabled = false;
+      if (action !== 'archive-knowledge') {
+        state.knowledgeIncludeArchived = true;
+        await renderKnowledge(current.appId);
+        showToast(error.message, 'error');
+      }
+    });
+  }
+  if (['reload-knowledge-jobs', 'index-knowledge', 'reindex-knowledge', 'retry-knowledge-job'].includes(action)) {
+    const current = route();
+    if (current.name !== 'knowledge' || !state.knowledgeSelectedFileId) return;
+    if (action === 'reload-knowledge-jobs') {
+      void selectKnowledgeFile(current.appId, state.knowledgeSelectedFileId);
+      return;
+    }
+    const button = event.target.closest('button');
+    const errorBox = view.querySelector('#knowledge-job-error');
+    button.disabled = true;
+    errorBox.hidden = true;
+    const operation = action === 'index-knowledge'
+      ? knowledgeApi.submitIndex(current.appId, state.knowledgeSelectedFileId)
+      : action === 'reindex-knowledge'
+        ? knowledgeApi.submitReindex(current.appId, state.knowledgeSelectedFileId)
+        : knowledgeApi.retry(current.appId, button.dataset.jobId);
+    operation.then(async () => {
+      showToast('색인 작업을 접수했습니다.');
+      await renderKnowledge(current.appId);
+    }).catch((error) => {
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+      button.disabled = false;
+    });
+  }
   if (action === 'reload-usage') void renderRoute();
   if (action === 'reload-request-logs') void renderRoute();
   if (action === 'reload-request-log-detail') void renderRoute();
@@ -798,6 +997,65 @@ view.addEventListener('change', (event) => {
 });
 
 view.addEventListener('submit', async (event) => {
+  if (event.target.id === 'knowledge-upload-form') {
+    event.preventDefault();
+    const current = route();
+    if (current.name !== 'knowledge') return;
+    const form = event.target;
+    const submit = form.querySelector('button[type="submit"]');
+    const errorBox = form.querySelector('#knowledge-upload-error');
+    submit.disabled = true;
+    errorBox.hidden = true;
+    try {
+      const file = new FormData(form).get('file');
+      const created = await knowledgeApi.upload(current.appId, file);
+      state.knowledgeSelectedFileId = created.id;
+      showToast('지식 파일을 업로드했습니다.');
+      await renderKnowledge(current.appId);
+    } catch (error) {
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+      submit.disabled = false;
+    }
+    return;
+  }
+  if (event.target.id === 'knowledge-policy-form') {
+    event.preventDefault();
+    const current = route();
+    if (current.name !== 'knowledge') return;
+    const form = event.target;
+    const submit = form.querySelector('button[type="submit"]');
+    const errorBox = form.querySelector('#knowledge-policy-error');
+    const file = state.knowledgeFiles.find((item) => item.id === state.knowledgeSelectedFileId) ?? state.knowledgeFiles[0];
+    if (!file) return;
+    submit.disabled = true;
+    errorBox.hidden = true;
+    try {
+      const data = new FormData(form);
+      const date = (name) => {
+        const value = data.get(name).trim();
+        if (!value) return null;
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) throw new Error('유효 기간은 ISO 날짜 형식으로 입력하세요.');
+        return parsed.toISOString();
+      };
+      await knowledgeApi.updatePolicy(current.appId, file.id, {
+        accessLevel: data.get('accessLevel'),
+        businessStatus: data.get('businessStatus'),
+        productCodes: data.get('productCodes').split(',').map((code) => code.trim()).filter(Boolean),
+        effectiveFrom: date('effectiveFrom'),
+        effectiveTo: date('effectiveTo'),
+      });
+      state.knowledgeSelectedFileId = file.id;
+      showToast('지식 파일 정책을 저장했습니다.');
+      await renderKnowledge(current.appId);
+    } catch (error) {
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+      submit.disabled = false;
+    }
+    return;
+  }
   if (event.target.id === 'audit-filters') {
     event.preventDefault();
     const data = new FormData(event.target);
@@ -891,6 +1149,8 @@ view.addEventListener('submit', async (event) => {
       appname: data.get('appname').trim(),
       remark: data.get('remark').trim(),
       status: data.get('status'),
+      monthlyRequestLimit: parseMonthlyLimit(data.get('monthlyRequestLimit')),
+      monthlyTokenLimit: parseMonthlyLimit(data.get('monthlyTokenLimit')),
     });
     showToast('앱 설정을 저장했습니다.');
     await renderDetail(current.appId);
@@ -1001,7 +1261,14 @@ remark.addEventListener('input', () => {
   remarkCount.textContent = String(remark.value.length);
 });
 mobileMenu.addEventListener('click', toggleMobileNavigation);
-mobileNavBackdrop.addEventListener('click', closeMobileNavigation);
+mobileNavBackdrop.addEventListener('click', () => closeMobileNavigation(true));
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && sidebar.classList.contains('open')) {
+    closeMobileNavigation(true);
+  }
+});
+mobileNavigationMedia.addEventListener('change', () => closeMobileNavigation());
+closeMobileNavigation();
 document.addEventListener('click', (event) => {
   const closeTarget = event.target.closest('[data-dialog-close]');
   if (closeTarget) {

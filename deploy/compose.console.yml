@@ -1,0 +1,31 @@
+# Opt-in overlay after validating the release and registering the Works client.
+# docker compose -f deploy/compose.production.yml -f deploy/compose.console.yml ...
+services:
+  console-web:
+    image: hj-ai-server:${RELEASE_TAG:?Set the validated release tag}
+    command:
+      - node
+      - --input-type=module
+      - -e
+      - "import { createConsoleWebServer } from './console-web/server.mjs'; createConsoleWebServer().listen(11003, '0.0.0.0');"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      AI_SERVER_ORIGIN: http://app:11000
+      CONSOLE_WEB_PORT: "11003"
+      KNOWLEDGE_MAX_FILE_SIZE_MB: "30"
+    ports:
+      - "127.0.0.1:11003:11003"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:11003/console').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

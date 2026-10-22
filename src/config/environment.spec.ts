@@ -14,6 +14,85 @@ const validEnvironment = {
 };
 
 describe('validateEnvironment', () => {
+  it('keeps Jev off by default and validates explicit server-side opt-in', () => {
+    expect(validateEnvironment(validEnvironment)).toMatchObject({
+      JEV_AI_RAG_MODE: 'off',
+      JEV_AI_BASE_URL: 'https://jev-ai.pro/api',
+      JEV_AI_MODEL: 'jev-latest',
+      JEV_AI_TIMEOUT_MS: '3000',
+    });
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, JEV_AI_RAG_MODE: 'shadow' }),
+    ).toThrow(/JEV_AI_API_KEY.*JEV_AI_RAG_APPCODES/);
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        JEV_AI_BASE_URL: 'https://api.typesafe.ai',
+      }),
+    ).toThrow(/Jev requires base URL/);
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, JEV_AI_RAG_APPCODES: '*' }),
+    ).toThrow(/exact appcodes/);
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, JEV_AI_RAG_MODE: 'enforce' }),
+    ).toThrow(/off or shadow/);
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        JEV_AI_RAG_MODE: 'shadow',
+        JEV_AI_API_KEY: 'test-only-key',
+        JEV_AI_RAG_APPCODES: 'test-app',
+      }),
+    ).toMatchObject({ JEV_AI_RAG_MODE: 'shadow' });
+  });
+  it('requires credentials and exact appcodes for pre-generation classification', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, JEV_AI_RAG_MODE: 'classify' }),
+    ).toThrow(/JEV_AI_API_KEY.*JEV_AI_RAG_APPCODES/);
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        JEV_AI_RAG_MODE: 'classify',
+        JEV_AI_API_KEY: 'test-only-key',
+        JEV_AI_RAG_APPCODES: 'test-app',
+      }),
+    ).toMatchObject({ JEV_AI_RAG_MODE: 'classify' });
+  });
+  it('requires registered Works origins and credentials before enabling production SSO', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        CONSOLE_WORKS_SSO_ENABLED: 'true',
+      }),
+    ).toThrow(
+      /CONSOLE_PUBLIC_ORIGIN.*WORKS_PUBLIC_ORIGIN.*WORKS_API_ORIGIN.*WORKS_CONSOLE_CLIENT_ID.*WORKS_CONSOLE_CLIENT_SECRET/,
+    );
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        CONSOLE_WORKS_SSO_ENABLED: 'true',
+        CONSOLE_PUBLIC_ORIGIN: 'http://console.test',
+        WORKS_PUBLIC_ORIGIN: 'https://works.test',
+        WORKS_API_ORIGIN: 'https://api.test',
+        WORKS_CONSOLE_CLIENT_ID: 'client',
+        WORKS_CONSOLE_CLIENT_SECRET: 'secret',
+      }),
+    ).toThrow(/CONSOLE_PUBLIC_ORIGIN/);
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        CONSOLE_WORKS_SSO_ENABLED: 'true',
+        CONSOLE_PUBLIC_ORIGIN: 'https://console.test',
+        WORKS_PUBLIC_ORIGIN: 'https://works.test',
+        WORKS_API_ORIGIN: 'https://api.test',
+        WORKS_CONSOLE_CLIENT_ID: 'client',
+        WORKS_CONSOLE_CLIENT_SECRET: 'secret',
+      }),
+    ).toMatchObject({ CONSOLE_WORKS_SSO_ENABLED: 'true' });
+  });
   it('필수 설정과 기본 포트를 검증한다', () => {
     expect(validateEnvironment(validEnvironment)).toMatchObject({
       PORT: '11000',

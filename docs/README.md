@@ -1,6 +1,11 @@
 # HJ AI Server 문서
 
 - [HJ AI Console 전체 마일스톤·현재 단계](HJ_AI_CONSOLE_MILESTONES.md)
+- [AI Console 운영 pilot 배포·OWNER 실계정 검증 (2026-10-14)](HJ_AI_CONSOLE_PILOT_DEPLOYMENT_2026-10-14.md)
+- [HJ-Works Console 운영 연계 작업 지시서 (2026-10-14)](HJ_WORKS_CONSOLE_INTEGRATION_WORK_ORDER_2026-10-14.md)
+- [Works 등록 완료 인계 수신·운영 접속 확인 (2026-10-14)](HJ_AI_CONSOLE_WORKS_HANDOFF_RECEIVED_2026-10-14.md)
+- [AI Console 실제 운영 DB·프록시 사전 점검 (2026-10-14)](HJ_AI_CONSOLE_PRODUCTION_PREFLIGHT_2026-10-14.md)
+- [AI Console SSO 배포 준비·pilot 등록 (2026-10-14)](HJ_AI_CONSOLE_SSO_RELEASE_GUIDE_2026-10-14.md)
 - [Console 월 한도 적용 정책](HJ_AI_CONSOLE_QUOTA_POLICY.md)
 - [Console 월 한도 예약 복구 운영 절차](HJ_AI_CONSOLE_USAGE_RECOVERY_RUNBOOK.md)
 - [HJ AI Console 구현 진행 현황](HJ_AI_CONSOLE_PROGRESS_2026-09-13.md)
@@ -65,6 +70,9 @@
 
 검증 콘솔의 설계·사용·검증 매트릭스는 [`demo/docs`](../demo/docs/)에서 관리합니다. 실제 사용자 서비스를 가정한 데모는 검증 콘솔과 분리해 `service-demo/`로 개발합니다.
 # 최신 성능 관측 작업
+
+- [월 요청·토큰 한도 운영 배포 및 최신 AI 코드 반영 확인](HJ_AI_CONSOLE_QUOTA_DEPLOYMENT_2026-10-22.md)
+- [고객문의 연동 요청 및 REQ-01/02 구현 상태](AI_SERVER_WORK_REQUEST.md)
 
 - [AWS 운영 AI 서버 실측 구성](AWS_PRODUCTION_DISCOVERY_2026-09-05.md)
 

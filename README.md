@@ -18,6 +18,8 @@ npm run start:dev
 
 Copy `.env.example` to `.env` and set AWS credentials in your environment or AWS profile. `BEDROCK_MODEL_ID` can be provided globally or per request.
 
+Optional Jev AI server integration: see [Jev AI setup, inquiry classification and RAG evaluation](docs/JEV_AI_INTEGRATION.md). `npm run jev:check` checks authentication without inference; `npm run jev:decision -- --use-balance` sends one small paid decision. Jev defaults to off; `classify` classifies inquiries before Bedrock RAG, while `shadow` evaluates generated answers.
+
 Set a unique 32-character-or-longer `ADMIN_API_KEY`. It must differ from `APPKEY_JWT_SECRET`; `/app-info/*` requires it in the `x-admin-key` header. Consumer appkeys cannot call administrator APIs.
 
 Consumer appkeys expire after `APPKEY_TTL_DAYS` (90 by default). Rotation can temporarily accept the previous key up to `APPKEY_MAX_ROTATION_GRACE_SECONDS`. Administrator credentials support a deployment-time primary/previous pair with an explicit previous-key expiry. See [Credential lifecycle and audit operations](docs/CREDENTIAL_LIFECYCLE_AND_AUDIT.md).

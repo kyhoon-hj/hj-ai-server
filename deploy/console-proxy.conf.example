@@ -1,0 +1,19 @@
+# Include inside the existing ai.hjshub.com HTTPS server block after nginx -t.
+# Keep existing /knowledge, /v1 and health locations unchanged.
+location = /console/auth/callback {
+    access_log off;
+    proxy_pass http://127.0.0.1:11003;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    add_header Referrer-Policy no-referrer always;
+}
+location ~ ^/(console(?:/|$)|console-assets/|console-api/|console-playground-api/) {
+    client_max_body_size 31m;
+    proxy_pass http://127.0.0.1:11003;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 130s;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+}

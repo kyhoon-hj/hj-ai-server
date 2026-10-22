@@ -33,10 +33,12 @@ COPY package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
 RUN npm prune --omit=dev && npm cache clean --force
 
-COPY --from=build /app/dist ./dist
-COPY prisma ./prisma
-COPY prisma.config.ts ./prisma.config.ts
-COPY config/start-container.mjs ./config/start-container.mjs
+COPY --chown=nestjs:nodejs --from=build /app/dist ./dist
+COPY --chown=nestjs:nodejs prisma ./prisma
+COPY --chown=nestjs:nodejs prisma.config.ts ./prisma.config.ts
+COPY --chown=nestjs:nodejs config/start-container.mjs ./config/start-container.mjs
+COPY --chown=nestjs:nodejs console-web ./console-web
+COPY --chown=nestjs:nodejs scripts/provision-console-pilot.mjs ./scripts/provision-console-pilot.mjs
 
 USER nestjs
 EXPOSE 11000

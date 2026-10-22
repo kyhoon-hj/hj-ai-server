@@ -12,6 +12,7 @@ import { ConsoleAppsModule } from './console/apps/console-apps.module';
 import { ConsoleUsageModule } from './console/usage/console-usage.module';
 import { ConsoleRequestLogsModule } from './console/request-logs/console-request-logs.module';
 import { ConsoleAuditModule } from './console/audit/console-audit.module';
+import { ConsoleKnowledgeModule } from './console/knowledge/console-knowledge.module';
 import { FamilyKnowledgeModule } from './family-knowledge/family-knowledge.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { StorageModule } from './storage/storage.module';
@@ -37,6 +38,7 @@ import { RequestAbortMiddleware } from './common/http/request-abort.middleware';
     ConsoleUsageModule,
     ConsoleRequestLogsModule,
     ConsoleAuditModule,
+    ConsoleKnowledgeModule,
     FamilyKnowledgeModule,
     KnowledgeModule,
     StorageModule,

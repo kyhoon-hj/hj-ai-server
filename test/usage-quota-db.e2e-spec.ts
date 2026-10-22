@@ -23,6 +23,7 @@ import { AdminApiKeyGuard } from '../src/common/guards/admin-api-key.guard';
 import { AppkeyGuard } from '../src/common/guards/appkey.guard';
 import { ApiExposureGuard } from '../src/common/guards/api-exposure.guard';
 import { SecurityAuditService } from '../src/security/security-audit.service';
+import { ConsoleAppsService } from '../src/console/apps/console-apps.service';
 import type { QuotaProcessCommand } from './fixtures/usage-quota-process';
 
 const suite =
@@ -266,8 +267,8 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
     );
     for (const [index, operationKey] of operationKeys.entries()) {
       const reservation = await begin(app.appcode, operationKey);
-      if (index < 3) {
-        await quota.reserveTokens(reservation, [70, 20, 10][index]);
+      if (index >= 7) {
+        await quota.reserveTokens(reservation, [70, 20, 10][index - 7]);
       }
     }
 
@@ -300,6 +301,40 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
     expect(
       await prisma.consoleUsageThresholdEvent.count({
         where: { organizationId: org.id },
+      }),
+    ).toBe(6);
+  });
+
+  it('keeps threshold deduplication scoped to each UTC admission month', async () => {
+    const { org, app } = await fixture({ requests: 1 });
+    const period = jest.spyOn(
+      quota as unknown as { periodKey(): string },
+      'periodKey',
+    );
+    period.mockReturnValue('2026-09');
+    await begin(app.appcode, 'same-operation');
+    period.mockReturnValue('2026-10');
+    await begin(app.appcode, 'same-operation');
+
+    const events = await prisma.consoleUsageThresholdEvent.findMany({
+      where: { organizationId: org.id, metric: 'REQUESTS' },
+      orderBy: [{ periodKey: 'asc' }, { thresholdPercent: 'asc' }],
+      select: { periodKey: true, thresholdPercent: true },
+    });
+    expect(events).toEqual(
+      ['2026-09', '2026-10'].flatMap((periodKey) =>
+        [70, 90, 100].map((thresholdPercent) => ({
+          periodKey,
+          thresholdPercent,
+        })),
+      ),
+    );
+    await expect(begin(app.appcode, 'same-operation')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(
+      await prisma.consoleUsageThresholdEvent.count({
+        where: { organizationId: org.id, metric: 'REQUESTS' },
       }),
     ).toBe(6);
   });
@@ -397,8 +432,7 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
       ).toEqual({ requests: 1, tokens: 25, unmeasuredRequests: 0 });
       const next = await begin(app.appcode);
       await quota.reserveTokens(next, 75);
-      const last = await begin(app.appcode);
-      await expect(quota.reserveTokens(last, 1)).rejects.toMatchObject({
+      await expect(begin(app.appcode)).rejects.toMatchObject({
         status: 429,
       });
     },
@@ -602,8 +636,7 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
     await prisma.bedrockSearchLog.create({
       data: { appcode: app.appcode, searchword: '[TEST]', responsetime: 1 },
     });
-    const reservation = await begin(app.appcode);
-    await expect(quota.reserveTokens(reservation, 1)).rejects.toThrow(
+    await expect(begin(app.appcode)).rejects.toThrow(
       'USAGE_QUOTA_USAGE_UNMEASURED',
     );
     const zero = await fixture({ requests: 0 });
@@ -722,11 +755,17 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
   });
 
   it('runs Bedrock and recovery HTTP contracts with real quota persistence and a deterministic provider', async () => {
-    const { app: appInfo } = await fixture({
-      requests: 2,
+    const { app: appInfo, org } = await fixture({
+      requests: null,
       appTokens: 10000,
       orgTokens: 10000,
     });
+    const consoleApps = new ConsoleAppsService(prisma, {
+      recordConsole: jest.fn().mockResolvedValue(true),
+    } as never);
+    await consoleApps.update(appInfo.id, { monthlyRequestLimit: 2 }, {
+      organizationId: org.id,
+    } as never);
     const config = new ConfigService({
       AWS_REGION: 'us-east-1',
       BEDROCK_MODEL_ID: 'fixture-model',
@@ -829,8 +868,56 @@ suite('Monthly quota integration (isolated PostgreSQL, no live AWS)', () => {
           periodKey: pending.periodKey,
         }),
       ).toEqual({ requests: 2, tokens: 40, unmeasuredRequests: 0 });
+      // Clearing the request cap does not bypass an exhausted token cap.
+      await consoleApps.update(
+        appInfo.id,
+        { monthlyRequestLimit: null, monthlyTokenLimit: 40 },
+        { organizationId: org.id } as never,
+      );
+      await request(server)
+        .post('/bedrock/general-answers')
+        .set('appkey', 'fixture-key')
+        .send({ query: 'test' })
+        .expect(429);
+      expect(send).toHaveBeenCalledTimes(2);
+      await consoleApps.update(appInfo.id, { monthlyTokenLimit: 10000 }, {
+        organizationId: org.id,
+      } as never);
+      await request(server)
+        .post('/bedrock/general-answers')
+        .set('appkey', 'fixture-key')
+        .send({ query: 'test' })
+        .expect(200);
+      expect(send).toHaveBeenCalledTimes(3);
     } finally {
       await http.close();
     }
   }, 20000);
+
+  it('serializes app request admission across independent DB connections', async () => {
+    const { app } = await fixture({
+      requests: null,
+      orgTokens: null,
+      appTokens: null,
+    });
+    await prisma.appInfo.update({
+      where: { id: app.id },
+      data: { monthlyRequestLimit: 1 },
+    });
+    const outcomes = await Promise.allSettled([
+      quota.begin({ appcode: app.appcode, operationKey: randomUUID() }),
+      otherQuota.begin({ appcode: app.appcode, operationKey: randomUUID() }),
+    ]);
+    expect(outcomes.filter((item) => item.status === 'fulfilled')).toHaveLength(
+      1,
+    );
+    expect(outcomes.filter((item) => item.status === 'rejected')).toHaveLength(
+      1,
+    );
+    expect(
+      await prisma.consoleUsageReservation.count({
+        where: { appcode: app.appcode },
+      }),
+    ).toBe(1);
+  });
 });

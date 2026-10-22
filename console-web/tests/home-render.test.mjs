@@ -51,7 +51,7 @@ test('홈은 당월 지표·최근 오류·Key 만료와 M5 색인 계약을 표
     },
   ];
   const html = vm.runInContext(
-    `homeMarkup(monthly, apps, errors, { items: [{ id: 'alert-1', metric: 'TOKENS', thresholdPercent: 90, limitValue: 1000, observedValue: 900, severity: 'warning', createdAt: '2026-09-22T01:00:00.000Z' }] }, {}, Date.parse('2026-09-23T00:00:00.000Z'))`,
+    `homeMarkup(monthly, apps, errors, { items: [{ id: 'alert-1', metric: 'TOKENS', thresholdPercent: 90, limitValue: 1000, observedValue: 900, severity: 'warning', createdAt: '2026-09-22T01:00:00.000Z' }] }, {}, Date.parse('2026-09-23T00:00:00.000Z'), { failedJobs: 2, affectedApps: 1, lastFailureAt: '2026-09-22T01:00:00.000Z' })`,
     sandbox,
   );
 
@@ -67,7 +67,9 @@ test('홈은 당월 지표·최근 오류·Key 만료와 M5 색인 계약을 표
   assert.match(html, /7일 남음/);
   assert.match(html, /knowledge-index-failures-v1/);
   assert.match(html, /failedJobs/);
-  assert.match(html, /현재는 미측정 상태/);
+  assert.match(html, /affectedApps/);
+  assert.match(html, /lastFailureAt/);
+  assert.doesNotMatch(html, /현재는 미측정 상태/);
   assert.doesNotMatch(html, /<지원 앱>|undefined|NaN/);
 });
 
@@ -93,6 +95,12 @@ test('홈은 빈 오류·Key와 미측정 지표를 0으로 꾸미지 않는다'
   assert.match(html, /만료일이 설정된 Key가 없습니다/);
   assert.match(html, /이번 달 사용량 알림이 없습니다/);
   assert.match(html, /미측정/);
+  const measuredHtml = vm.runInContext(
+    'homeMarkup(monthly, [], [], { items: [] }, {}, Date.now(), { failedJobs: 0, affectedApps: 0, lastFailureAt: null })',
+    sandbox,
+  );
+  assert.match(measuredHtml, /failedJobs<\/span><strong>0/);
+  assert.doesNotMatch(measuredHtml, /현재는 미측정 상태/);
 });
 
 test('홈은 부가 정보 오류를 전체 화면 실패로 바꾸지 않는다', () => {
@@ -120,6 +128,7 @@ test('홈 route와 기존 월·앱·실패 로그 API가 연결된다', () => {
   assert.match(source, /return \{ name: 'home' \}/);
   assert.match(source, /usageApi\.monthly\(\)/);
   assert.match(source, /usageApi\.alerts\(\)/);
+  assert.match(source, /knowledgeApi\.indexFailures\(\)/);
   assert.match(source, /Promise\.allSettled/);
   assert.match(source, /appsApi\.list\(\)/);
   assert.match(

@@ -1,6 +1,6 @@
 # HJ AI Console 전체 마일스톤
 
-작성일: 2026-09-18 · 최종 갱신일: 2026-09-28
+작성일: 2026-09-18 · 최종 갱신일: 2026-10-22
 
 대상: HJ_AI_Server의 Console API, Console Web/BFF 및 관련 사용량 처리
 
@@ -8,20 +8,22 @@
 
 ## 1. 현재 진행 단계
 
-> **[Console M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 4/5]**
+> **[Console M7 | 운영 준비·pilot·공개 | 검증 중 | 1/5]**
 >
-> 다음 착수 대상: `M4-05` 임계치·감사·홈 최종 DB·브라우저 회귀 검증.
+> 완료: `M1-06` 서비스별 월 요청·토큰 한도 Console 설정과 생성 차단, 서버·Web·격리 DB 검증. M5-05 실제 브라우저·AWS 검증은 기존 잔여로 유지한다.
 >
-> 직전 완료: `M4-04` 내부 알림함 채널·수신/재조회 정책과 상태 UX 연결.
+> 병행: M6-02 실제 운영 SSO 검증 완료, M6-04 역할별 검증 잔여. M7-02 backup·rehearsal·이전 이미지 호환 완료, 운영 pilot 배포·OWNER 로그인 확인.
 >
-> 전체: **8개 중 4개 마일스톤 완료**, 잔여 실행 작업 **19/35 완료**.
+> 직전 완료: `M5-04` 게시·보관·원본 삭제 상태 전이, 감사·중복 요청·복구.
 >
-> 현재 알려진 차단 사유: 없음. M6에는 HJ-Works 계약 공동 확정이 필요함.
+> 전체: **8개 중 5개 마일스톤 완료**, 실행 작업 **27/36 완료**.
 >
-> 이번 변경 범위: M4-04 사용량 알림 API·홈 알림함·부분 실패 및 상태 UX.
+> M6 검증 중(1/5), M7 검증 중(1/5): 운영 migration 17→26, backend·Console 배포, 지정 HJ Solution OWNER 로그인·조회·로그아웃·재로그인 Pass. 사용자 승인 후 기존 앱 8개 ownership 배정·기존 지식/Key 메타데이터·사용량/로그 조회 Pass. [운영 pilot 배포 기록](HJ_AI_CONSOLE_PILOT_DEPLOYMENT_2026-10-14.md) 참조. 실제 업로드/지식 답변 AWS·다중 조직/역할 여정은 남아 있다.
+>
+> 이번 변경 완료: M1-06 운영 migration 26→27·서버/Console 배포, 실제 브라우저 설정·AWS 답변 생성·한도 429·상향 후 재허용 Pass(M7-05 부분 수행). 기존 9개 앱 설정 보존. [한도 운영 검증 기록](HJ_AI_CONSOLE_QUOTA_DEPLOYMENT_2026-10-22.md) 참조.
 
 ```text
-M0 완료 → M1 완료 → M2 완료 → M3 완료 → M4 진행 중 → M5 대기 → M6 대기 → M7 대기
+M0 완료 → M1 완료 → M2 완료 → M3 완료 → M4 완료 → M5 검증 중 → M6 검증 중 → M7 검증 중
 기준선     월 한도       집계·로그  통합검증   홈·알림       지식관리   SSO       운영공개
 ```
 
@@ -60,13 +62,13 @@ Playground 등의 구현은 재사용하며, 아래 잔여 작업과 공개 전 
 | 단계 | 목표 | 상태 | 완료/전체 | 선행 조건 | 기존 계획 대응 |
 | --- | --- | --- | --- | --- | --- |
 | M0 | 현황·검증 기준선 확정 | 완료 | 3/3 | 없음 | 기존 단계 0~2 검토 |
-| M1 | 월 한도 적용·예약·정산 정합성 | 완료 | 5/5 | M0 | CON-SRV-13 |
+| M1 | 월 한도 적용·예약·정산 정합성 | 완료 | 6/6 | M0 | CON-SRV-13 |
 | M2 | 사용량·요청 로그·운영 지표 일치 | 완료 | 5/5 | M1 | CON-SRV-10~12, CON-WEB-06 보완 |
 | M3 | DB·브라우저 통합 검증과 CI | 완료 | 5/5 | M1, M2 | 테스트 전략 §14, CON-OPS-05 일부 |
-| M4 | 홈·임계치 알림·감사 조회 | 진행 중 | 4/5 | M2, M3 | 임계치·감사·홈 최종 회귀 잔여 |
-| M5 | 조직 범위 지식 관리 | 대기 | 0/5 | M3, M4 | CON-SRV-15~16, CON-WEB-07~08 |
-| M6 | HJ-Works 인증·권한·세션 통합 | 대기 | 0/5 | M5, Works 공동 계약 확정 | CON-WORKS-02~05, CON-SRV-02·04, CON-WEB-01 |
-| M7 | 운영 준비·pilot·공개 | 대기 | 0/5 | M0~M6 완료 | CON-OPS-01~06 |
+| M4 | 홈·임계치 알림·감사 조회 | 완료 | 5/5 | M2, M3 | 임계치·감사·홈 최종 회귀 완료 |
+| M5 | 조직 범위 지식 관리 | 검증 중 | 4/5 | M3, M4 | CON-SRV-15~16, CON-WEB-07~08 |
+| M6 | HJ-Works 인증·권한·세션 통합 | 검증 중 | 1/5 | M5, Works 공동 계약 확정 | M6-02 완료, 실제 운영 OWNER SSO Pass; 다른 역할·공동 정책·event 잔여 |
+| M7 | 운영 준비·pilot·공개 | 검증 중 | 1/5 | 전체 공개는 M0~M6 완료 후 | M7-02 완료, 월 한도 운영 배포·실제 차단 확인; 전체 공개 기준 미충족 |
 
 HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ-Works 저장소 수정은 이
 프로젝트 작업에 포함하지 않으며, 실제 협의·변경·배포는 해당 요청과 권한 범위에서 진행한다.
@@ -81,13 +83,15 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 
 완료 근거: §5의 2026-09-18 검증 기록과 이 문서. M0 완료는 기존 기능의 운영 검증 완료를 뜻하지 않는다.
 
-### M1. 월 한도 정합성 보완 — 완료 (5/5)
+### M1. 월 한도 정합성 보완 — 완료 (6/6)
 
 - [x] `M1-01` 지식 답변·대화·Bedrock converse/text-response/general-answers별 한도 적용 계약을 정하고 누락된 생성 경로 연결.
 - [x] `M1-02` 실패 로그와 활성·불확실 예약의 요청 수 중복 계산 제거. 요청 계수와 토큰 불확실성 분리.
 - [x] `M1-03` 로그 저장 실패·정산 실패·프로세스 중단 시 RESERVED/UNCERTAIN 예약의 조회·복구·멱등 재정산 경로와 운영 절차 구현.
 - [x] `M1-04` UTC 월 경계, 중복 operation 범위, 토큰 예약 추정과 실제 사용량 차이, 미측정·무제한·0 한도 정책 확정 및 경계 처리.
 - [x] `M1-05` 실제 PostgreSQL의 별도 연결/프로세스로 조직·앱 한도 경계, 중복 요청, 실패 후 복구를 검증하고 관련 API 회귀 실행.
+
+- [x] `M1-06` Console 앱별 월 요청·토큰 한도 설정, 요청 승인·생성 차단, 사용량 표시 및 API/Web/격리 DB 검증. 기존 M5~M7 잔여와 독립적으로 사용자의 요청에 따라 재개한다.
 
 완료 기준: 적용 대상 API가 동일 정책을 지키고, 한 요청이 요청 한도에 중복 반영되지 않으며,
 장애 후 예약 상태를 설명·복구할 수 있다. 추정 토큰과 실제 토큰의 허용 오차·초과 정책을
@@ -117,45 +121,52 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 완료 기준: 문자열 존재 검사 외에 사용자 행동과 DB 결과를 검증한다. 자동화 범위와 별도
 통합 실행 범위를 구분하고 통과 증거를 남긴다. 이후 M4~M6 기능의 검증은 해당 단계에서 추가한다.
 
-### M4. 홈·알림·감사 조회 — 진행 중 (4/5)
+### M4. 홈·알림·감사 조회 — 완료 (5/5)
 
 - [x] `M4-01` 월 사용량 70/90/100% 도달 event와 조직·기간·지표·임계치 기준 중복 방지 구현. 재시도·월 변경 정책 포함.
 - [x] `M4-02` 홈에 이번 달 사용량·잔여 한도·성공률·p95·최근 오류·키 만료 표시. 지식 색인 실패는 M5에서 연결할 계약 마련.
 - [x] `M4-03` 조직 범위 활동·보안 감사 조회 API와 화면, 권한·필터·원문 비노출 구현 및 감사 저장 실패 처리 정책 확정.
 - [x] `M4-04` 알림 채널·수신 대상·재전송 정책 확정 및 연결. 0·무제한·미측정·읽기 전용·오류·빈 상태 UX 구현.
-- [ ] `M4-05` 임계치 동시 도달·중복 전달·월 전환, 감사 격리, 홈 탐색·모바일·키보드 사용 회귀 검증.
+- [x] `M4-05` 임계치 동시 도달·중복 전달·월 전환, 감사 격리, 홈 탐색·모바일·키보드 사용 회귀 검증.
 
 완료 기준: 같은 임계치 알림이 정의된 범위에서 중복되지 않고 홈·상세 지표가 일치한다.
 실제 수신자 메시지 발송은 별도 명시적 지시 범위에서만 수행하며 시험은 허용된 테스트 채널로 진행한다.
 
-### M5. 조직 범위 지식 관리 — 대기 (0/5)
+### M5. 조직 범위 지식 관리 — 검증 중 (4/5)
 
-- [ ] `M5-01` 기존 지식 기능을 Console identity 기반 facade로 연결하고 앱 소유권·Knowledge Manager permission 적용.
-- [ ] `M5-02` 파일 목록·상세·업로드·정책·게시 UI 및 API 구현. 파일·크기·저장 한도와 실패 응답 처리.
-- [ ] `M5-03` 색인 상태·attempt·오류·재시도·재색인 화면을 연결하고 홈의 색인 실패 지표 완성.
-- [ ] `M5-04` 게시·보관·안전한 삭제의 상태 전이와 감사·중복 요청·복구 처리 구현.
+- [x] `M5-01` 기존 지식 기능을 Console identity 기반 facade로 연결하고 앱 소유권·Knowledge Manager permission 적용.
+- [x] `M5-02` 파일 목록·상세·업로드·정책·게시 UI 및 API 구현. 파일·크기·저장 한도와 실패 응답 처리.
+- [x] `M5-03` 색인 상태·attempt·오류·재시도·재색인 화면을 연결하고 홈의 색인 실패 지표 완성.
+- [x] `M5-04` 게시·보관·안전한 삭제의 상태 전이와 감사·중복 요청·복구 처리 구현.
 - [ ] `M5-05` 업로드 → 색인 → Playground 답변 → 재색인 → 보관 여정, 타 조직 file/job 직접 접근 거부, 브라우저 관리자 credential 비노출 검증.
+  - 2026-10-14: 격리 DB/HTTP 업로드·실제 drain·답변·재색인·보관·교차 조직 거부 통과. 저장소/embedding/모델 mock, 실제 브라우저·AWS 검증 미실행.
 
 완료 기준: Console 권한만으로 지식 수명주기를 운영하며 조직 격리와 상태 전이 회귀를 통과한다.
 
-### M6. HJ-Works 로그인·권한·세션 통합 — 대기 (0/5)
+### M6. HJ-Works 로그인·권한·세션 통합 — 검증 중 (1/5)
 
 - [ ] `M6-01` 불변 ID·역할·permission 소유권·복수 조직·권한 철회 지연·변경 event·로그아웃·MFA·개인정보 계약 공동 확정.
-- [ ] `M6-02` SSO code 교환·callback·state 만료/단일 사용·Console session·cookie·CSRF 방어와 BFF 전달 계약 구현.
+  - Works 인계 수신: 운영 서비스 등록·HJ Solution ACTIVE 배정·Console permission 소유·Works 회사 선택·5분 절대 세션/철회 지연 승인 확인. UUID 비재사용·MFA·개인정보 정책·운영 revision/응답은 남아 있다.
+- [x] `M6-02` SSO code 교환·callback·state 만료/단일 사용·Console session·cookie·CSRF 방어와 BFF 전달 계약 구현.
+  - 수신부·DB state/session·최대 5분 세션·Origin 검사·BFF cookie/redirect 구현. 격리 DB 단일 사용·동시 callback·폐기/만료 시험과 운영 Works OWNER 코드 교환·logout/relogin Pass. M6-05 다중 역할·장애 시험은 별도다.
 - [ ] `M6-03` 계정·membership 동기화, 서명 event 멱등성·순서 역전·재전송 처리와 세션 폐기 구현.
 - [ ] `M6-04` 로그인·조직 선택·접근 거부·로그아웃 화면과 실제 권한별 UI 연결, fixture adapter 교체.
+  - Works 로그인 링크·사용자/회사 표시·권한 UI·logout·session resolver 구현. 운영 OWNER의 홈·앱·사용량·감사·logout/relogin Pass. 다른 역할·조직 전환/접근 거부 실계정 시험 잔여.
 - [ ] `M6-05` staging 실계정 2개 조직·3개 이상 역할에서 SSO 실패·재전송·권한 회수·로그아웃·Works 장애 E2E, 기존 기능 회귀 및 production fixture 차단 검증.
 
 완료 기준: 합의한 시간 안에 권한 회수가 반영되고 실계정 여정이 통과한다. 공동 계약이
 미확정이면 이를 차단 사유로 표시하며 fixture 통과로 인증 통합 완료를 대신하지 않는다.
 
-### M7. 운영 준비·pilot·공개 — 대기 (0/5)
+### M7. 운영 준비·pilot·공개 — 검증 중 (1/5)
 
 - [ ] `M7-01` `/console`·`/console-api`·Playground 경로의 reverse proxy·CORS·CSP·feature flag와 외부 노출 정책 구성·검증.
-- [ ] `M7-02` 기존 앱 ownership 사전 검사, migration backup·rehearsal·rollback 및 Console 비활성화 시 기존 AI API 유지 검증.
+  - Compose·Nginx 실제 적용, Console 200/no-store·비인증 API 401·실계정 cookie/redirect Pass. Playground 인증 여정·전체 노출 정책 최종 검증 잔여.
+- [x] `M7-02` 기존 앱 ownership 사전 검사, migration backup·rehearsal·rollback 및 Console 비활성화 시 기존 AI API 유지 검증.
+  - 운영 dump/restore-list, 복원 DB 9개 migration 및 이전 이미지 호환 Pass. 기존 앱 8·파일 23 보존, 이후 사용자 승인으로 ownership 8개 배정·AppInfo 키/설정 동일 확인. 운영 DB 역복구는 미실행이며 자료·절차는 배포 기록에 명시.
 - [ ] `M7-03` SSO secret·session key rotation, 예약 복구, metric·alert·dashboard·장애 runbook 완성.
 - [ ] `M7-04` 배포 후보의 전체 품질 검사·dependency/image scan·독립 보안·접근성 검수와 운영 대표 여정 통과 기록.
 - [ ] `M7-05` pilot 조직·한도·관측 기준을 확정하고 배포 승인 기록 후 단계적 공개·관찰·인수인계 완료.
+  - 2026-10-22 사용자 요청으로 월 한도 migration·서버·Console 운영 배포 및 실제 설정/차단/재허용 검증 완료. 기존 9개 앱 설정 보존, 검증 앱 비활성화. 전체 관찰·공개 기준은 잔여이며 [배포 기록](HJ_AI_CONSOLE_QUOTA_DEPLOYMENT_2026-10-22.md)을 참조한다.
 
 완료 기준: 미해결 공개 차단 항목이 없고 migration·rollback·로그인·키·사용량·지식 대표 여정의
 증거와 승인 기록이 있다. 검증된 후보와 실제 배포된 revision·환경을 구분해 기록한다.
@@ -188,19 +199,34 @@ HJ-Works 계약 질의·협의 자료 준비는 M1~M5 중에도 가능하다. HJ
 
 | 날짜 | 변경 | 근거·검증 | 다음 작업 |
 | --- | --- | --- | --- |
+| 2026-10-22 | 월 한도 운영 migration 26→27·서버/Console 배포 완료, M7 검증 중 1/5 | 실브라우저 저장 오류 수정·Web 40 Pass, 실제 AWS 생성 2회/2922 토큰, 요청·토큰 429와 재허용 Pass | 기존 M5~M7 잔여 공개·관측 검증 유지 |
+| 2026-10-22 | M1-06 앱별 월 요청·토큰 설정과 사전 생성 차단 완료, M1 6/6 | 서버 622/Web 39/격리 DB 27 Pass, build/typecheck/대상 lint Pass. 아래 최신 검증 기록 참조 | 배포 요청 시 신규 migration 선적용 후 서버·Web 반영. M5~M7 잔여 유지 |
 | 2026-09-18 | M0 완료, M1을 대기 상태의 현재 착수 대상으로 지정. M0~M7 및 상태 표시 규칙 수립 | §5 기준선, 문서 링크·체크리스트 정합성 검사 | M1-01 한도 적용 경로 확정·연결 |
 | 2026-09-23 | M4-01 완료, M4 진행 중 1/5 | 단위·계약 39개, 격리 PostgreSQL 17개 및 회귀 25개, 전체 verify Pass | M4-02 Console 홈 요약 지표 |
 | 2026-09-23 | M4-02 완료, M4 진행 중 2/5 | Console Web 27개, 전체 verify Pass | M4-03 조직 감사 조회 API·화면 |
 | 2026-09-28 | M4-03 완료, M4 진행 중 3/5 | 단위·HTTP 10개, Web 30개, 실 DB 5개, 전체 verify Pass | M4-04 알림 전달·상태 UX |
 | 2026-09-28 | M4-04 완료, M4 진행 중 4/5 | 단위·HTTP 11개, Web 31개, 실 DB 5개, 전체 verify Pass | M4-05 최종 DB·브라우저 회귀 |
+| 2026-09-28 | M4-05 완료, M4 완료 5/5·M5 대기 0/5 | 격리 PostgreSQL 26+5개, headed Chromium 데스크톱·390px 키보드 여정, 전체 verify Pass | M5-01 지식 facade·권한 |
+| 2026-09-28 | M5-01 완료, M5 진행 중 1/5 | 격리 PostgreSQL/HTTP 6개, 전체 verify Pass | M5-02 파일 업로드·정책·게시 UI/API |
+| 2026-10-02 | M5-02 완료, M5 진행 중 2/5 | 격리 PostgreSQL/HTTP 7개, Web 34개, 전체 verify Pass | M5-03 색인 상태·재시도 UI |
+| 2026-10-02 | M5-03 완료, M5 진행 중 3/5 | 격리 PostgreSQL/HTTP 8개, Web 35개, 전체 verify Pass | M5-04 보관·삭제 상태 전이 |
+| 2026-10-02 | M5-04 완료, M5 진행 중 4/5 | 격리 PostgreSQL/HTTP 9개, Web 36개, 전체 verify Pass | M5-05 전체 지식 여정 |
+| 2026-10-14 | M5 검증 중 4/5, M6 독립 SSO 구현 후 외부 계약 차단 0/5, M7 배포 준비 중 0/5 | 전체 verify·격리 DB/HTTP 11개·pilot manifest 검증, 아래 2026-10-14 기록 | M5 실제 브라우저/AWS, Works 작업 지시서 수행·실계정 인계 |
+| 2026-10-14 | Works 완료 인계 수신, M6 차단 사유를 secret·pilot 사용자/권한·실계정 확인으로 갱신 | 공유 fixture 계약 7개 Pass, 공개 Console/login 404·readiness 200 | secret 전달·pilot 승인 후 AI Server 배포와 공동 검증 |
+| 2026-10-14 | 지정 관리자 UUID·ACTIVE/OWNER 및 운영 API origin 확인, pilot manifest 준비 | 로컬 PostgreSQL dry-run members 1/apps 0 Pass, Git 제외 확인; 비밀키 조회는 최근 인증 만료로 거절 | 사용자 Works 재로그인 후 기존 키 전달·운영 적용·실계정 검증 |
+| 2026-10-14 | 회사 OWNER 재로그인 후 서비스 관리 권한 거절, 시스템 관리자 재로그인 선택; 승인된 AWS login 실행 후 MFA 대기 | 전체 verify 서버 511/Web 37/demo 56 Pass, Compose 구조 검사 Pass; 운영 미변경 | Works 관리자·AWS 인증 완료 후 secret 전달·SSM 점검 |
+| 2026-10-14 | AWS 인증 완료·운영 EC2/SSM/DB/proxy/CloudFront 사전 점검 | 실제 running/Online·앱/데모 healthy, migration 17/26·Console 테이블 없음, Origin/cookie/query 전달 설정 확인; 변경 미실행 | Works 기존 키 전달 후 백업·9개 migration 리허설·후보 배포 |
+| 2026-10-14 | Works 기존 키 전달·SecureString 준비, M6 진행 중 0/5, M7-02 실제 backup | DB dump/restore-list Pass, backup SHA-256 `731b33197d4083261dbfb02bcef259e43c09912ec83c957978bd1cdd2854a8da`; 이전 이미지·설정 보존 | 후보 build 완료 후 복원 DB에 9개 migration rehearsal |
+| 2026-10-14 | 지정 pilot 운영 배포·OWNER SSO 검증, M6-02/M7-02 완료; M6/M7 검증 중 각각 1/5 | 복원 DB rehearsal·이전 이미지 호환·운영 26 migrations·기존 앱/파일 보존·Chrome login/조회/logout/relogin Pass; [배포 기록](HJ_AI_CONSOLE_PILOT_DEPLOYMENT_2026-10-14.md) | 앱 ownership 확정·M5 AWS 여정·M6 다중 조직/역할·M7 관측/검수 |
+| 2026-10-14 | 사용자 승인으로 기존 8개 앱을 HJ Solution에 배정 | dry-run/apply 8개·AppInfo 행 불변·파일 23 보존, 재로그인 후 앱·Key 메타데이터·기존 지식·사용량/로그 조회 Pass | M5 업로드/답변 AWS 여정·M6 다중 조직/역할·M7 관측/검수 |
 
 문서 작성 검증(2026-09-18): 변경 문서·지침 5개에서 상대 링크 57개와 고유 작업 ID
 38개(M0 3개, M1~M7 35개), 단계별 완료 개수·현재 단계 표시를 확인했다.
 문서 정합성 검사와 대상 문서 `git diff --check`는 Pass다. 애플리케이션 코드는 변경하지
 않았으며 이번 문서 작업에서는 서버·Web 테스트를 재실행하지 않았다.
 
-다음 실행 범위는 `M4-05` 임계치 동시 도달·중복·월 전환, 감사 격리와 홈 탐색·모바일·
-키보드 사용 회귀 검증이다. M4는 진행 중(4/5)이다. 운영 DB 변경·배포는 수행하지 않았다.
+다음 실행 범위는 `M5-05` 실제 브라우저·AWS 검증과 M6 공동 정책·event·다중 조직/역할 검증이다. M5는 검증 중(4/5), M6/M7은 검증 중(각 1/5)이다.
+운영 DB 변경·pilot 배포·지정 OWNER 접속·승인된 기존 앱 8개 ownership 배정을 수행했다. 전체 공개 완료 기준은 남아 있다.
 
 
 ### M1-01 적용 계약 및 검증 — 2026-09-18
@@ -757,3 +783,227 @@ key를 사용해 새 메시지를 만들지 않고 재조회한다. 따라서 �
 | 날짜 | 변경 | 근거·검증 | 다음 작업 |
 | --- | --- | --- | --- |
 | 2026-09-28 | M4-04 완료, M4 진행 중 4/5 | 내부 알림함 API·홈 상태 UX, 단위/HTTP 11개·실 DB 5개·Web 31개·전체 verify Pass | M4-05 최종 DB·브라우저 회귀 |
+
+### M4-05 임계치·감사·홈 최종 회귀 — 2026-09-28
+
+[Console M4 | 홈·임계치 알림·감사 조회 | 완료 | 5/5]
+
+격리 PostgreSQL에서 독립 프로세스의 동일 임계치 동시 도달, 70/90/100% 중복 방지,
+같은 operation key의 UTC 월별 재사용과 월별 event 분리를 검증했다. HTTP/DB 시험은 같은
+알림의 재조회에서 ID·내용과 event 건수가 유지되고, 다른 조직의 알림 및 앱 ID로 필터한
+감사 기록이 노출되지 않음을 확인했다.
+
+headed Chromium에서 `/console` 홈의 당월 0·무제한·미측정과 `/console/usage`의 동일
+지표, 홈에서 사용량 상세와 감사 화면 이동을 확인했다. 390px 폭에서는 가로 넘침이 없었다.
+실제 키보드 Tab 검사에서 닫힌 모바일 사이드바 링크가 포커스를 받는 문제를 발견해
+`inert`와 메뉴 포커스 복귀를 적용했다. 재검증에서 Tab → Enter로 메뉴 열기·홈 이동,
+Escape로 닫기, 1280px 복귀 시 데스크톱 메뉴 활성화를 확인했다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-regression-db` | Pass — 2 suites / 26 tests | 로컬 격리 PostgreSQL, 25 migrations, 독립 프로세스 경합·월 분리·중복, 임시 DB 삭제 |
+| `npm run test:console-access-db` | Pass — 1 suite / 5 tests | 두 조직·권한·알림 재조회·감사 앱 필터, 임시 DB 삭제 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/509 tests, Console Web 31, demo 56 |
+| Playwright CLI headed Chromium | Pass | 로컬 격리 DB fixture, 홈·사용량·감사, 390px/1280px, Tab·Enter·Escape·포커스·가로 넘침 |
+| `node --check console-web/public/app.js`, `git diff --check` | Pass | 브라우저 구문·변경 공백 |
+
+브라우저 fixture는 로컬 개발 identity와 빈 조직 데이터로 실행했다. 실제 알림 표시·감사
+데이터는 격리 DB/HTTP 검증으로 확인했으며, 운영 DB·원격 CI·AWS·운영 배포는 미실행이다.
+Playwright 종료 후 fixture 프로세스가 종료되면서 남은 이름이 확인된 격리 DB는 수동 삭제했다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-28 | M4-05 완료, M4 완료 5/5·M5 대기 0/5 | 월 경계·중복·감사 DB 회귀와 실제 브라우저 모바일 키보드 수정·재검증, 전체 verify Pass | M5-01 지식 facade·권한 |
+
+### M5-01 Console identity 기반 지식 접근 경계 — 2026-09-28
+
+[Console M5 | 조직 범위 지식 관리 | 진행 중 | 1/5]
+
+`GET /console-api/v1/apps/:appId/knowledge/files`와
+`GET /console-api/v1/apps/:appId/knowledge/files/:fileId`는 `knowledge:read`를 요구한다.
+`POST /console-api/v1/apps/:appId/knowledge/files/:fileId/index-jobs`는
+`knowledge:write`를 요구하며 기존 비동기 색인 서비스를 재사용한다. 모든 경로는 Console
+identity의 조직으로 앱 ownership을 먼저 확인하고, 기존 지식 서비스에는 소유 앱의 appcode만
+전달한다. 파일·작업 응답은 명시적 필드만 반환해 S3 bucket/key, 임의 metadata 및
+idempotency key를 브라우저에 노출하지 않는다. 업로드·정책·게시 화면과 API는 M5-02,
+작업 상태·재시도 UI는 M5-03, 보관 전이는 M5-04 범위다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-access-db` | Pass — 1 suite / 6 tests | 격리 PostgreSQL·HTTP, 두 조직 파일 직접 접근 404, Viewer 403, Knowledge Manager 읽기·색인 제출 202, 동일 key 멱등 1건, 임시 DB 삭제 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/509 tests, Console Web 31, demo 56 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+첫 최종 `verify`는 `test:ci` 시작 후 진단 출력 없이 종료 코드 1로 끝났다.
+`npm run test:ci` 단독 재실행은 65 suites/509 tests Pass였고, 전체 `verify` 재실행도 Pass였다.
+초기 종료 원인은 확인되지 않았다. 실제 브라우저·운영 DB·원격 CI·AWS·운영 배포는
+이번 M5-01에서 실행하지 않았다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-09-28 | M5-01 완료, M5 진행 중 1/5 | 지식 읽기·색인 제출 facade, 조직·권한·비노출 DB/HTTP 6개 및 전체 verify Pass | M5-02 업로드·정책·게시 UI/API |
+
+### M5-02 지식 파일 업로드·정책·게시 — 2026-10-02
+
+[Console M5 | 조직 범위 지식 관리 | 진행 중 | 2/5]
+
+Console Web에 조직 소유 앱의 파일 목록·선택 상세·업로드·정책 편집과 게시 상태 선택을 연결했다.
+Console API의 업로드와 정책 변경은 `knowledge:write`와 앱 소유권을 확인한 뒤 기존 지식
+서비스의 파일 형식·크기·저장 한도 검증 및 정책 유효 기간 검증을 재사용한다. 응답에는
+저장소 bucket/key와 checksum을 포함하지 않는다. Web BFF는 지식 업로드에 한해 기존 1MB
+본문 제한을 설정된 파일 크기(기본 30MB, 최대 100MB)와 multipart 여유 64KB로 확장하고,
+초과 시 413 구조화 오류를 반환한다. 조직 소유권 거부 후 임시 업로드 파일도 제거한다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-access-db` | Pass — 1 suite / 7 tests | 격리 PostgreSQL·HTTP, 정상 업로드·게시 저장, Viewer 403·타 조직 404, 확장자·저장 한도 거부. 저장소 호출은 mock이며 실제 S3는 미검증 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/509 tests, Console Web 33, demo 56 |
+| `npm run test:console-web` | Pass — 34 tests | multipart·정책 요청, 1MB 초과 BFF 전달, 목록/상세 렌더 및 HTML 이스케이프. 마지막 렌더 테스트 추가 후 재실행 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+실제 브라우저 업로드 여정, 실제 S3, 운영 DB·원격 CI·배포는 이번 작업에서 실행하지 않았다.
+브라우저부터 색인·답변·보관까지의 통합 검증은 M5-05 완료 기준이다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-10-02 | M5-02 완료, M5 진행 중 2/5 | 조직 소유권·권한·파일/저장 한도 DB/HTTP, Web BFF·화면 렌더 및 전체 verify Pass | M5-03 색인 상태·오류·재시도·홈 지표 |
+
+### M5-03 색인 작업 상태·재시도·재색인과 홈 지표 — 2026-10-02
+
+[Console M5 | 조직 범위 지식 관리 | 진행 중 | 3/5]
+
+Console API에 파일별 최근 색인 작업 20건, 작업 상세, 실패 작업 재시도, 재색인 제출과
+조직 범위 실패 집계를 연결했다. 파일·작업 API는 앱 소유권과 `knowledge:read` 또는
+`knowledge:write`를 검사한다. 작업 응답은 attempt·maxAttempts·상태·오류 코드/안내·
+다음 시각만 투영하며 idempotency key와 내부 lease 정보는 반환하지 않는다. 홈 지표는
+소유 앱의 현재 `failed` 작업 수(`failedJobs`), 가장 최근 완료 시각(`lastFailureAt`),
+실패 작업이 있는 앱 수(`affectedApps`)를 조회한다. 조회 실패와 측정된 0건을 구분한다.
+
+Console Web 파일 상세에는 작업 상태·시도 횟수·오류·다음 자동 시도 시각, 수동 새로고침,
+색인·재색인 제출 및 재시도 가능한 실패의 버튼을 추가했다. 보관·삭제와 감사·복구는 M5-04다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-access-db` | Pass — 1 suite / 8 tests | 격리 PostgreSQL·HTTP, 타 조직 파일/작업 404·Viewer 403, 실패 집계 조직 격리, 재시도·재색인 제출. 워커는 비활성화한 계약 검증 |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/509 tests, Console Web 35, demo 56 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+첫 집중 검증은 HTTP 공통 응답의 `awsRequest` 필드와 Web 가상 상태 누락으로 테스트
+기대값이 실패했다. 기대값과 상태를 수정한 뒤 집중 검증 및 전체 품질 검사가 통과했다.
+실제 워커·AWS 색인, 브라우저 업로드부터 답변까지의 여정, 운영 DB·원격 CI·배포는
+이번 작업에서 실행하지 않았다. 이들 통합 검증은 M5-05 완료 기준이다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-10-02 | M5-03 완료, M5 진행 중 3/5 | 작업 상태·재시도·재색인 및 홈 집계 DB/HTTP 8개, Web 35개, 전체 verify Pass | M5-04 게시·보관·안전한 삭제·감사·복구 |
+
+### M5-04 게시·보관·안전한 삭제와 복구 — 2026-10-02
+
+[Console M5 | 조직 범위 지식 관리 | 진행 중 | 4/5]
+
+Console API에 보관(`DELETE files/:fileId`), 선택적 S3 원본 삭제(`deleteObject=true`),
+실패한 원본 삭제 재시도(`POST files/:fileId/object-cleanup/retry`)를 연결했다. 보관 시
+파일은 검색에서 제외되고 게시 상태는 `RETIRED`가 되며 청크가 제거된다. 보관된 파일의
+정책 변경과 색인 제출은 거부하고, 진행 중 색인 작업이 있으면 Console 보관 요청은 409로
+거부한다. 중복 정책·보관 요청은 동일 상태를 반환하고 중복 감사 기록을 남기지 않는다.
+원본 삭제 실패는 보관 상태와 `failed` 정리 상태를 보존하며 명시적 재시도로 완료할 수 있다.
+
+파일 목록에서 보관 파일 표시를 선택할 수 있고, 상세 화면은 보관 전 확인, S3 원본 삭제
+확인, 실패 후 재시도를 제공한다. Console 응답에는 저장소 key·bucket·임의 metadata를
+반환하지 않고 정리 상태만 투영한다. 정책 변경·보관·원본 정리 성공/실패는 Console 감사
+이벤트로 기록한다.
+
+| 실행 명령·검증 | 결과 | 범위·한계 |
+| --- | --- | --- |
+| `npm run test:console-access-db` | Pass — 1 suite / 9 tests | 격리 PostgreSQL·HTTP, 조직/권한 거부, 게시·보관 상태, 활성 작업 409, 반복 요청·감사 1건, S3 삭제 실패·재시도. StorageService는 mock |
+| `npm run verify` | Pass | build·typecheck·lint, 서버 65 suites/509 tests, Console Web 36, demo 56 |
+| `git diff --check` | Pass | 변경 공백 검사 |
+
+첫 집중 검증은 이전 테스트의 정책 감사 이벤트까지 세어 실패했다. 파일 ID로 범위를
+좁히고 포맷·린트를 수정한 뒤 집중 검증과 전체 품질 검사가 통과했다. 실제 S3, 동시
+프로세스의 보관 경합, 실제 브라우저·워커·답변 여정, 운영 DB·원격 CI·배포는 미실행이다.
+전체 여정과 조직 격리 브라우저 검증은 M5-05에서 수행한다.
+
+| 날짜 | 변경 | 근거·검증 | 다음 작업 |
+| --- | --- | --- | --- |
+| 2026-10-02 | M5-04 완료, M5 진행 중 4/5 | 보관·원본 삭제 실패 복구·감사 DB/HTTP 9개, Web 36개, 전체 verify Pass | M5-05 업로드부터 보관까지 전체 여정 |
+
+### M5-05 및 M6/M7 독립 연계 구현·검증 — 2026-10-14
+
+[Console M5 | 조직 범위 지식 관리 | 검증 중 | 4/5]
+
+사용자가 전체 운영 Works 연계를 요청하고 Works 변경은 작업 지시서로 인계하도록 지정했다.
+M5 완료 전에도 독립적인 M6-02/04 SSO 수신·Web 연결과 M7-01 배포 구성 준비를 병행했다.
+운영 서비스 등록·실계정·권한 회수 공동 계약은 아직 없으므로 M6 완료 체크는 하지 않는다.
+
+구현: `/console/auth/login` → Works authorize → `/console/auth/callback` BFF →
+`/console-api/v1/auth/callback` → code exchange → DB session. state·session은 32bytes 랜덤
+원문 cookie와 DB hash로 분리한다. state는 60초·DB 단일 사용, session은 Works expiresAt과
+5분 중 빠른 절대 만료, cookie는 HttpOnly/SameSite=Lax·HTTPS Secure다. Origin 검사,
+logout·만료·멤버십 정지/제거/역할 불일치 거절, permission 매 요청 조회를 연결했다.
+조직·멤버십·permission은 승인된 pilot manifest로 사전 등록하며 로그인으로 권한을 확대하지 않는다.
+Works 역할과 로컬 승인 worksRole 불일치는 403이다. 다중 조직은 Works 회사 선택 후 재로그인한다.
+
+| 명령·검증 | 결과 | 환경·한계 |
+| --- | --- | --- |
+| `npm run verify` | Pass | Windows 로컬 미커밋 작업본, build/typecheck/lint, 서버 65 suites/510 tests, Web 37 tests, demo 56 tests |
+| `npm run test:console-access-db` 최종 단독 실행 | Pass — 1 suite/11 tests | 로컬 격리 PostgreSQL·26 migrations·HTTP; 임시 DB 생성/삭제 |
+| `node --test scripts/tests/console-pilot.test.mjs` | Pass — 1 test | manifest unknown permission·중복 사용자/ownership 검증. 운영 manifest 적용은 미실행 |
+| `node --check console-web/public/auth.js`, `git diff --check` | Pass | JS 구문·추적 변경 공백 검사 |
+
+DB 여정은 실제 색인 drain·청크 저장/삭제·벡터 검색·답변 로그를 사용했다. StorageService,
+embedding 및 Bedrock provider는 mock이다. Works code exchange도 fetch mock이다.
+동일 DB state의 동시 callback은 302 한 건·401 한 건, 재사용·브라우저 state 부재 거절,
+잘못된/누락 Origin 거절, logout·만료·membership 제거/재활성화 후 기존 session 거절을 확인했다.
+BFF 시험은 callback redirect·다중 Set-Cookie·Origin 전달을 확인했다. 실제 브라우저·S3·AWS·
+Works 운영/staging 실계정·운영 DB·Docker/nginx 적용·배포·원격 CI는 실행하지 않았다.
+
+초기 실패와 수정: 지식 여정이 이전 시험 파일을 검색해 source assertion이 실패하여 독립 앱으로
+격리했다. 신규 SecurityModule의 직접 Prisma 의존성으로 DB 없는 HTTP 계약 18개가 실패하여,
+SSO 활성 호출에서만 앱 Prisma provider를 조회하도록 변경했다. 전체 verify 재실행은 통과했다.
+verify와 병행한 DB subprocess는 진단 없이 Windows exit 3221226505로 종료했으며 원인은
+확정하지 못했다. 단독 재실행은 통과했다. 추가 동시 callback 시험에서는 재사용한 mock Response
+body가 이미 소비되어 두 번째 교환이 실패했으므로 호출마다 Response를 생성하도록 수정했다.
+최종 동시성·만료·logout DB 시험은 통과했다. 제품 소스 수정 없이 해소한 mock 문제다.
+
+M6 차단 해소: [Works 작업 지시서](HJ_WORKS_CONSOLE_INTEGRATION_WORK_ORDER_2026-10-14.md)의
+실제 SSO 계약·client 등록·origin·secret 저장 위치·pilot UUID/역할/permission·5분 철회 정책을
+인계받는다. 즉시 회수 요구가 있으면 event/introspection 계약과 AI Server M6-03 구현이 필요하다.
+현재는 Works logout 뒤 발급된 Console session이 최대 5분 남을 수 있다.
+
+다음: M5 실제 브라우저·AWS 전체 여정, Works 인계 후 M6-01/03/05 및 실계정 회귀,
+[SSO 배포 인계서](HJ_AI_CONSOLE_SSO_RELEASE_GUIDE_2026-10-14.md)에 따른 후보·migration·proxy 검증.
+운영 공개·M5/M6/M7 완료 판정은 아직 하지 않았다.
+
+
+## 2026-10-22 — M1-06 서비스별 월간 AI 사용 제한
+
+- 상태: M1 완료 6/6. M5 검증 중 4/5, M6·M7 각 검증 중 1/5는 유지한다.
+- Console 앱 개요에서 `monthlyRequestLimit`과 `monthlyTokenLimit`을 변경한다. 기존 `apps:write` 권한·조직 소유권 검증·감사를 적용한다.
+- 앱 요청 한도를 nullable Int 컬럼으로 추가했다. 기존 앱 기본값 null은 무제한이다. migration: `20261022090000_add_app_request_limit`.
+- 조직·앱의 요청 한도 및 이미 소진된 토큰 한도를 admission에서 429로 차단한다. 검색·Jev 분류 이전에 거절하고 생성 직전에는 전체 예상 토큰을 예약한다.
+- 사용량 화면에 앱별 요청/토큰 사용·예약·한도·잔여를 표시한다. UTC 월 기준, 빈 값=null, 0=차단. 생성 토큰은 입력·출력 합계이며 Jev/embedding은 제외한다.
+- 이미 진행 중인 생성은 중단하지 않는다. 기존 추정 예약 방식의 실측 초과 가능성과 정책 변경 전 승인된 요청의 한계를 유지한다.
+
+| 실행 명령 | 결과 | 검증 범위 |
+| --- | --- | --- |
+| `npm run test:ci` | Pass — 69 suites / 622 tests | 전체 서버 mock·HTTP 계약 |
+| `npm run test:console-web` | Pass — 39 tests | 입력·저장·렌더링·BFF 회귀, 실제 브라우저 미실행 |
+| `npm run test:console-regression-db` | Pass — 2 suites / 27 tests | 격리 PostgreSQL migration·별도 연결 동시 요청·설정 저장·생성 429/재허용·집계·복구. 모델은 deterministic mock |
+| `npm run typecheck` | Pass | 전체 TypeScript |
+| `npm run build` | Pass | Prisma generate 및 Nest build |
+| `npx --no-install eslint` + 아래 11개 변경 TS 파일 | Pass | 변경 파일 린트 |
+
+ESLint 대상: src/console/apps/dto/update-console-app.dto.ts, src/console/apps/console-apps.service.ts,
+src/console/apps/entities/console-app.entity.ts, src/usage-quota/usage-quota.service.ts,
+src/console/usage/console-usage.service.ts, src/console/apps/console-apps.controller.spec.ts,
+src/console/apps/console-apps.service.spec.ts, src/usage-quota/usage-quota.service.spec.ts,
+src/knowledge/knowledge.contract.spec.ts, test/usage-quota-db.e2e-spec.ts, test/console-usage-db.e2e-spec.ts.
+
+첫 단위/DB 실행은 기존 토큰 차단 시점의 기대값 때문에 각각 1건/4건 실패했다. 새 admission 차단 정책에 맞게 기대값과 임계치 알림 fixture 순서를 수정한 뒤 재실행해 모두 통과했다. 격리 테스트 DB는 종료 시 제거했다.
+
+실제 브라우저·Jev/AWS·운영 DB 변경·배포는 미실행이다. 운영 반영 시 서버 기동 전에 신규 migration을 적용해야 한다. 다음 작업은 사용자 요청 시 배포 절차 또는 기존 M5~M7 잔여 검증이며 자동으로 착수하지 않는다.
+
+### 후속 운영 배포·검증 — 2026-10-22
+
+위 미실행 표시는 구현 당시 기록이다. 이후 사용자 요청으로 운영 backup·복원 rehearsal·migration 26→27·서버/Console 배포를 완료했다. 실제 앱 저장 이벤트 누락을 수정하고 `npm run test:console-web` 40/40 Pass 후 수정 Console을 배포했다. 실제 브라우저 설정과 HTTPS 답변 생성에서 요청 한도·토큰 0·실측 소진 경계 429, 한도 상향 후 생성 재개를 확인했다. 차단 요청은 AWS operations 0이며 최종 2회/2922 토큰, 예약은 모두 SETTLED다. 기존 앱 9개 설정·키 보존, 검증 앱 비활성화, 임시 DB·키 파일 정리 및 공개 health/Console/assets 200 Pass. 상세 명령·환경·SSM 근거·제약은 [운영 검증 기록](HJ_AI_CONSOLE_QUOTA_DEPLOYMENT_2026-10-22.md)에 남긴다. M7은 검증 중 1/5로 유지하며 다음 범위는 기존 M5 전체 지식 여정·M6 다중 역할·M7 관측/검수다.

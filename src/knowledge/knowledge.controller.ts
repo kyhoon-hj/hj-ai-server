@@ -231,6 +231,7 @@ export class KnowledgeController {
   }
 
   @Post('rag-response')
+  @ApiOkResponse({ type: KnowledgeAnswerEntity })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '검색된 지식 chunk를 근거로 Bedrock 답변을 생성합니다.',

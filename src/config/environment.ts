@@ -1,3 +1,5 @@
+import { validateJevOptions } from '../jev/jev-client';
+
 const REQUIRED_ENVIRONMENT_KEYS = [
   'DATABASE_URL',
   'APPKEY_JWT_SECRET',
@@ -16,6 +18,7 @@ const BOOLEAN_ENVIRONMENT_KEYS = [
   'ENABLE_LEGACY_BEDROCK_INSPECTION_API',
   'ENABLE_LEGACY_KNOWLEDGE_WRITE_API',
   'ENABLE_CONSOLE_DEV_IDENTITY',
+  'CONSOLE_WORKS_SSO_ENABLED',
   'FRAME_FAMILY_RAG_ENABLED',
 ] as const;
 
@@ -33,6 +36,43 @@ export function validateEnvironment(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const errors: string[] = [];
+  const jevMode = valueOf(config, 'JEV_AI_RAG_MODE') || 'off';
+  const jevAppcodes = valueOf(config, 'JEV_AI_RAG_APPCODES')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(',');
+  const jevTimeoutMs = Number(valueOf(config, 'JEV_AI_TIMEOUT_MS') || 3000);
+  try {
+    validateJevOptions({
+      baseURL: valueOf(config, 'JEV_AI_BASE_URL'),
+      model: valueOf(config, 'JEV_AI_MODEL'),
+      timeoutMs: jevTimeoutMs,
+    });
+  } catch {
+    errors.push(
+      'Jev requires base URL https://jev-ai.pro/api, a Jev model ID, and timeout 100-30000 ms',
+    );
+  }
+  if (!['off', 'shadow', 'classify'].includes(jevMode)) {
+    errors.push('JEV_AI_RAG_MODE must be off or shadow or classify');
+  }
+  if (jevMode !== 'off' && !valueOf(config, 'JEV_AI_API_KEY')) {
+    errors.push('JEV_AI_API_KEY is required for enabled Jev mode');
+  }
+  if (jevMode !== 'off' && !jevAppcodes) {
+    errors.push('JEV_AI_RAG_APPCODES is required for enabled Jev mode');
+  }
+  if (
+    jevAppcodes
+      .split(',')
+      .filter(Boolean)
+      .some((item) => !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(item))
+  ) {
+    errors.push(
+      'JEV_AI_RAG_APPCODES must contain exact appcodes without wildcards',
+    );
+  }
 
   for (const key of REQUIRED_ENVIRONMENT_KEYS) {
     if (!valueOf(config, key)) errors.push(`${key} is required`);
@@ -319,6 +359,43 @@ export function validateEnvironment(
     }
   }
 
+  if (valueOf(config, 'CONSOLE_WORKS_SSO_ENABLED') === 'true') {
+    for (const key of [
+      'CONSOLE_PUBLIC_ORIGIN',
+      'WORKS_PUBLIC_ORIGIN',
+      'WORKS_API_ORIGIN',
+    ]) {
+      const value = valueOf(config, key);
+      try {
+        const url = new URL(value);
+        if (
+          url.origin !== value ||
+          url.username ||
+          url.password ||
+          !['http:', 'https:'].includes(url.protocol) ||
+          (valueOf(config, 'NODE_ENV') === 'production' &&
+            url.protocol !== 'https:')
+        )
+          throw new Error();
+      } catch {
+        errors.push(`${key} must be an exact HTTPS origin in production`);
+      }
+    }
+    for (const key of [
+      'WORKS_CONSOLE_CLIENT_ID',
+      'WORKS_CONSOLE_CLIENT_SECRET',
+    ]) {
+      if (!valueOf(config, key))
+        errors.push(`${key} is required when Console SSO is enabled`);
+    }
+    if (valueOf(config, 'ENABLE_CONSOLE_DEV_IDENTITY') === 'true')
+      errors.push(
+        'Console SSO and development identity cannot both be enabled',
+      );
+    if (prefix)
+      errors.push('Console SSO requires API_GLOBAL_PREFIX to be empty');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Environment validation failed: ${errors.join('; ')}`);
   }
@@ -338,5 +415,11 @@ export function validateEnvironment(
     AWS_CONNECTION_TIMEOUT_MS: String(awsConnectionTimeoutMs),
     AWS_REQUEST_TIMEOUT_MS: String(awsRequestTimeoutMs),
     FRAME_FAMILY_RAG_APPCODES: familyRagAppcodes,
+    JEV_AI_RAG_MODE: jevMode,
+    JEV_AI_BASE_URL:
+      valueOf(config, 'JEV_AI_BASE_URL') || 'https://jev-ai.pro/api',
+    JEV_AI_MODEL: valueOf(config, 'JEV_AI_MODEL') || 'jev-latest',
+    JEV_AI_TIMEOUT_MS: String(jevTimeoutMs),
+    JEV_AI_RAG_APPCODES: jevAppcodes,
   };
 }

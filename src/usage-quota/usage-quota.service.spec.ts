@@ -26,6 +26,7 @@ type ThresholdEventRow = {
 
 function fixture(options?: {
   appTokenLimit?: number | null;
+  appRequestLimit?: number | null;
   organizationRequestLimit?: number | null;
   organizationTokenLimit?: number | null;
   measuredRequests?: number;
@@ -41,6 +42,7 @@ function fixture(options?: {
     unmeasuredRequests: options?.unmeasuredRequests ?? 0,
   };
   const policy = {
+    monthlyRequestLimit: options?.appRequestLimit ?? null,
     monthlyTokenLimit:
       options?.appTokenLimit === undefined ? 100 : options.appTokenLimit,
     consoleOwnership: {
@@ -237,6 +239,39 @@ function fixture(options?: {
 }
 
 describe('UsageQuotaService', () => {
+  it('enforces app request quota including active reservations and measured requests', async () => {
+    const { service, rows } = fixture({
+      appRequestLimit: 2,
+      measuredRequests: 1,
+      appTokenLimit: null,
+      organizationTokenLimit: null,
+      organizationRequestLimit: null,
+    });
+    await service.begin({ appcode: 'APP', operationKey: 'one' });
+    await expect(
+      service.begin({ appcode: 'APP', operationKey: 'two' }),
+    ).rejects.toMatchObject({
+      status: 429,
+      response: { code: 'APP_MONTHLY_REQUEST_LIMIT_EXCEEDED' },
+    });
+    expect(rows).toHaveLength(1);
+    await expect(
+      service.begin({ appcode: 'OTHER', operationKey: 'one' }),
+    ).resolves.not.toBeNull();
+  });
+
+  it('blocks zero app request quota and permits the next UTC month', async () => {
+    const blocked = fixture({ appRequestLimit: 0 });
+    await expect(
+      blocked.service.begin({ appcode: 'APP', operationKey: 'one' }),
+    ).rejects.toMatchObject({ status: 429 });
+    const { service } = fixture({ appRequestLimit: 1 });
+    await service.begin({ appcode: 'APP', operationKey: 'one' });
+    jest.setSystemTime(new Date('2026-10-01T00:00:00Z'));
+    await expect(
+      service.begin({ appcode: 'APP', operationKey: 'two' }),
+    ).resolves.not.toBeNull();
+  });
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-17T03:00:00.000Z'));
   });
@@ -651,19 +686,14 @@ describe('UsageQuotaService', () => {
   });
 
   it.each(['app', 'organization'] as const)(
-    'enforces zero %s tokens while permitting a measured zero outcome',
+    'rejects zero %s tokens before admission',
     async (scope) => {
       const { service } = fixture(
         scope === 'app' ? { appTokenLimit: 0 } : { organizationTokenLimit: 0 },
       );
-      const current = await service.begin({
-        appcode: 'APP',
-        operationKey: 'zero',
-      });
-      await expect(service.reserveTokens(current, 1)).rejects.toMatchObject({
-        status: 429,
-      });
-      await expect(service.reserveTokens(current, 0)).resolves.toBeUndefined();
+      await expect(
+        service.begin({ appcode: 'APP', operationKey: 'zero' }),
+      ).rejects.toMatchObject({ status: 429 });
     },
   );
 
@@ -674,11 +704,12 @@ describe('UsageQuotaService', () => {
       operationKey: 'first',
     });
     await service.reserveTokens(first, 60);
-    const second = await service.begin({
-      appcode: 'APP',
-      operationKey: 'second',
-    });
-    await expect(service.reserveTokens(second, 1)).rejects.toMatchObject({
+    await expect(
+      service.begin({
+        appcode: 'APP',
+        operationKey: 'second',
+      }),
+    ).rejects.toMatchObject({
       status: 429,
     });
   });
@@ -715,14 +746,16 @@ describe('UsageQuotaService', () => {
       await expect(service.settle(first, actualTokens)).rejects.toThrow(
         'settlement failed',
       );
-      const next = await service.begin({
+      const next = service.begin({
         appcode: 'APP',
         operationKey: 'next',
       });
       if (actualTokens === 20)
-        await expect(service.reserveTokens(next, 80)).resolves.toBeUndefined();
+        await expect(
+          service.reserveTokens(await next, 80),
+        ).resolves.toBeUndefined();
       else
-        await expect(service.reserveTokens(next, 1)).rejects.toMatchObject({
+        await expect(next).rejects.toMatchObject({
           status: 429,
         });
     },
@@ -751,13 +784,12 @@ describe('UsageQuotaService', () => {
 
   it('fails closed for token limits when historical usage has no measurement or reservation', async () => {
     const { service } = fixture({ unmeasuredRequests: 1 });
-    const current = await service.begin({
-      appcode: 'APP',
-      operationKey: 'unknown',
-    });
-    await expect(service.reserveTokens(current, 1)).rejects.toThrow(
-      'USAGE_QUOTA_USAGE_UNMEASURED',
-    );
+    await expect(
+      service.begin({
+        appcode: 'APP',
+        operationKey: 'unknown',
+      }),
+    ).rejects.toThrow('USAGE_QUOTA_USAGE_UNMEASURED');
     const requestOnly = fixture({
       appTokenLimit: null,
       organizationTokenLimit: null,

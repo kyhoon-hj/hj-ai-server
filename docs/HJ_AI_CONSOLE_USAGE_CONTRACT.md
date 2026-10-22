@@ -82,9 +82,10 @@ Family는 원문 저장도 하지 않는다.
 소계만 노출하고 제한된 앱의 잔여량·사용률은 null, state=organization-changed로 표시한다.
 플랫폼 관리자가 전체 원장을 확인해야 한다. 조직 한도 집계는 계속 승인 당시 조직 기준이다.
 
-한도 설정 주체는 플랫폼 관리자다. 앱 한도는 관리자 `PATCH /app-info/:id`의 monthlyTokenLimit,
-조직 한도는 console_organization.monthlyRequestLimit/monthlyTokenLimit의 승인된 DB 설정 절차로
-관리한다. 현재 Console 앱 수정 API와 화면은 한도를 변경하지 않는다. 조직 한도 변경용 Console API는 없다.
+2026-10-22부터 앱 한도는 `apps:write` 권한으로 Console 앱 개요 또는
+`PATCH /console-api/v1/apps/:id`의 monthlyRequestLimit/monthlyTokenLimit을 통해 변경한다.
+조직 한도는 console_organization.monthlyRequestLimit/monthlyTokenLimit의 승인된 설정 절차로 관리하며
+조직 한도 변경용 Console API는 없다. 월 사용량 응답의 apps[].requests와 apps[].tokens에 각각 앱 한도를 표시한다.
 
 ## 4. 월 사용량 임계치 event
 

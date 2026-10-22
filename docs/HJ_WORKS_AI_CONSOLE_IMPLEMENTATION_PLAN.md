@@ -1,7 +1,7 @@
 # HJ-Works 연계 AI Console 구축 계획
 
 작성일: 2026-09-11  
-변경일: 2026-09-28
+변경일: 2026-10-22
 대상 서비스: HJ AI Server, HJ-Works, HJ AI Console  
 목표 주소: `https://ai.hjshub.com/console`  
 상태: 기능 우선 구현 순서 확정, `CON-WORKS-01` 인증 조사 완료,
@@ -10,9 +10,14 @@
 현재 구현 결과와 검증 내역은 [HJ AI Console 구현 진행 현황](HJ_AI_CONSOLE_PROGRESS_2026-09-13.md)에
 정리한다.
 
+2026-10-22 후속 운영 반영 완료: M1-06 신규 migration 26→27·서버/Console 배포, 실제 브라우저 한도 저장·요청/토큰 소진 429·상향 후 AWS 생성 재개를 검증했다. 저장 이벤트 수정 후 Web 40 Pass, 기존 9개 앱 설정 보존. [운영 검증 기록](HJ_AI_CONSOLE_QUOTA_DEPLOYMENT_2026-10-22.md) 참조. 현재 M7 검증 중(1/5)이며 전체 공개 완료 판정은 유지 보류한다.
+
 2026-09-18 검토 이후 실행 순서·현재 단계·완료 판정은
 [전체 마일스톤](HJ_AI_CONSOLE_MILESTONES.md)을 기준으로 관리한다.
-현재는 **M4 홈·임계치 알림·감사 조회 — 진행 중(4/5)**이다. 아래 단계 번호와 `CON-*` ID는
+현재 요청 작업인 **M1-06 서비스별 월간 사용 한도 — 완료(M1 6/6)**를 반영했다. M5는 검증 중(4/5)으로 유지한다. M6-02 실제 운영 OWNER SSO·조회·logout/relogin, M7-02 backup·복원 DB rehearsal·이전 이미지 호환을 완료했다. M6/M7은 검증 중(각 1/5)이다. 지정 pilot 운영 배포·사용자 승인된 기존 앱 8개 ownership·지식/Key 메타데이터·사용량/로그 조회 결과는 [배포 기록](HJ_AI_CONSOLE_PILOT_DEPLOYMENT_2026-10-14.md)에 남긴다. 실제 AWS 업로드/답변 여정·다중 조직/역할·관측/검수는 잔여다.
+[Works 인계 수신 기록](HJ_AI_CONSOLE_WORKS_HANDOFF_RECEIVED_2026-10-14.md)에 실제 공개 경로 결과와 공유 fixture 검증을 기록했다.
+[Works 작업 지시서](HJ_WORKS_CONSOLE_INTEGRATION_WORK_ORDER_2026-10-14.md)와 [AI Server 배포 인계서](HJ_AI_CONSOLE_SSO_RELEASE_GUIDE_2026-10-14.md)를 따른다.
+M4는 최종 DB·브라우저 회귀를 마쳐 완료했다. 아래 단계 번호와 `CON-*` ID는
 기존 설계 추적용으로 유지하며, 실제 실행은 M1 한도 → M2 집계·로그 → M3 통합 검증·CI →
 M4 홈·알림·감사 → M5 지식 → M6 SSO → M7 운영 공개 순서를 따른다.
 
@@ -500,18 +505,22 @@ flag를 비활성 상태로 유지한다.
   `usage:read` 조직 범위 내부 알림함·멱등 재조회 정책 구현.
 - [x] `CON-WEB-05` 홈 dashboard와 사용량 차트
   — M4-02 완료. 당월 committed·잔여·성공률·p95, 최근 오류·Key 만료, M5 지식 색인 실패 계약과 반응형 홈 구현.
-- [ ] `CON-WEB-06` 요청 로그, 오류 상세와 CSV export
-  — M2 구현·실 DB/VM 렌더 검증 완료. Family/복구/CSV 5,000행·월/기간 구분·로그 추적 링크 포함. 브라우저 통합 검증은 M3 잔여.
+- [x] `CON-WEB-06` 요청 로그, 오류 상세와 CSV export
+  — M2 구현·실 DB/VM 렌더 검증, M3-03 브라우저 사용량·로그 여정 완료. Family/복구/CSV 5,000행·월/기간 구분·로그 추적 링크 포함.
 
 완료 기준: 집계 합계가 원본 실행 기록과 일치하고, tenant 교차 조회가 실패하며,
 명시적 0과 미측정 값이 구분된다.
 
 ### 단계 3. 지식 관리
 
-- [ ] `CON-SRV-15` Console identity 기반 지식 운영 facade
-- [ ] `CON-SRV-16` 앱 소유권과 Knowledge Manager permission 적용
-- [ ] `CON-WEB-07` 파일 목록·업로드·정책 화면
-- [ ] `CON-WEB-08` 색인 진행·실패·재시도·보관 UX
+- [x] `CON-SRV-15` Console identity 기반 지식 운영 facade
+  — M5-01에서 파일 목록·상세와 비동기 색인 제출, M5-02에서 업로드·정책·게시, M5-03에서 작업 상태·재시도·재색인·홈 실패 집계, M5-04에서 보관·원본 삭제·복구를 연결. 전체 여정 검증은 M5-05.
+- [x] `CON-SRV-16` 앱 소유권과 Knowledge Manager permission 적용
+  — M5-01에서 조직 ownership, `knowledge:read`/`knowledge:write`, 타 조직 파일 404를 격리 DB·HTTP로 검증.
+- [x] `CON-WEB-07` 파일 목록·업로드·정책 화면
+  — M5-02에서 게시 상태와 파일·저장 한도 오류를 포함해 구현하고 격리 DB/HTTP·Web 검증을 완료. 실제 S3·브라우저 통합 여정은 M5-05에서 검증.
+- [x] `CON-WEB-08` 색인 진행·실패·재시도·보관 UX
+  — M5-03에서 작업 상태·attempt·오류·재시도·재색인과 홈 실패 지표, M5-04에서 보관·원본 삭제·복구 UX 구현. 실제 브라우저 전체 여정은 M5-05 잔여.
 
 완료 기준: 브라우저에 관리자 credential이 없는 상태로 업로드부터 답변, 재색인, 보관까지
 완료하고 STORE_A/B 유형의 조직 격리 회귀를 통과한다.
@@ -657,3 +666,13 @@ M2 완료 기록(2026-09-18): [사용량·요청 로그 계약](HJ_AI_CONSOLE_US
 미측정/0·복구·월/조직 귀속·관리 주체·embedding 범위를 확정했다. 실 PostgreSQL M2 8개/M1 회귀 16개,
 서버 268개, Web 24개 및 타입·린트·빌드·schema 검증 통과. 운영 migration·배포·실제 AWS·이번 변경의
 브라우저 검증은 수행하지 않았다. 상세 증거와 다음 M3 범위는 [마일스톤](HJ_AI_CONSOLE_MILESTONES.md) 참조.
+
+
+### 2026-10-22 — M1-06 서비스별 월 요청·토큰 한도
+
+Console 앱 개요의 월간 요청 횟수·생성 토큰 설정, 앱 요청 컬럼 migration, admission/생성 예약 차단,
+앱별 사용·예약·잔여 표시를 구현했다. 빈 값 무제한, 0 차단, UTC 월초 새 기간이며 조직 한도도 유지한다.
+전체 서버 622, Web 39, 격리 PostgreSQL 통합 27개 Pass. build/typecheck/변경 파일 ESLint Pass.
+검증 근거와 한계는 [전체 마일스톤](HJ_AI_CONSOLE_MILESTONES.md)의 2026-10-22 기록을 따른다.
+실제 브라우저·외부 AI 호출·운영 배포는 미실행이다. 배포 시 migration 선적용이 필요하다.
+M5~M7의 기존 잔여는 변경하지 않았다.

@@ -46,6 +46,7 @@ suite('Console M2 usage and logs (isolated PostgreSQL)', () => {
         appcode: `M2_${randomUUID()}`,
         appname: '=M2 private name',
         monthlyTokenLimit: 500,
+        monthlyRequestLimit: 20,
         consoleOwnership: {
           create: {
             organizationId: organization.id,
@@ -446,6 +447,12 @@ suite('Console M2 usage and logs (isolated PostgreSQL)', () => {
       limit: 100,
       remaining: 94,
       utilizationPercent: 6,
+    });
+    expect(monthly.apps[0].requests).toMatchObject({
+      used: 5,
+      reserved: 1,
+      limit: 20,
+      remaining: 14,
     });
     expect(monthly.limits.tokens).toMatchObject({
       used: 80,
